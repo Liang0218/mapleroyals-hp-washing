@@ -123,7 +123,7 @@ def _apply_starting_ap(state: CharacterState, config: SimulateConfig) -> None:
             base_mp=int(round(state.base_mp)),
             extra_mp=int(round(state.extra_mp())),
             fresh_ap_int=ap,
-            notes="creation AP → INT",
+            notes="創角 AP → INT",
         )
     )
 
@@ -244,7 +244,7 @@ def _build_ap(state: CharacterState, config: SimulateConfig) -> None:
         state.base_dex += take_dex
         to_dex += take_dex
         ap -= take_dex
-        notes.append("DEX/INT build")
+        notes.append("建 DEX／INT")
     if ap > 0:
         room = _int_room(state, config)
         take_int = min(ap, room)
@@ -254,9 +254,9 @@ def _build_ap(state: CharacterState, config: SimulateConfig) -> None:
         if ap > 0:
             state.base_luk += ap
             to_luk += ap
-            notes.append("INT capped → LUK")
+            notes.append("INT 達標 → LUK")
         else:
-            notes.append("stack INT")
+            notes.append("堆 INT")
     state.note_int()
     state.plan.append(
         LevelPlanRow(
@@ -314,8 +314,8 @@ def _hp_wash_method1(state: CharacterState, config: SimulateConfig, washes: int)
             fresh_ap_luk=leftover_luk,
             apr_spent=done,
             notes=(
-                f"M1×{done} (+{hp_gain_total:.1f} HP); wash→INT {to_int} LUK {to_luk}"
-                + (f"; leftover AP INT {leftover_int} LUK {leftover_luk}" if leftover else "")
+                f"Method1×{done}（+{hp_gain_total:.1f} HP）；洗回 INT {to_int} LUK {to_luk}"
+                + (f"；剩餘 AP → INT {leftover_int} LUK {leftover_luk}" if leftover else "")
             ),
         )
     )
@@ -363,8 +363,8 @@ def _mp_wash(state: CharacterState, config: SimulateConfig, washes: int) -> None
             fresh_ap_luk=leftover_luk,
             apr_spent=done,
             notes=(
-                f"MP wash×{done} (net MP {net_mp:.1f}); →INT {to_int} LUK {to_luk}"
-                + (f"; leftover AP INT {leftover_int} LUK {leftover_luk}" if leftover else "")
+                f"MP wash×{done}（淨增 MP {net_mp:.1f}）；→ INT {to_int} LUK {to_luk}"
+                + (f"；剩餘 AP → INT {leftover_int} LUK {leftover_luk}" if leftover else "")
             ),
         )
     )
@@ -396,7 +396,7 @@ def _dump_fresh_ap_to_int_or_luk(state: CharacterState, config: SimulateConfig) 
             fresh_ap_int=to_int,
             fresh_ap_luk=to_luk,
             apr_spent=0,
-            notes=f"shortfall dump INT {to_int} LUK {to_luk} (0 wash APR)",
+            notes=f"不足時全點 INT {to_int} LUK {to_luk}（本等 0 wash APR）",
         )
     )
 
@@ -420,7 +420,7 @@ def _reset_int_to_floor(state: CharacterState) -> None:
             base_mp=int(round(state.base_mp)),
             extra_mp=int(round(state.extra_mp())),
             apr_spent=moved,
-            notes=f"INT → LUK ({moved} APR)",
+            notes=f"INT → LUK（{moved} APR）",
         )
     )
 
@@ -449,6 +449,6 @@ def _method2_top_up(state: CharacterState, config: SimulateConfig) -> None:
             base_mp=int(round(state.base_mp)),
             extra_mp=int(round(state.extra_mp())),
             apr_spent=washes,
-            notes=f"Method2×{washes} (+{hp_gained:.1f} HP)",
+            notes=f"Method2×{washes}（+{hp_gained:.1f} HP）",
         )
     )

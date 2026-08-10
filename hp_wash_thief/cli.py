@@ -116,10 +116,10 @@ def _cmd_optimize(args: argparse.Namespace) -> int:
     print_report(format_optimize_report(result))
     if args.csv_path:
         if result.winner is None:
-            print("No winner plan to export.", file=sys.stderr)
+            print("沒有可匯出的優勝計畫。", file=sys.stderr)
             return 1
         write_plan_csv(result.winner.plan, args.csv_path)
-        print(f"Wrote winner plan CSV: {args.csv_path}")
+        print(f"已寫入優勝計畫 CSV：{args.csv_path}")
     return 0 if result.winner and result.winner.reached_target else 1
 
 
@@ -143,7 +143,7 @@ def _cmd_simulate(args: argparse.Namespace) -> int:
     print_report(format_simulate_report(result))
     if args.csv_path:
         write_plan_csv(result.plan, args.csv_path)
-        print(f"Wrote plan CSV: {args.csv_path}")
+        print(f"已寫入計畫 CSV：{args.csv_path}")
     return 0 if result.reached_target else 1
 
 
