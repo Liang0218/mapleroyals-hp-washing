@@ -30,8 +30,15 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     opt.add_argument(
         "--policies",
         default="all",
-        choices=["all", "both", "mp_wash_shortfall", "int_dump_shortfall", "mp_wash_hardcore"],
-        help="Which policies to search: all=ABC (default), both=AB only",
+        choices=[
+            "all",
+            "abd",
+            "mp_wash_shortfall",
+            "int_dump_shortfall",
+            "mp_wash_hardcore",
+            "int_only_plain",
+        ],
+        help="Which policies to search: all=ABCD (default), abd=ABD only",
     )
     opt.add_argument("--csv", dest="csv_path", default=None, help="Write winner plan CSV")
     opt.add_argument("--top", type=int, default=5, help="Top-N candidates to retain")
@@ -41,7 +48,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     sim.add_argument(
         "--policy",
         required=True,
-        choices=["mp_wash_shortfall", "int_dump_shortfall", "mp_wash_hardcore"],
+        choices=[
+            "mp_wash_shortfall",
+            "int_dump_shortfall",
+            "mp_wash_hardcore",
+            "int_only_plain",
+        ],
     )
     sim.add_argument("--target-base-int", type=int, required=True)
     sim.add_argument("--mp-wash-end", type=int, default=135)
@@ -104,9 +116,14 @@ def _parse_policies(value: str) -> list[PolicyName]:
             PolicyName.MP_WASH_SHORTFALL,
             PolicyName.INT_DUMP_SHORTFALL,
             PolicyName.MP_WASH_HARDCORE,
+            PolicyName.INT_ONLY_PLAIN,
         ]
-    if value == "both":
-        return [PolicyName.MP_WASH_SHORTFALL, PolicyName.INT_DUMP_SHORTFALL]
+    if value == "abd":
+        return [
+            PolicyName.MP_WASH_SHORTFALL,
+            PolicyName.INT_DUMP_SHORTFALL,
+            PolicyName.INT_ONLY_PLAIN,
+        ]
     return [PolicyName(value)]
 
 

@@ -57,7 +57,7 @@ def test_optimize_report_is_chinese():
     text = format_optimize_report(result)
     assert "懶人包" in text
     assert "政策比較" in text
-    assert "A vs B vs C" in text
+    assert "A：" in text or "A " in text
     assert "優勝方案" in text
     assert "總 APR" in text
     assert PLAN_CSV_HINT in text

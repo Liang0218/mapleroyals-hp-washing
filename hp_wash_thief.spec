@@ -24,6 +24,7 @@ a = Analysis(
         'hp_wash_thief.core.policy.mp_wash_shortfall',
         'hp_wash_thief.core.policy.int_dump_shortfall',
         'hp_wash_thief.core.policy.mp_wash_hardcore',
+        'hp_wash_thief.core.policy.int_only_plain',
         'hp_wash_thief.ui',
         'hp_wash_thief.ui.app',
         'hp_wash_thief.ui.equipment_panel',

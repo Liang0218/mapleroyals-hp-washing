@@ -39,16 +39,18 @@ HP_MODE_LABELS = {
     "最大 (max)": "max",
 }
 OPT_POLICY_LABELS = {
-    "三種都跑 (ABC)": "all",
-    "兩種都跑 (AB)": "both",
+    "四種都跑 (ABCD)": "all",
+    "三種都跑 (ABD)": "abd",
     "A：不足時 MP wash": "mp_wash_shortfall",
     "B：不足時全點 INT": "int_dump_shortfall",
     "C：硬核 A（≥12 逐 AP；30+ MP1）": "mp_wash_hardcore",
+    "D：純樸（達標 INT 前只堆 INT）": "int_only_plain",
 }
 SIM_POLICY_LABELS = {
     "A：不足時 MP wash": "mp_wash_shortfall",
     "B：不足時全點 INT": "int_dump_shortfall",
     "C：硬核 A（≥12 逐 AP；30+ MP1）": "mp_wash_hardcore",
+    "D：純樸（達標 INT 前只堆 INT）": "int_only_plain",
 }
 
 
@@ -231,7 +233,7 @@ class HpWashApp(ctk.CTk):
 
         ctk.CTkLabel(frame, text="政策").grid(row=0, column=0, sticky="w", padx=6, pady=8)
         policies = ctk.CTkOptionMenu(frame, values=list(OPT_POLICY_LABELS.keys()))
-        policies.set("三種都跑 (ABC)")
+        policies.set("四種都跑 (ABCD)")
         policies.grid(row=0, column=1, sticky="w", padx=6, pady=8)
         self.opt_policies = policies
 
@@ -424,9 +426,14 @@ class HpWashApp(ctk.CTk):
                     PolicyName.MP_WASH_SHORTFALL,
                     PolicyName.INT_DUMP_SHORTFALL,
                     PolicyName.MP_WASH_HARDCORE,
+                    PolicyName.INT_ONLY_PLAIN,
                 ]
-            elif policies_raw == "both":
-                policies = [PolicyName.MP_WASH_SHORTFALL, PolicyName.INT_DUMP_SHORTFALL]
+            elif policies_raw == "abd":
+                policies = [
+                    PolicyName.MP_WASH_SHORTFALL,
+                    PolicyName.INT_DUMP_SHORTFALL,
+                    PolicyName.INT_ONLY_PLAIN,
+                ]
             else:
                 policies = [PolicyName(policies_raw)]
             config = OptimizeConfig(

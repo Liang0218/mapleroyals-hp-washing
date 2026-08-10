@@ -11,6 +11,7 @@ class PolicyName(str, Enum):
     MP_WASH_SHORTFALL = "mp_wash_shortfall"
     INT_DUMP_SHORTFALL = "int_dump_shortfall"
     MP_WASH_HARDCORE = "mp_wash_hardcore"
+    INT_ONLY_PLAIN = "int_only_plain"
 
 
 class HpMode(str, Enum):
@@ -124,6 +125,7 @@ class OptimizeConfig:
             PolicyName.MP_WASH_SHORTFALL,
             PolicyName.INT_DUMP_SHORTFALL,
             PolicyName.MP_WASH_HARDCORE,
+            PolicyName.INT_ONLY_PLAIN,
         ]
     )
     quest_equip_hp: int = 0
@@ -263,6 +265,7 @@ class ComparisonResult:
     policy_a: Optional[CandidateResult]
     policy_b: Optional[CandidateResult]
     policy_c: Optional[CandidateResult]
+    policy_d: Optional[CandidateResult]
     winner: Optional[CandidateResult]
     apr_delta: Optional[int]  # winner_apr - runner_up_apr (negative means winner cheaper)
     hp_delta: Optional[int]

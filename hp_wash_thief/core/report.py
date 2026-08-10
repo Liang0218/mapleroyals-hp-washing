@@ -31,7 +31,26 @@ def policy_short(policy: PolicyName) -> str:
         PolicyName.MP_WASH_SHORTFALL: "A",
         PolicyName.INT_DUMP_SHORTFALL: "B",
         PolicyName.MP_WASH_HARDCORE: "C",
+        PolicyName.INT_ONLY_PLAIN: "D",
     }.get(policy, policy.value)
+
+
+def _comparison_slots(result: OptimizeResult) -> list[tuple[PolicyName, Optional[CandidateResult]]]:
+    comp = result.comparison
+    return [
+        (PolicyName.MP_WASH_SHORTFALL, comp.policy_a),
+        (PolicyName.INT_DUMP_SHORTFALL, comp.policy_b),
+        (PolicyName.MP_WASH_HARDCORE, comp.policy_c),
+        (PolicyName.INT_ONLY_PLAIN, comp.policy_d),
+    ]
+
+
+def comparison_letters(result: OptimizeResult) -> str:
+    letters: list[str] = []
+    for pol, cand in _comparison_slots(result):
+        if cand is not None or pol in result.by_policy:
+            letters.append(policy_short(pol))
+    return " / ".join(letters) if letters else "—"
 
 
 def action_description(action: Action) -> str:
@@ -61,12 +80,16 @@ def action_description(action: Action) -> str:
 def extra_mp_threshold_display(policy: PolicyName, threshold: int) -> str:
     if policy is PolicyName.MP_WASH_HARDCORE:
         return "Extra MP 門檻=12（每次 HP wash；逐 AP 貪婪 HP1/MP1，非 60）"
+    if policy is PolicyName.INT_ONLY_PLAIN:
+        return "達標 INT 前僅堆 INT（early 階段 0 wash APR）"
     return f"Extra MP 門檻={threshold}（= 12×5，完整 HP wash×5）"
 
 
 def extra_mp_threshold_short(policy: PolicyName, threshold: int) -> str:
     if policy is PolicyName.MP_WASH_HARDCORE:
         return "12/次"
+    if policy is PolicyName.INT_ONLY_PLAIN:
+        return "—"
     return str(threshold)
 
 
@@ -77,7 +100,7 @@ def format_ui_guide() -> str:
             "快速開始",
             "",
             "  1. 裝備 Equipment — 設定裝備 INT（預設 0，請先做這步）",
-            "  2. 最佳化 Optimize — 自動搜尋最低 APR（A/B/C 比較）",
+            "  2. 最佳化 Optimize — 自動搜尋最低 APR（A/B/C/D 比較）",
             "  3. 模擬 Simulate — 手動參數跑單一方案",
             "  4. 說明 Actions — 查動作代碼意思",
             "",
@@ -104,6 +127,10 @@ def format_action_legend() -> str:
         "  30 等起若仍不足 → MP1；洗不動 → 剩餘 AP 點 INT/LUK。",
         "  （門檻是每次 12，不是 A/B 的 60。）",
         "",
+        policy_label(PolicyName.INT_ONLY_PLAIN),
+        "  達標 INT 前：30 等前 BUILD；31 等起 5 AP 全點 INT（不洗 HP/MP）。",
+        "  達標 INT 後：與 A/B/C 相同（MP wash → HP wash → M2 → INT reset）。",
+        "",
         "【動作代碼】",
         "",
     ]
@@ -123,6 +150,8 @@ def policy_label(policy: PolicyName) -> str:
         return "B：不足時全點 INT"
     if policy is PolicyName.MP_WASH_HARDCORE:
         return "C：硬核 A（≥12 MP 即洗；逐 AP 貪婪 HP1/MP1）"
+    if policy is PolicyName.INT_ONLY_PLAIN:
+        return "D：純樸（達標 INT 前只堆 INT）"
     return policy.value
 
 
@@ -134,6 +163,8 @@ def policy_playbook(policy: PolicyName) -> str:
         return "31 等起：Extra MP≥60 洗 HP×5，不足則 5 AP 全點 INT"
     if policy is PolicyName.MP_WASH_HARDCORE:
         return "10 等起：每 AP 檢查 Extra MP≥12 洗 HP1；30+ 不足洗 MP1"
+    if policy is PolicyName.INT_ONLY_PLAIN:
+        return "達標 INT 前只堆 INT；達標後 MP wash→HP wash 洗到目標 HP"
     return policy.value
 
 
@@ -186,12 +217,11 @@ def _lazy_summary_simulate(c: CandidateResult) -> list[str]:
 
 def _comparison_notes(result: OptimizeResult) -> list[str]:
     lines: list[str] = []
-    a = result.comparison.policy_a
-    b = result.comparison.policy_b
-    c = result.comparison.policy_c
-    if result.comparison.winner and result.comparison.apr_delta is not None:
+    comp = result.comparison
+    candidates = [c for _, c in _comparison_slots(result) if c is not None]
+    if comp.winner and comp.apr_delta is not None and len(candidates) > 1:
         ranked = sorted(
-            [x for x in (a, b, c) if x is not None],
+            candidates,
             key=lambda cand: (
                 0 if cand.reached_target else 1,
                 cand.total_apr,
@@ -200,18 +230,18 @@ def _comparison_notes(result: OptimizeResult) -> list[str]:
         )
         runner_up = ranked[1] if len(ranked) > 1 else None
         if runner_up is not None:
-            delta = result.comparison.apr_delta
+            delta = comp.apr_delta
             saved = -delta
             lines.append("")
-            lines.append("【A / B / C 勝負】")
+            lines.append(f"【{comparison_letters(result)} 勝負】")
             if saved > 0:
                 delta_note = f"較次優省 {saved} APR"
             else:
                 delta_note = f"較次優多 {-saved} APR"
-            lines.append(f"  優勝：{policy_label(result.comparison.winner.policy)}")
+            lines.append(f"  優勝：{policy_label(comp.winner.policy)}")
             lines.append(f"  ΔAPR：{delta:+d}（{delta_note}）")
-            if result.comparison.hp_delta is not None:
-                lines.append(f"  ΔHP：{result.comparison.hp_delta:+d}")
+            if comp.hp_delta is not None:
+                lines.append(f"  ΔHP：{comp.hp_delta:+d}")
     return lines
 
 
@@ -231,16 +261,13 @@ def build_optimize_tables(result: OptimizeResult) -> list[ReportTable]:
     tables: list[ReportTable] = []
     compare_cols = ("政策", "目標INT", "達標等級", "洗MP結束等級", "總APR", "最終HP", "達標")
     compare_rows: list[tuple[str, ...]] = []
-    for pol, cand in (
-        (PolicyName.MP_WASH_SHORTFALL, result.comparison.policy_a),
-        (PolicyName.INT_DUMP_SHORTFALL, result.comparison.policy_b),
-        (PolicyName.MP_WASH_HARDCORE, result.comparison.policy_c),
-    ):
+    for pol, cand in _comparison_slots(result):
         if cand is None:
             compare_rows.append((policy_short(pol), "—", "—", "—", "—", "—", "未執行"))
         else:
             compare_rows.append(_candidate_row_values(cand))
-    tables.append(ReportTable("政策比較（A / B / C）", compare_cols, compare_rows))
+    title = f"政策比較（{comparison_letters(result)}）"
+    tables.append(ReportTable(title, compare_cols, compare_rows))
 
     if result.top_candidates:
         rank_cols = ("#",) + compare_cols
@@ -281,15 +308,13 @@ def format_optimize_report(result: OptimizeResult) -> str:
     lines.append("=" * 60)
     lines.extend(_lazy_summary_optimize(result))
 
-    a = result.comparison.policy_a
-    b = result.comparison.policy_b
-    c = result.comparison.policy_c
+    letters = comparison_letters(result)
     lines.append("")
-    lines.append("1) 政策比較（A vs B vs C）")
+    lines.append(f"1) 政策比較（{letters.replace(' / ', ' vs ')}）")
     lines.append("-" * 60)
-    lines.append(_policy_block(policy_label(PolicyName.MP_WASH_SHORTFALL), a))
-    lines.append(_policy_block(policy_label(PolicyName.INT_DUMP_SHORTFALL), b))
-    lines.append(_policy_block(policy_label(PolicyName.MP_WASH_HARDCORE), c))
+    for pol, cand in _comparison_slots(result):
+        if pol in result.by_policy or cand is not None:
+            lines.append(_policy_block(policy_label(pol), cand))
     lines.extend(_comparison_notes(result))
 
     lines.append("")

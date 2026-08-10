@@ -31,10 +31,12 @@ def optimize(config: OptimizeConfig) -> OptimizeResult:
     policy_a = by_policy.get(PolicyName.MP_WASH_SHORTFALL)
     policy_b = by_policy.get(PolicyName.INT_DUMP_SHORTFALL)
     policy_c = by_policy.get(PolicyName.MP_WASH_HARDCORE)
+    policy_d = by_policy.get(PolicyName.INT_ONLY_PLAIN)
     a_best = policy_a.best if policy_a else None
     b_best = policy_b.best if policy_b else None
     c_best = policy_c.best if policy_c else None
-    comparison = _compare_abc(a_best, b_best, c_best)
+    d_best = policy_d.best if policy_d else None
+    comparison = _compare_abcd(a_best, b_best, c_best, d_best)
 
     winner = comparison.winner
     if winner is None and top_candidates:
@@ -211,15 +213,16 @@ def _candidate_sort_key(c: CandidateResult) -> tuple:
     )
 
 
-def _compare_abc(
+def _compare_abcd(
     a: Optional[CandidateResult],
     b: Optional[CandidateResult],
     c: Optional[CandidateResult],
+    d: Optional[CandidateResult],
 ) -> ComparisonResult:
-    """Rank A/B/C bests; delta is winner vs runner-up."""
-    available = [x for x in (a, b, c) if x is not None]
+    """Rank A/B/C/D bests; delta is winner vs runner-up."""
+    available = [x for x in (a, b, c, d) if x is not None]
     if not available:
-        return ComparisonResult(a, b, c, None, None, None)
+        return ComparisonResult(a, b, c, d, None, None, None)
 
     ranked = sorted(available, key=_candidate_sort_key)
     winner = ranked[0]
@@ -228,6 +231,7 @@ def _compare_abc(
         policy_a=a,
         policy_b=b,
         policy_c=c,
+        policy_d=d,
         winner=winner,
         apr_delta=(winner.total_apr - runner_up.total_apr) if runner_up else None,
         hp_delta=(winner.final_display_hp - runner_up.final_display_hp) if runner_up else None,

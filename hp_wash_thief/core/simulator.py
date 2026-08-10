@@ -186,6 +186,8 @@ def _decide_action(state: CharacterState, config: SimulateConfig) -> Action:
         return Action.BUILD
     # Early shortfall logic continues until target_base_int is reached (not a fixed level).
     if _in_early_phase(state, config):
+        if config.policy is PolicyName.INT_ONLY_PLAIN:
+            return Action.BUILD if level <= 30 else Action.INT5
         return choose_early_action(
             config.policy,
             state.extra_mp(),
