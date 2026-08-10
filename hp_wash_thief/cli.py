@@ -90,6 +90,12 @@ def _add_shared_args(p: argparse.ArgumentParser) -> None:
         default=EXTRA_MP_THRESHOLD_DEFAULT,
         help=f"Extra MP needed for HP wash×5 (default: {EXTRA_MP_THRESHOLD_DEFAULT} = 12×5)",
     )
+    p.add_argument(
+        "--int-gear-after-reset",
+        type=int,
+        default=50,
+        help="Equipment INT from int-reset level onward (default: 50)",
+    )
 
 
 def _parse_policies(value: str) -> list[PolicyName]:
@@ -116,6 +122,7 @@ def _cmd_optimize(args: argparse.Namespace) -> int:
         mw_percent=args.mw_percent,
         mw_from_level=args.mw_from_level,
         extra_mp_threshold=args.extra_mp_threshold,
+        int_gear_after_reset=args.int_gear_after_reset,
         top_n=args.top,
     )
     result = optimize(config)
@@ -144,6 +151,7 @@ def _cmd_simulate(args: argparse.Namespace) -> int:
         auto_method2=not args.no_method2,
         mw_percent=args.mw_percent,
         mw_from_level=args.mw_from_level,
+        int_gear_after_reset=args.int_gear_after_reset,
     )
     result = simulate(config)
     print_report(format_simulate_report(result))

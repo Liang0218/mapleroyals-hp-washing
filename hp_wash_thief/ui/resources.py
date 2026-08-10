@@ -35,6 +35,19 @@ def default_int_gear_path() -> Path:
     return candidates[0]
 
 
+def default_equipment_path() -> Path:
+    base = app_base_dir()
+    candidates = [
+        base / "examples" / "default_equipment.json",
+        base / "default_equipment.json",
+        Path(__file__).resolve().parents[2] / "examples" / "default_equipment.json",
+    ]
+    for path in candidates:
+        if path.is_file():
+            return path
+    return candidates[0]
+
+
 def default_csv_path() -> Path:
     if getattr(sys, "frozen", False):
         return Path(sys.executable).resolve().parent / "plan.csv"

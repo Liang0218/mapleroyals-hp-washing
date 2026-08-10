@@ -160,6 +160,7 @@ def _run(
             auto_method2=True,
             mw_percent=config.mw_percent,
             mw_from_level=config.mw_from_level,
+            int_gear_after_reset=config.int_gear_after_reset,
         )
     )
     return CandidateResult.from_simulate(sim)

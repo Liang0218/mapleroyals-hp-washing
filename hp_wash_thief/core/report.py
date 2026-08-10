@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import csv
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional, TextIO, Union
 
@@ -13,6 +14,24 @@ from hp_wash_thief.core.models import (
     PolicyName,
     SimulateResult,
 )
+
+
+PLAN_CSV_HINT = "完整逐等計畫（每等動作與說明）請匯出 CSV 查看。"
+
+
+@dataclass(frozen=True)
+class ReportTable:
+    title: str
+    columns: tuple[str, ...]
+    rows: list[tuple[str, ...]]
+
+
+def policy_short(policy: PolicyName) -> str:
+    return {
+        PolicyName.MP_WASH_SHORTFALL: "A",
+        PolicyName.INT_DUMP_SHORTFALL: "B",
+        PolicyName.MP_WASH_HARDCORE: "C",
+    }.get(policy, policy.value)
 
 
 def action_description(action: Action) -> str:
@@ -49,6 +68,23 @@ def extra_mp_threshold_short(policy: PolicyName, threshold: int) -> str:
     if policy is PolicyName.MP_WASH_HARDCORE:
         return "12/次"
     return str(threshold)
+
+
+def format_ui_guide() -> str:
+    """Desktop UI onboarding: tab purposes and recommended workflow."""
+    return "\n".join(
+        [
+            "快速開始",
+            "",
+            "  1. 裝備 Equipment — 設定裝備（請先做這步）",
+            "  2. 最佳化 Optimize — 自動搜尋最低 APR（A/B/C 比較）",
+            "  3. 模擬 Simulate — 手動參數跑單一方案",
+            "  4. 說明 Actions — 查動作代碼意思",
+            "",
+            "裝備改完直接按最佳化／模擬即可，會自動帶入智裝 INT。",
+            "INT 洗回等級、reset 後智裝 INT 在 Optimize 參數列設定。",
+        ]
+    )
 
 
 def format_action_legend() -> str:
@@ -89,22 +125,69 @@ def policy_label(policy: PolicyName) -> str:
     return policy.value
 
 
-def format_optimize_report(result: OptimizeResult) -> str:
-    lines: list[str] = []
-    lines.append("=" * 72)
-    lines.append("MapleRoyals 盜賊洗血 — 政策比較")
-    lines.append("=" * 72)
+def policy_playbook(policy: PolicyName) -> str:
+    """One-line in-game summary for the lazy pack."""
+    if policy is PolicyName.MP_WASH_SHORTFALL:
+        return "31 等起：Extra MP≥60 洗 HP×5，不足則 MP wash×5"
+    if policy is PolicyName.INT_DUMP_SHORTFALL:
+        return "31 等起：Extra MP≥60 洗 HP×5，不足則 5 AP 全點 INT"
+    if policy is PolicyName.MP_WASH_HARDCORE:
+        return "10 等起：每 AP 檢查 Extra MP≥12 洗 HP1；30+ 不足洗 MP1"
+    return policy.value
 
+
+def _lazy_summary_optimize(result: OptimizeResult) -> list[str]:
+    w = result.winner
+    lines = ["【懶人包 — 照這樣做】", ""]
+    if w is None:
+        lines.append("  無可行方案。請調高目標 HP 上限、檢查裝備，或放寬搜尋範圍。")
+        return lines
+
+    lines.append(f"  ★ 最優政策：{policy_label(w.policy)}")
+    lines.append(f"  ★ 怎麼洗：{policy_playbook(w.policy)}")
+    lines.append(
+        f"  ★ 關鍵參數：base INT 堆到 {w.target_base_int}｜"
+        f"MP wash 洗到 Lv{w.mp_wash_end}｜"
+        f"約 Lv{w.int_reached_level} 前達標 INT"
+    )
+    hit = "有" if w.reached_target else "無"
+    lines.append(
+        f"  ★ 結果：總 APR {w.total_apr}｜最終 HP {w.final_display_hp}｜達標={hit}"
+    )
+
+    comp = result.comparison
+    if comp.winner and comp.apr_delta is not None:
+        saved = -comp.apr_delta
+        if saved > 0:
+            lines.append(f"  ★ 比次優省 {saved} APR")
+        elif saved < 0:
+            lines.append(f"  ★ 比次優多 {-saved} APR（仍為綜合最優）")
+
+    lines.append("")
+    lines.append("  完整逐等計畫請匯出 CSV 查看。")
+    return lines
+
+
+def _lazy_summary_simulate(c: CandidateResult) -> list[str]:
+    lines = ["【懶人包 — 本方案】", ""]
+    lines.append(f"  ★ 政策：{policy_label(c.policy)}")
+    lines.append(f"  ★ 怎麼洗：{policy_playbook(c.policy)}")
+    lines.append(
+        f"  ★ 參數：base INT 目標 {c.target_base_int}｜MP wash 至 Lv{c.mp_wash_end}"
+    )
+    hit = "有" if c.reached_target else "無"
+    lines.append(
+        f"  ★ 結果：總 APR {c.total_apr}｜最終 HP {c.final_display_hp}｜達標={hit}"
+    )
+    lines.append("")
+    return lines
+
+
+def _comparison_notes(result: OptimizeResult) -> list[str]:
+    lines: list[str] = []
     a = result.comparison.policy_a
     b = result.comparison.policy_b
     c = result.comparison.policy_c
-    lines.append("")
-    lines.append("1) 政策比較（A vs B vs C）")
-    lines.append("-" * 72)
-    lines.append(_policy_block(policy_label(PolicyName.MP_WASH_SHORTFALL), a))
-    lines.append(_policy_block(policy_label(PolicyName.INT_DUMP_SHORTFALL), b))
-    lines.append(_policy_block(policy_label(PolicyName.MP_WASH_HARDCORE), c))
-
     if result.comparison.winner and result.comparison.apr_delta is not None:
         ranked = sorted(
             [x for x in (a, b, c) if x is not None],
@@ -119,73 +202,125 @@ def format_optimize_report(result: OptimizeResult) -> str:
             delta = result.comparison.apr_delta
             saved = -delta
             lines.append("")
+            lines.append("【A / B / C 勝負】")
             if saved > 0:
-                delta_note = f"優勝方案較省 {saved} APR"
+                delta_note = f"較次優省 {saved} APR"
             else:
-                delta_note = f"亞軍方案較省 {-saved} APR"
-            lines.append(
-                f"   優勝：{policy_label(result.comparison.winner.policy)}"
-            )
-            lines.append(
-                f"   ΔAPR（優勝 − 亞軍）：{delta:+d}  （{delta_note}）"
-            )
+                delta_note = f"較次優多 {-saved} APR"
+            lines.append(f"  優勝：{policy_label(result.comparison.winner.policy)}")
+            lines.append(f"  ΔAPR：{delta:+d}（{delta_note}）")
             if result.comparison.hp_delta is not None:
-                lines.append(f"   ΔHP（優勝 − 亞軍）：{result.comparison.hp_delta:+d}")
+                lines.append(f"  ΔHP：{result.comparison.hp_delta:+d}")
+    return lines
+
+
+def _candidate_row_values(c: CandidateResult) -> tuple[str, ...]:
+    return (
+        policy_short(c.policy),
+        str(c.target_base_int),
+        str(c.int_reached_level),
+        str(c.mp_wash_end),
+        str(c.total_apr),
+        str(c.final_display_hp),
+        "是" if c.reached_target else "否",
+    )
+
+
+def build_optimize_tables(result: OptimizeResult) -> list[ReportTable]:
+    tables: list[ReportTable] = []
+    compare_cols = ("政策", "目標INT", "達標等級", "洗MP結束等級", "總APR", "最終HP", "達標")
+    compare_rows: list[tuple[str, ...]] = []
+    for pol, cand in (
+        (PolicyName.MP_WASH_SHORTFALL, result.comparison.policy_a),
+        (PolicyName.INT_DUMP_SHORTFALL, result.comparison.policy_b),
+        (PolicyName.MP_WASH_HARDCORE, result.comparison.policy_c),
+    ):
+        if cand is None:
+            compare_rows.append((policy_short(pol), "—", "—", "—", "—", "—", "未執行"))
+        else:
+            compare_rows.append(_candidate_row_values(cand))
+    tables.append(ReportTable("政策比較（A / B / C）", compare_cols, compare_rows))
+
+    if result.top_candidates:
+        rank_cols = ("#",) + compare_cols
+        rank_rows: list[tuple[str, ...]] = []
+        for i, cand in enumerate(result.top_candidates, 1):
+            rank_rows.append((str(i),) + _candidate_row_values(cand))
+        tables.append(ReportTable("前幾名候選", rank_cols, rank_rows))
+    return tables
+
+
+def format_optimize_summary_text(result: OptimizeResult) -> str:
+    lines: list[str] = []
+    lines.extend(_lazy_summary_optimize(result))
+    lines.extend(_comparison_notes(result))
+    lines.append("")
+    lines.append("【優勝方案詳情】")
+    lines.append(_winner_block(result.winner))
+    lines.append("")
+    lines.append(f"【逐等計畫】{PLAN_CSV_HINT}")
+    return "\n".join(lines)
+
+
+def format_simulate_summary_text(result: SimulateResult) -> str:
+    cand = CandidateResult.from_simulate(result)
+    lines: list[str] = []
+    lines.extend(_lazy_summary_simulate(cand))
+    lines.append("【詳細參數】")
+    lines.append(_winner_block(cand))
+    lines.append("")
+    lines.append(f"【逐等計畫】{PLAN_CSV_HINT}")
+    return "\n".join(lines)
+
+
+def format_optimize_report(result: OptimizeResult) -> str:
+    lines: list[str] = []
+    lines.append("=" * 60)
+    lines.append("MapleRoyals 盜賊洗血 — 最佳化結果")
+    lines.append("=" * 60)
+    lines.extend(_lazy_summary_optimize(result))
+
+    a = result.comparison.policy_a
+    b = result.comparison.policy_b
+    c = result.comparison.policy_c
+    lines.append("")
+    lines.append("1) 政策比較（A vs B vs C）")
+    lines.append("-" * 60)
+    lines.append(_policy_block(policy_label(PolicyName.MP_WASH_SHORTFALL), a))
+    lines.append(_policy_block(policy_label(PolicyName.INT_DUMP_SHORTFALL), b))
+    lines.append(_policy_block(policy_label(PolicyName.MP_WASH_HARDCORE), c))
+    lines.extend(_comparison_notes(result))
 
     lines.append("")
     lines.append("2) 優勝方案")
-    lines.append("-" * 72)
+    lines.append("-" * 60)
     lines.append(_winner_block(result.winner))
 
-    lines.append("")
-    lines.append("3) 前幾名候選")
-    lines.append("-" * 72)
-    if not result.top_candidates:
-        lines.append("  （無）")
-    else:
-        lines.append(
-            f"  {'#':>2}  {'政策':<22}  {'INT':>4}  {'達標等':>5}  {'mpEnd':>5}  "
-            f"{'門檻':>4}  {'APR':>5}  {'HP':>6}  達標"
-        )
-        for i, c in enumerate(result.top_candidates, 1):
-            short = {
-                PolicyName.MP_WASH_SHORTFALL: "A_mp_wash",
-                PolicyName.INT_DUMP_SHORTFALL: "B_int_dump",
-                PolicyName.MP_WASH_HARDCORE: "C_hardcore",
-            }.get(c.policy, c.policy.value)
+    if result.top_candidates:
+        lines.append("")
+        lines.append("3) 前幾名候選")
+        lines.append("-" * 60)
+        for i, cand in enumerate(result.top_candidates, 1):
             lines.append(
-                f"  {i:>2}  {short:<22}  {c.target_base_int:>4}  "
-                f"{c.int_reached_level:>5}  {c.mp_wash_end:>5}  "
-                f"{extra_mp_threshold_short(c.policy, c.extra_mp_threshold):>4}  "
-                f"{c.total_apr:>5}  {c.final_display_hp:>6}  "
-                f"{'是' if c.reached_target else '否'}"
+                f"  {i}. {policy_short(cand.policy)}  INT={cand.target_base_int}  "
+                f"APR={cand.total_apr}  HP={cand.final_display_hp}  "
+                f"達標={'是' if cand.reached_target else '否'}"
             )
 
     lines.append("")
-    lines.append("4) 優勝方案逐等計畫（摘要）")
-    lines.append("-" * 72)
-    if result.winner is None or not result.winner.plan:
-        lines.append("  （無計畫）")
-    else:
-        lines.extend(_plan_summary(result.winner))
-
+    lines.append(f"4) {PLAN_CSV_HINT}")
     lines.append("")
     return "\n".join(lines)
 
 
 def format_simulate_report(result: SimulateResult) -> str:
-    cand = CandidateResult.from_simulate(result)
     lines = [
-        "=" * 72,
+        "=" * 60,
         "MapleRoyals 盜賊洗血 — 模擬結果",
-        "=" * 72,
-        _winner_block(cand),
+        "=" * 60,
+        format_simulate_summary_text(result),
         "",
-        "逐等計畫（摘要）",
-        "-" * 72,
     ]
-    lines.extend(_plan_summary(cand))
-    lines.append("")
     return "\n".join(lines)
 
 
@@ -262,6 +397,7 @@ def _winner_block(c: Optional[CandidateResult]) -> str:
         f"（early 階段＝到目標 INT 為止，非固定等級）\n"
         f"  MP wash 結束等級={c.mp_wash_end}\n"
         f"  {extra_mp_threshold_display(c.policy, c.extra_mp_threshold)}\n"
+        f"  INT reset 後 int_gear={c.int_gear_after_reset}\n"
         f"  base INT 峰值={c.base_int_peak}\n"
         f"  最終 base HP={c.final_base_hp}  最終顯示 HP={c.final_display_hp}\n"
         f"  是否達標={('是' if c.reached_target else '否')}\n"
@@ -277,10 +413,8 @@ def _plan_summary(c: CandidateResult) -> list[str]:
     lines: list[str] = []
     if not c.plan:
         return ["  （空白）"]
-    lines.append(
-        f"  {'等級':>4}  {'動作':<10}  {'說明':<36}  {'INT':>4}  {'LUK':>4}  {'HP':>6}  "
-        f"{'MP':>5}  {'xMP':>5}  {'APR':>4}  備註"
-    )
+    lines.append("  Lv   Action        INT  LUK      HP     MP  xMP APR")
+    lines.append("  " + "-" * 52)
     prev_action = None
     markers = {c.int_reached_level, c.mp_wash_end, c.mp_wash_end + 1}
     for row in c.plan:
@@ -292,14 +426,19 @@ def _plan_summary(c: CandidateResult) -> list[str]:
             or row.level % 10 == 0
         )
         if show:
-            desc = action_description(row.action)
-            if len(desc) > 36:
-                desc = desc[:33] + "…"
             lines.append(
-                f"  {row.level:>4}  {row.action.value:<10}  {desc:<36}  {row.base_int:>4}  "
-                f"{row.base_luk:>4}  {row.base_hp:>6}  {row.base_mp:>5}  {row.extra_mp:>5}  "
-                f"{row.apr_spent:>4}  {row.notes}"
+                f"  {row.level:>3}  {row.action.value:<12}  "
+                f"{row.base_int:>4}  {row.base_luk:>4}  {row.base_hp:>6}  "
+                f"{row.base_mp:>5}  {row.extra_mp:>4}  {row.apr_spent:>3}"
             )
+            desc = action_description(row.action)
+            extras: list[str] = []
+            if desc:
+                extras.append(desc)
+            if row.notes:
+                extras.append(row.notes)
+            if extras:
+                lines.append(f"       → {'｜'.join(extras)}")
         prev_action = row.action
     lines.append(f"  （完整計畫共 {len(c.plan)} 列；請用 CSV 匯出查看全部）")
     return lines

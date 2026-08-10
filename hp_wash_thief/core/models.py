@@ -132,6 +132,8 @@ class OptimizeConfig:
     # Maple Warrior: % of base INT added to total INT for level-up MP (not MP wash).
     mw_percent: float = 0.10
     mw_from_level: int = 10
+    # Fixed equipment INT from int_reset_level onward (post INT→LUK reset).
+    int_gear_after_reset: int = 50
     # Extra MP threshold for early HP wash×5. Fixed at 60 (= 12 MP × 5 APR).
     extra_mp_threshold: int = 60
     # Search bounds (overridable for tests)
@@ -158,6 +160,7 @@ class SimulateConfig:
     auto_method2: bool = True
     mw_percent: float = 0.10
     mw_from_level: int = 10
+    int_gear_after_reset: int = 50
 
 
 @dataclass
@@ -202,6 +205,7 @@ class SimulateResult:
     int_reached_level: int
     mp_wash_end: int
     extra_mp_threshold: int
+    int_gear_after_reset: int
     final_base_hp: int
     final_display_hp: int
     base_int_peak: int
@@ -217,6 +221,7 @@ class CandidateResult:
     int_reached_level: int
     mp_wash_end: int
     extra_mp_threshold: int
+    int_gear_after_reset: int
     final_base_hp: int
     final_display_hp: int
     base_int_peak: int
@@ -236,6 +241,7 @@ class CandidateResult:
             int_reached_level=result.int_reached_level,
             mp_wash_end=result.mp_wash_end,
             extra_mp_threshold=result.extra_mp_threshold,
+            int_gear_after_reset=result.int_gear_after_reset,
             final_base_hp=result.final_base_hp,
             final_display_hp=result.final_display_hp,
             base_int_peak=result.base_int_peak,

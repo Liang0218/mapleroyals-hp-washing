@@ -57,6 +57,43 @@ def gear_for_level(segments: Sequence[IntGearSegment], level: int) -> int:
     return 0
 
 
+def effective_gear_for_level(
+    segments: Sequence[IntGearSegment],
+    level: int,
+    *,
+    int_reset_level: int,
+    int_gear_after_reset: int,
+) -> int:
+    """Gear INT before reset uses segments; from ``int_reset_level`` onward use fixed value."""
+    if level >= int_reset_level:
+        return int_gear_after_reset
+    return gear_for_level(segments, level)
+
+
+def clip_segments_before_reset(
+    segments: Sequence[IntGearSegment], *, int_reset_level: int
+) -> list[IntGearSegment]:
+    """Keep only segment coverage strictly before INT reset."""
+    clipped: list[IntGearSegment] = []
+    cutoff = int_reset_level - 1
+    for seg in segments:
+        if seg.from_level >= int_reset_level:
+            continue
+        to_level = min(seg.to_level, cutoff)
+        if seg.from_level <= to_level:
+            clipped.append(
+                IntGearSegment(
+                    from_level=seg.from_level,
+                    to_level=to_level,
+                    int_gear=seg.int_gear,
+                )
+            )
+    if not clipped:
+        raise ValueError("no INT gear segments before int_reset_level")
+    validate_int_gear(clipped)
+    return clipped
+
+
 def maple_warrior_int(
     base_int: int, level: int, *, mw_percent: float = 0.10, mw_from_level: int = 10
 ) -> int:
@@ -76,9 +113,19 @@ def total_int(
     *,
     mw_percent: float = 0.10,
     mw_from_level: int = 10,
+    int_reset_level: int | None = None,
+    int_gear_after_reset: int | None = None,
 ) -> int:
     """Total INT for level-up MP: base + gear + MW(% of base)."""
-    gear = gear_for_level(segments, level)
+    if int_reset_level is not None and int_gear_after_reset is not None:
+        gear = effective_gear_for_level(
+            segments,
+            level,
+            int_reset_level=int_reset_level,
+            int_gear_after_reset=int_gear_after_reset,
+        )
+    else:
+        gear = gear_for_level(segments, level)
     mw = maple_warrior_int(
         base_int, level, mw_percent=mw_percent, mw_from_level=mw_from_level
     )

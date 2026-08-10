@@ -88,6 +88,7 @@ def simulate(config: SimulateConfig) -> SimulateResult:
         int_reached_level=state.int_reached_level,
         mp_wash_end=config.mp_wash_end,
         extra_mp_threshold=config.extra_mp_threshold,
+        int_gear_after_reset=config.int_gear_after_reset,
         final_base_hp=int(round(state.base_hp)),
         final_display_hp=int(round(display_hp)),
         base_int_peak=state.base_int_peak,
@@ -108,6 +109,8 @@ def _validate_config(config: SimulateConfig) -> None:
         raise ValueError("target_base_int too low")
     if config.extra_mp_threshold < 0:
         raise ValueError("extra_mp_threshold must be >= 0")
+    if config.int_gear_after_reset < 0:
+        raise ValueError("int_gear_after_reset must be >= 0")
 
 
 def _maybe_mark_int_reached(state: CharacterState, config: SimulateConfig) -> None:
@@ -146,6 +149,8 @@ def _level_up(state: CharacterState, new_level: int, config: SimulateConfig) -> 
         new_level,
         mw_percent=config.mw_percent,
         mw_from_level=config.mw_from_level,
+        int_reset_level=config.int_reset_level,
+        int_gear_after_reset=config.int_gear_after_reset,
     )
     hp_gain = F.levelup_hp_gain(is_beginner=is_beginner, mode=config.hp_mode)
     mp_gain = F.levelup_mp_base_gain(is_beginner=is_beginner, mode=config.hp_mode)
