@@ -42,7 +42,27 @@ scripts\build_windows.bat
 Output: `dist\MapleRoyalsHpWash\MapleRoyalsHpWash.exe`  
 Zip the whole `MapleRoyalsHpWash` folder and share it (keep DLLs next to the exe).
 
-> This cloud/Linux environment cannot produce a Windows `.exe`; build on Windows (or a Windows CI runner).
+> CI builds on tag push — see **Releases** below. Local build still works with the script above.
+
+### Download Windows build (GitHub Releases)
+
+Official Windows builds are attached to [GitHub Releases](https://github.com/Liang0218/mapleroyals-hp-washing/releases).
+
+1. Download `MapleRoyalsHpWash-vX.Y.Z-win64.zip`
+2. Extract the folder
+3. Run `MapleRoyalsHpWash.exe` (keep all files in the folder)
+
+**Publish a new release (maintainers):**
+
+```bash
+# bump version in pyproject.toml first, then:
+git tag v0.2.0
+git push origin v0.2.0
+```
+
+GitHub Actions (`.github/workflows/release-windows.yml`) runs tests, builds with PyInstaller on `windows-latest`, and uploads the zip to Releases.
+
+Manual CI test without creating a Release: **Actions → Release Windows → Run workflow** (downloads a 14-day artifact).
 
 ## CLI quick start
 

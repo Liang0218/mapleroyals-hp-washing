@@ -12,6 +12,7 @@ build/
 develop-eggs/
 dist/
 downloads/
+plan.csv
 eggs/
 .eggs/
 lib/
