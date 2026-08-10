@@ -92,6 +92,17 @@ def job_advance_bonus(job_adv_number: int, mode: HpMode) -> tuple[float, float]:
     raise ValueError(f"unsupported job advancement: {job_adv_number}")
 
 
+def job_advance_ap(job_adv_number: int) -> int:
+    """Bonus AP granted on job advancement (MapleRoyals v83).
+
+    Source: https://royals.ms/forum/threads/2nd-3rd-4th-job-bonuses.45500/
+    1st/2nd job: 0 AP; 3rd/4th job: 5 AP each.
+    """
+    if job_adv_number in (3, 4):
+        return 5
+    return 0
+
+
 # Job advance levels for Thief line.
 JOB_ADVANCE_LEVELS = {
     10: 1,
@@ -99,6 +110,8 @@ JOB_ADVANCE_LEVELS = {
     70: 3,
     120: 4,
 }
+
+FRESH_AP_PER_LEVEL = 5
 
 STARTING_HP = 50.0
 STARTING_MP = 5.0

@@ -18,10 +18,10 @@ from hp_wash_thief.core.gear import (
 
 def test_example_gear_file():
     segments = load_int_gear(Path("examples/int_gear.json"))
-    assert gear_for_level(segments, 10) == (24, 0)
-    assert gear_for_level(segments, 50) == (134, 0)
-    assert gear_for_level(segments, 120) == (159, 0)
-    # MW is % of base INT from level 10, not a flat gear field.
+    assert gear_for_level(segments, 10) == 24
+    assert gear_for_level(segments, 50) == 134
+    assert gear_for_level(segments, 120) == 159
+    # MW is % of base INT from level 10, not a gear JSON field.
     assert total_int(200, segments, 120, mw_percent=0.10, mw_from_level=10) == (
         200 + 159 + 20
     )
@@ -51,10 +51,10 @@ def test_load_from_tmp(tmp_path: Path):
     path.write_text(
         json.dumps(
             [
-                {"from_level": 1, "to_level": 200, "int_gear": 50, "mw_int": 0},
+                {"from_level": 1, "to_level": 200, "int_gear": 50},
             ]
         ),
         encoding="utf-8",
     )
     segs = load_int_gear(path)
-    assert gear_for_level(segs, 150) == (50, 0)
+    assert gear_for_level(segs, 150) == 50

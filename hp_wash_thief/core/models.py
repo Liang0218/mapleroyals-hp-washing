@@ -34,7 +34,6 @@ class IntGearSegment:
     from_level: int
     to_level: int
     int_gear: int
-    mw_int: int = 0
 
     def covers(self, level: int) -> bool:
         return self.from_level <= level <= self.to_level

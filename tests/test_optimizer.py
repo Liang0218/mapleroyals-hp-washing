@@ -9,7 +9,7 @@ from hp_wash_thief.core.models import OptimizeConfig, PolicyName
 
 GEAR = parse_int_gear(
     [
-        {"from_level": 1, "to_level": 200, "int_gear": 100, "mw_int": 20},
+        {"from_level": 1, "to_level": 200, "int_gear": 100},
     ]
 )
 

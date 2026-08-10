@@ -24,9 +24,6 @@ def parse_int_gear(raw: Sequence[dict]) -> list[IntGearSegment]:
                 from_level=int(item["from_level"]),
                 to_level=int(item["to_level"]),
                 int_gear=int(item.get("int_gear", 0)),
-                # Optional flat bonus only. Real Maple Warrior % is applied via
-                # mw_percent on SimulateConfig / OptimizeConfig (default 10% base INT).
-                mw_int=int(item.get("mw_int", 0)),
             )
         )
     validate_int_gear(segments)
@@ -42,8 +39,8 @@ def validate_int_gear(segments: Iterable[IntGearSegment]) -> None:
             raise ValueError(
                 f"invalid segment {seg.from_level}-{seg.to_level}: from_level > to_level"
             )
-        if seg.int_gear < 0 or seg.mw_int < 0:
-            raise ValueError("int_gear and mw_int must be >= 0")
+        if seg.int_gear < 0:
+            raise ValueError("int_gear must be >= 0")
     for prev, cur in zip(ordered, ordered[1:]):
         if cur.from_level <= prev.to_level:
             raise ValueError(
@@ -52,12 +49,12 @@ def validate_int_gear(segments: Iterable[IntGearSegment]) -> None:
             )
 
 
-def gear_for_level(segments: Sequence[IntGearSegment], level: int) -> tuple[int, int]:
-    """Return (int_gear, flat_mw_int) for a level. Missing coverage → (0, 0)."""
+def gear_for_level(segments: Sequence[IntGearSegment], level: int) -> int:
+    """Return int_gear for a level. Missing coverage → 0."""
     for seg in segments:
         if seg.covers(level):
-            return seg.int_gear, seg.mw_int
-    return 0, 0
+            return seg.int_gear
+    return 0
 
 
 def maple_warrior_int(
@@ -80,9 +77,9 @@ def total_int(
     mw_percent: float = 0.10,
     mw_from_level: int = 10,
 ) -> int:
-    """Total INT for level-up MP: base + gear + MW(% of base) + optional flat mw_int."""
-    gear, flat_mw = gear_for_level(segments, level)
+    """Total INT for level-up MP: base + gear + MW(% of base)."""
+    gear = gear_for_level(segments, level)
     mw = maple_warrior_int(
         base_int, level, mw_percent=mw_percent, mw_from_level=mw_from_level
     )
-    return int(base_int) + int(gear) + int(mw) + int(flat_mw)
+    return int(base_int) + int(gear) + int(mw)

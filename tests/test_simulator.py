@@ -11,9 +11,9 @@ from hp_wash_thief.core.simulator import simulate
 
 GEAR = parse_int_gear(
     [
-        {"from_level": 1, "to_level": 20, "int_gear": 15, "mw_int": 0},
-        {"from_level": 21, "to_level": 70, "int_gear": 80, "mw_int": 0},
-        {"from_level": 71, "to_level": 200, "int_gear": 120, "mw_int": 20},
+        {"from_level": 1, "to_level": 20, "int_gear": 15},
+        {"from_level": 21, "to_level": 70, "int_gear": 80},
+        {"from_level": 71, "to_level": 200, "int_gear": 120},
     ]
 )
 
@@ -95,6 +95,36 @@ def test_int_dump_policy_has_zero_wash_apr_on_int5_rows():
     ]
     assert int5_rows, "expected some INT5 shortfall levels before target INT"
     assert all(r.apr_spent == 0 for r in int5_rows)
+
+
+def test_job_advance_levels_grant_extra_ap():
+    result = simulate(
+        SimulateConfig(
+            policy=PolicyName.MP_WASH_SHORTFALL,
+            target_base_int=350,
+            target_hp=25000,
+            int_reset_level=145,
+            int_gear=GEAR,
+            mp_wash_end=140,
+            extra_mp_threshold=60,
+        )
+    )
+
+    def fresh_ap_total(row) -> int:
+        return (
+            row.fresh_ap_hp
+            + row.fresh_ap_mp
+            + row.fresh_ap_int
+            + row.fresh_ap_luk
+            + row.fresh_ap_dex
+        )
+
+    lv10 = next(r for r in result.plan if r.level == 10)
+    lv70 = next(r for r in result.plan if r.level == 70)
+    lv120 = next(r for r in result.plan if r.level == 120)
+    assert fresh_ap_total(lv10) == 5
+    assert fresh_ap_total(lv70) == 10
+    assert fresh_ap_total(lv120) == 10
 
 
 def test_method2_can_close_gap():

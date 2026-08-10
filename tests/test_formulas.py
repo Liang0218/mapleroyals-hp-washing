@@ -8,6 +8,7 @@ from hp_wash_thief.core.formulas import (
     MP_REMOVED_PER_APR,
     extra_mp,
     fresh_ap_mp_gain,
+    job_advance_ap,
     job_advance_bonus,
     levelup_hp_gain,
     levelup_mp_base_gain,
@@ -79,3 +80,10 @@ def test_job_advance_bonuses():
     assert job_advance_bonus(1, HpMode.AVG) == (162.5, 0.0)
     assert job_advance_bonus(2, HpMode.AVG) == (325.0, 175.0)
     assert job_advance_bonus(4, HpMode.AVG) == (325.0, 175.0)
+
+
+def test_job_advance_ap():
+    assert job_advance_ap(1) == 0
+    assert job_advance_ap(2) == 0
+    assert job_advance_ap(3) == 5
+    assert job_advance_ap(4) == 5

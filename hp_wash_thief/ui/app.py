@@ -16,7 +16,6 @@ from typing import Optional
 import customtkinter as ctk
 
 from hp_wash_thief.core.api import optimize, simulate
-from hp_wash_thief.core.formulas import EXTRA_MP_THRESHOLD_DEFAULT
 from hp_wash_thief.core.gear import parse_int_gear
 from hp_wash_thief.core.models import HpMode, OptimizeConfig, PolicyName, SimulateConfig
 from hp_wash_thief.core.report import (
@@ -94,7 +93,7 @@ class HpWashApp(ctk.CTk):
     def _build_shared_params(self, parent: ctk.CTkFrame, *, prefix: str) -> None:
         frame = ctk.CTkFrame(parent)
         frame.grid(row=0, column=0, sticky="ew", padx=8, pady=8)
-        for col in range(6):
+        for col in range(5):
             frame.grid_columnconfigure(col, weight=1)
 
         fields = [
@@ -103,7 +102,6 @@ class HpWashApp(ctk.CTk):
             ("quest_equip_hp", "任務／裝備 HP", "0"),
             ("mw_percent", "MW（base INT 比例）", "0.10"),
             ("mw_from_level", "MW 起始等級", "10"),
-            ("extra_mp_threshold", "Extra MP 門檻（12×5）", str(EXTRA_MP_THRESHOLD_DEFAULT)),
         ]
         for i, (key, label, default) in enumerate(fields):
             ctk.CTkLabel(frame, text=label).grid(row=0, column=i, sticky="w", padx=6, pady=(8, 0))
@@ -308,9 +306,6 @@ class HpWashApp(ctk.CTk):
             "mw_from_level": self._int(
                 getattr(self, f"{prefix}_mw_from_level"), "MW 起始等級"
             ),
-            "extra_mp_threshold": self._int(
-                getattr(self, f"{prefix}_extra_mp_threshold"), "Extra MP 門檻"
-            ),
             "hp_mode": HpMode(mode_value),
             "int_gear": self._parse_gear(prefix),
         }
@@ -375,7 +370,6 @@ class HpWashApp(ctk.CTk):
                 hp_mode=shared["hp_mode"],
                 mw_percent=shared["mw_percent"],
                 mw_from_level=shared["mw_from_level"],
-                extra_mp_threshold=shared["extra_mp_threshold"],
                 top_n=self._int(self.opt_top, "保留前 N 名"),
             )
             result = optimize(config)
@@ -402,7 +396,6 @@ class HpWashApp(ctk.CTk):
                 int_reset_level=shared["int_reset_level"],
                 int_gear=shared["int_gear"],
                 mp_wash_end=self._int(self.sim_mp_wash_end, "MP wash 結束等級"),
-                extra_mp_threshold=shared["extra_mp_threshold"],
                 quest_equip_hp=shared["quest_equip_hp"],
                 hp_mode=shared["hp_mode"],
                 auto_method2=bool(self.sim_auto_method2.get()),

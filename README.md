@@ -132,7 +132,11 @@ Level-up MP uses **total INT** = `base_int + int_gear + floor(base_int * mw_perc
 
 Default: `--mw-percent 0.10 --mw-from-level 10` (10% of **base** INT from level 10 onward).
 
-MP wash still uses **base INT only** (gear/MW do not apply). Do not put MW into the gear JSON `mw_int` field as a flat constant — that field is only an optional flat add-on.
+MP wash still uses **base INT only** (gear/MW do not apply). Maple Warrior is applied via `--mw-percent` / `--mw-from-level`.
+
+### Job advancement AP
+
+Per [MapleRoyals forum #45500](https://royals.ms/forum/threads/2nd-3rd-4th-job-bonuses.45500/): 1st/2nd job grant **0** bonus AP; 3rd/4th job grant **+5** AP each (levels 70 and 120). The simulator adds these on top of the normal 5 AP per level.
 
 ## Tests
 

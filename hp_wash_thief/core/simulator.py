@@ -34,6 +34,7 @@ class CharacterState:
     method2_hp_wash_count: int = 0
     int_reset_apr: int = 0
     int_reset_done: bool = False
+    level_fresh_ap: int = F.FRESH_AP_PER_LEVEL
     plan: list[LevelPlanRow] = field(default_factory=list)
 
     def note_int(self) -> None:
@@ -146,12 +147,14 @@ def _level_up(state: CharacterState, new_level: int, config: SimulateConfig) -> 
     state.base_hp += hp_gain
     state.base_mp += mp_gain
     state.level = new_level
+    state.level_fresh_ap = F.FRESH_AP_PER_LEVEL
 
     if new_level in F.JOB_ADVANCE_LEVELS:
         adv = F.JOB_ADVANCE_LEVELS[new_level]
         hp_b, mp_b = F.job_advance_bonus(adv, config.hp_mode)
         state.base_hp += hp_b
         state.base_mp += mp_b
+        state.level_fresh_ap += F.job_advance_ap(adv)
 
 
 def _maybe_reset_int(state: CharacterState, config: SimulateConfig) -> None:
@@ -184,17 +187,18 @@ def _in_early_phase(state: CharacterState, config: SimulateConfig) -> bool:
 
 
 def _execute_action(state: CharacterState, action: Action, config: SimulateConfig) -> None:
+    fresh_ap = state.level_fresh_ap
     if action is Action.BUILD:
-        _build_ap(state, config)
+        _build_ap(state, config, ap=fresh_ap)
         return
     if action is Action.HP5:
-        _hp_wash_method1(state, config, washes=5)
+        _hp_wash_method1(state, config, washes=fresh_ap)
         return
     if action is Action.MP5:
-        _mp_wash(state, config, washes=5)
+        _mp_wash(state, config, washes=fresh_ap)
         return
     if action is Action.INT5:
-        _dump_fresh_ap_to_int_or_luk(state, config)
+        _dump_fresh_ap_to_int_or_luk(state, config, points=fresh_ap)
         return
     raise ValueError(f"unsupported action: {action}")
 
@@ -223,9 +227,8 @@ def _assign_wash_points(state: CharacterState, config: SimulateConfig, points: i
     return to_int, to_luk
 
 
-def _build_ap(state: CharacterState, config: SimulateConfig) -> None:
+def _build_ap(state: CharacterState, config: SimulateConfig, *, ap: int) -> None:
     """Pre-30 build: DEX to first-job requirement, then stack INT."""
-    ap = 5
     to_dex = 0
     to_int = 0
     to_luk = 0
@@ -379,8 +382,10 @@ def _dump_points(state: CharacterState, config: SimulateConfig, points: int) -> 
     return to_int, to_luk
 
 
-def _dump_fresh_ap_to_int_or_luk(state: CharacterState, config: SimulateConfig) -> None:
-    to_int, to_luk = _dump_points(state, config, 5)
+def _dump_fresh_ap_to_int_or_luk(
+    state: CharacterState, config: SimulateConfig, *, points: int
+) -> None:
+    to_int, to_luk = _dump_points(state, config, points)
     action = Action.INT5 if to_int >= to_luk else Action.LUK5
     if to_int and to_luk:
         action = Action.INT5
