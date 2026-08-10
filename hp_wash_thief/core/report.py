@@ -76,12 +76,13 @@ def format_ui_guide() -> str:
         [
             "快速開始",
             "",
-            "  1. 裝備 Equipment — 設定裝備（請先做這步）",
+            "  1. 裝備 Equipment — 設定裝備 INT（預設 0，請先做這步）",
             "  2. 最佳化 Optimize — 自動搜尋最低 APR（A/B/C 比較）",
             "  3. 模擬 Simulate — 手動參數跑單一方案",
             "  4. 說明 Actions — 查動作代碼意思",
             "",
-            "裝備改完直接按最佳化／模擬即可，會自動帶入智裝 INT。",
+            "裝備填完請「儲存 JSON…」，下次「載入 JSON…」即可還原。",
+            "改完直接按最佳化／模擬，會自動帶入智裝 INT。",
             "INT 洗回等級、reset 後智裝 INT 在 Optimize 參數列設定。",
         ]
     )

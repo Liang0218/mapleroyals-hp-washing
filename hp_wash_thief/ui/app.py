@@ -120,6 +120,37 @@ class HpWashApp(ctk.CTk):
         )
 
         self._equipment_panel.load_defaults()
+        self._bind_gear_param_refresh()
+
+    def _bind_gear_param_refresh(self) -> None:
+        """Refresh equipment INT preview when reset-related params change."""
+
+        def refresh_from_opt(_event=None) -> None:
+            self._equipment_panel.refresh_preview(
+                int_reset_level=self._equipment_int_reset_level(),
+                int_gear_after_reset=self._equipment_int_gear_after_reset(),
+            )
+
+        def refresh_from_sim(_event=None) -> None:
+            try:
+                reset = int(self.sim_int_reset_level.get().strip())
+            except ValueError:
+                return
+            try:
+                after = int(self.sim_int_gear_after_reset.get().strip())
+            except ValueError:
+                after = None
+            self._equipment_panel.refresh_preview(
+                int_reset_level=reset,
+                int_gear_after_reset=after,
+            )
+
+        for entry in (self.opt_int_reset_level, self.opt_int_gear_after_reset):
+            entry.bind("<KeyRelease>", refresh_from_opt)
+            entry.bind("<FocusOut>", refresh_from_opt)
+        for entry in (self.sim_int_reset_level, self.sim_int_gear_after_reset):
+            entry.bind("<KeyRelease>", refresh_from_sim)
+            entry.bind("<FocusOut>", refresh_from_sim)
 
     def _build_guide_tab(self, parent: ctk.CTkFrame) -> None:
         ctk.CTkLabel(
@@ -318,14 +349,16 @@ class HpWashApp(ctk.CTk):
     def _shared_kwargs(self, prefix: str) -> dict:
         mode_label = getattr(self, f"{prefix}_hp_mode").get()
         mode_value = HP_MODE_LABELS.get(mode_label, mode_label)
+        int_reset_level = self._int(
+            getattr(self, f"{prefix}_int_reset_level"), "INT 洗回等級"
+        )
+        int_gear_after_reset = self._int(
+            getattr(self, f"{prefix}_int_gear_after_reset"), "INT reset 後 int_gear"
+        )
         return {
             "target_hp": self._int(getattr(self, f"{prefix}_target_hp"), "目標 HP"),
-            "int_reset_level": self._int(
-                getattr(self, f"{prefix}_int_reset_level"), "INT 洗回等級"
-            ),
-            "int_gear_after_reset": self._int(
-                getattr(self, f"{prefix}_int_gear_after_reset"), "INT reset 後 int_gear"
-            ),
+            "int_reset_level": int_reset_level,
+            "int_gear_after_reset": int_gear_after_reset,
             "quest_equip_hp": self._int(
                 getattr(self, f"{prefix}_quest_equip_hp"), "任務／裝備 HP"
             ),
@@ -334,7 +367,9 @@ class HpWashApp(ctk.CTk):
                 getattr(self, f"{prefix}_mw_from_level"), "MW 起始等級"
             ),
             "hp_mode": HpMode(mode_value),
-            "int_gear": self._equipment_panel.current_int_gear_segments(),
+            "int_gear": self._equipment_panel.current_int_gear_segments(
+                int_reset_level=int_reset_level
+            ),
         }
 
     def _set_busy(self, prefix: str, busy: bool, message: str = "") -> None:

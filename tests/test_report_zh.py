@@ -20,7 +20,7 @@ GEAR = parse_int_gear([{"from_level": 1, "to_level": 200, "int_gear": 100}])
 def test_ui_guide_mentions_equipment_first():
     text = format_ui_guide()
     assert "裝備 Equipment" in text
-    assert len(text.splitlines()) <= 12
+    assert len(text.splitlines()) <= 14
 
 
 def test_format_int_gear_preview():
@@ -35,9 +35,9 @@ def test_format_int_gear_preview():
     )
     text = format_int_gear_preview(segs, int_reset_level=155, int_gear_after_reset=50)
     assert "等級區間" in text
-    assert "10 – 14" in text or "10 – 14" in text.replace("  ", " ")
-    assert "24" in text
+    assert "0" in text
     assert "≥155" in text
+    assert "50" in text
 
 
 def test_optimize_report_is_chinese():

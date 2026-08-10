@@ -110,16 +110,25 @@ class EquipmentPanel(ctk.CTkFrame):
 
         self.grid_columnconfigure(0, weight=3)
         self.grid_columnconfigure(1, weight=2)
-        self.grid_rowconfigure(2, weight=1)
+        self.grid_rowconfigure(3, weight=1)
 
         ctk.CTkLabel(
             self,
             text="裝備管理：每個 Type 僅穿戴一件（Ring 最多 4 件），依等級自動計算 INT 區間",
             font=ctk.CTkFont(weight="bold"),
-        ).grid(row=0, column=0, columnspan=2, sticky="w", padx=8, pady=(8, 4))
+        ).grid(row=0, column=0, columnspan=2, sticky="w", padx=8, pady=(8, 2))
+
+        ctk.CTkLabel(
+            self,
+            text="預設 INT 為 0，請依角色填寫。完成後請「儲存 JSON…」，下次可用「載入 JSON…」還原。"
+            " 區間依 Optimize／Simulate 分頁的 INT 洗回等級即時重算。",
+            text_color=("gray30", "gray70"),
+            wraplength=900,
+            justify="left",
+        ).grid(row=1, column=0, columnspan=2, sticky="w", padx=8, pady=(0, 4))
 
         toolbar = ctk.CTkFrame(self, fg_color="transparent")
-        toolbar.grid(row=1, column=0, columnspan=2, sticky="ew", padx=8, pady=(0, 6))
+        toolbar.grid(row=2, column=0, columnspan=2, sticky="ew", padx=8, pady=(0, 6))
         for label, cmd, width in (
             ("新增列", self._add_row, 80),
             ("還原預設", self._load_defaults, 90),
@@ -131,7 +140,7 @@ class EquipmentPanel(ctk.CTkFrame):
             )
 
         left = ctk.CTkFrame(self)
-        left.grid(row=2, column=0, sticky="nsew", padx=(8, 4), pady=(0, 8))
+        left.grid(row=3, column=0, sticky="nsew", padx=(8, 4), pady=(0, 8))
         left.grid_columnconfigure(0, weight=1)
         left.grid_rowconfigure(1, weight=1)
 
@@ -154,7 +163,7 @@ class EquipmentPanel(ctk.CTkFrame):
         self._list.grid_columnconfigure(0, weight=1)
 
         right = ctk.CTkFrame(self)
-        right.grid(row=2, column=1, sticky="nsew", padx=(4, 8), pady=(0, 8))
+        right.grid(row=3, column=1, sticky="nsew", padx=(4, 8), pady=(0, 8))
         right.grid_columnconfigure(0, weight=1)
         right.grid_rowconfigure(1, weight=1)
 
@@ -169,7 +178,7 @@ class EquipmentPanel(ctk.CTkFrame):
         self.preview.grid(row=1, column=0, sticky="nsew", padx=8, pady=(0, 8))
 
         self.status = ctk.CTkLabel(self, text="")
-        self.status.grid(row=3, column=0, columnspan=2, sticky="w", padx=12, pady=(0, 8))
+        self.status.grid(row=4, column=0, columnspan=2, sticky="w", padx=12, pady=(0, 8))
 
     def load_defaults(self) -> None:
         """Load preset equipment; call after app params are ready."""
@@ -204,9 +213,25 @@ class EquipmentPanel(ctk.CTkFrame):
         self._rows = alive
         return items
 
-    def _build_preview_text(self, items: list[EquipmentItem]) -> tuple[str, int, int]:
-        reset_level = self._get_int_reset_level()
-        after_reset = self._get_int_gear_after_reset()
+    def _resolve_reset_level(self, int_reset_level: int | None = None) -> int:
+        if int_reset_level is not None:
+            return int_reset_level
+        return self._get_int_reset_level()
+
+    def _resolve_int_gear_after_reset(self, int_gear_after_reset: int | None = None) -> int:
+        if int_gear_after_reset is not None:
+            return int_gear_after_reset
+        return self._get_int_gear_after_reset()
+
+    def _build_preview_text(
+        self,
+        items: list[EquipmentItem],
+        *,
+        int_reset_level: int | None = None,
+        int_gear_after_reset: int | None = None,
+    ) -> tuple[str, int, int]:
+        reset_level = self._resolve_reset_level(int_reset_level)
+        after_reset = self._resolve_int_gear_after_reset(int_gear_after_reset)
         pre_reset_cap = max(1, reset_level - 1)
         segments = compute_int_gear_segments(items, max_level=pre_reset_cap)
         clipped = clip_segments_before_reset(segments, int_reset_level=reset_level)
@@ -217,21 +242,55 @@ class EquipmentPanel(ctk.CTkFrame):
         )
         return body, len(clipped), after_reset
 
-    def current_int_gear_segments(self) -> list[IntGearSegment]:
-        """Segments used by optimize/simulate (pre-reset only)."""
+    def current_int_gear_segments(
+        self,
+        *,
+        int_reset_level: int | None = None,
+    ) -> list[IntGearSegment]:
+        """Segments used by optimize/simulate (pre-reset only).
+
+        Recomputed on each call from current equipment rows and ``int_reset_level``.
+        """
         items = self._collect_items()
-        reset_level = self._get_int_reset_level()
+        reset_level = self._resolve_reset_level(int_reset_level)
         pre_reset_cap = max(1, reset_level - 1)
         segments = compute_int_gear_segments(items, max_level=pre_reset_cap)
         return clip_segments_before_reset(segments, int_reset_level=reset_level)
 
-    def _refresh_preview(self) -> None:
+    def refresh_preview(
+        self,
+        *,
+        int_reset_level: int | None = None,
+        int_gear_after_reset: int | None = None,
+    ) -> None:
+        """Refresh INT segment preview (optional override for reset params)."""
+        self._refresh_preview(
+            int_reset_level=int_reset_level,
+            int_gear_after_reset=int_gear_after_reset,
+        )
+
+    def _refresh_preview(
+        self,
+        *,
+        int_reset_level: int | None = None,
+        int_gear_after_reset: int | None = None,
+    ) -> None:
         try:
             items = self._collect_items()
-            text, seg_count, _after_reset = self._build_preview_text(items)
+            reset_level = self._resolve_reset_level(int_reset_level)
+            text, seg_count, after_reset = self._build_preview_text(
+                items,
+                int_reset_level=int_reset_level,
+                int_gear_after_reset=int_gear_after_reset,
+            )
             self.preview.delete("1.0", "end")
             self.preview.insert("1.0", text)
-            self.status.configure(text=f"共 {len(items)} 件裝備 · {seg_count} 個等級區間")
+            self.status.configure(
+                text=(
+                    f"共 {len(items)} 件裝備 · {seg_count} 個等級區間 · "
+                    f"INT 洗回={reset_level} · reset 後 INT={after_reset}"
+                )
+            )
         except Exception as exc:  # noqa: BLE001
             self.status.configure(text=f"計算錯誤：{exc}")
 
@@ -278,6 +337,9 @@ class EquipmentPanel(ctk.CTkFrame):
                 json.dumps(equipment_to_dicts(items), ensure_ascii=False, indent=2) + "\n",
                 encoding="utf-8",
             )
-            messagebox.showinfo("已儲存", f"已寫入：{path}")
+            messagebox.showinfo(
+                "已儲存",
+                f"已寫入：{path}\n\n下次可用「載入 JSON…」還原這份裝備設定。",
+            )
         except Exception as exc:  # noqa: BLE001
             messagebox.showerror("錯誤", str(exc))
