@@ -10,18 +10,25 @@ a = Analysis(
     binaries=[],
     datas=[
         ('examples/int_gear.json', 'examples'),
+        ('examples/default_equipment.json', 'examples'),
     ],
     hiddenimports=[
         'hp_wash_thief',
         'hp_wash_thief.core',
         'hp_wash_thief.core.api',
+        'hp_wash_thief.core.equipment',
         'hp_wash_thief.core.optimizer',
         'hp_wash_thief.core.simulator',
+        'hp_wash_thief.core.report',
         'hp_wash_thief.core.policy',
         'hp_wash_thief.core.policy.mp_wash_shortfall',
         'hp_wash_thief.core.policy.int_dump_shortfall',
+        'hp_wash_thief.core.policy.mp_wash_hardcore',
         'hp_wash_thief.ui',
         'hp_wash_thief.ui.app',
+        'hp_wash_thief.ui.equipment_panel',
+        'hp_wash_thief.ui.result_panel',
+        'hp_wash_thief.ui.user_errors',
         'hp_wash_thief.ui.resources',
         'customtkinter',
     ],
@@ -35,15 +42,7 @@ a = Analysis(
     noarchive=False,
 )
 
-try:
-    from PyInstaller.utils.hooks import collect_all
-
-    ctk_datas, ctk_binaries, ctk_hidden = collect_all('customtkinter')
-    a.datas += ctk_datas
-    a.binaries += ctk_binaries
-    a.hiddenimports += ctk_hidden
-except Exception:
-    pass
+# customtkinter is handled by PyInstaller hook-customtkinter.py (collect_all breaks on 6.x).
 
 pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 
