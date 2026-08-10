@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "hp-wash-thief"
-version = "0.1.0"
-description = "MapleRoyals Thief HP Wash APR Optimizer (Phase 1: core + CLI)"
+version = "0.2.0"
+description = "MapleRoyals Thief HP Wash APR Optimizer (core + CLI + CustomTkinter GUI)"
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
@@ -14,12 +14,18 @@ dependencies = []
 
 [project.optional-dependencies]
 dev = ["pytest>=7.0"]
+gui = ["customtkinter>=5.2"]
+build = ["pyinstaller>=6.0", "customtkinter>=5.2"]
 
 [project.scripts]
 hp-wash-thief = "hp_wash_thief.cli:main"
+hp-wash-thief-gui = "hp_wash_thief.ui.app:main"
 
 [tool.setuptools.packages.find]
 include = ["hp_wash_thief*"]
+
+[tool.setuptools.package-data]
+hp_wash_thief = ["ui/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

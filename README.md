@@ -1,28 +1,55 @@
 # MapleRoyals Thief HP Wash APR Optimizer
 
-Phase 1: reusable Python calculation core + terminal CLI for MapleRoyals Thief
-(Night Lord / Shadower) HP washing APR optimization with dual shortfall-policy comparison.
-
-Phase 2 (not implemented): CustomTkinter desktop UI + PyInstaller Windows exe.
-The `hp_wash_thief/ui/` package is reserved; UI must call `hp_wash_thief.core.api` only.
+Reusable Python calculation core + terminal CLI + CustomTkinter desktop GUI for
+MapleRoyals Thief (Night Lord / Shadower) HP washing APR optimization with dual
+shortfall-policy comparison. Windows users can build a shareable `.exe` folder
+with PyInstaller.
 
 ## Requirements
 
 - Python 3.11+
-- No runtime dependencies (pytest optional for tests)
+- Core/CLI: no runtime dependencies
+- GUI: `customtkinter` (`pip install -e ".[gui]"`)
+- Windows exe build: `pip install -e ".[build]"` then run `scripts/build_windows.bat`
 
 ## Install
 
 ```bash
-pip install -e ".[dev]"
+pip install -e ".[dev,gui]"
 ```
 
-## Quick start
+## Desktop GUI (recommended for Windows friends)
+
+```bash
+python -m hp_wash_thief.ui
+# or
+hp-wash-thief-gui
+```
+
+In the window you can:
+
+- Edit **all CLI parameters** (target HP, INT reset level, MW %, policies, …)
+- Edit / load / save **INT gear JSON** in a text box
+- Choose a **CSV output path**
+- Run **Optimize** or **Simulate** and read the report in-app
+
+### Build a Windows app folder (on a Windows PC)
+
+```bat
+scripts\build_windows.bat
+```
+
+Output: `dist\MapleRoyalsHpWash\MapleRoyalsHpWash.exe`  
+Zip the whole `MapleRoyalsHpWash` folder and share it (keep DLLs next to the exe).
+
+> This cloud/Linux environment cannot produce a Windows `.exe`; build on Windows (or a Windows CI runner).
+
+## CLI quick start
 
 ```bash
 python -m hp_wash_thief optimize \
-  --target-hp 28000 \
-  --int-reset-level 140 \
+  --target-hp 27000 \
+  --int-reset-level 155 \
   --int-gear-file examples/int_gear.json \
   --policies both \
   --csv plan.csv
@@ -31,11 +58,11 @@ python -m hp_wash_thief optimize \
 ```bash
 python -m hp_wash_thief simulate \
   --policy mp_wash_shortfall \
-  --target-base-int 400 \
-  --target-hp 30000 \
-  --int-reset-level 145 \
+  --target-base-int 350 \
+  --target-hp 27000 \
+  --int-reset-level 155 \
   --int-gear-file examples/int_gear.json \
-  --mp-wash-end 145
+  --mp-wash-end 100
 ```
 
 ## What it answers
@@ -80,25 +107,18 @@ from hp_wash_thief.core.api import optimize, simulate
 - `optimize(OptimizeConfig) -> OptimizeResult`
 - `simulate(SimulateConfig) -> SimulateResult`
 
-All formulas / simulation / optimization live under `hp_wash_thief/core/`. CLI (and future GUI) only call this API.
+All formulas / simulation / optimization live under `hp_wash_thief/core/`. CLI and GUI only call this API.
 
 ## Layout
 
 ```
 hp_wash_thief/
-  core/
-    formulas.py
-    models.py
-    gear.py
-    policy/
-    simulator.py
-    optimizer.py
-    report.py
-    api.py
+  core/          # formulas, simulator, optimizer, api
   cli.py
-  ui/          # Phase 2 placeholder
-tests/
-examples/int_gear.json
+  ui/            # CustomTkinter desktop app
+examples/
+scripts/build_windows.bat
+hp_wash_thief.spec
 ```
 
 ## Formula sources
@@ -120,9 +140,8 @@ MP wash still uses **base INT only** (gear/MW do not apply). Do not put MW into 
 pytest -q
 ```
 
-## Intentionally out of scope (Phase 1)
+## Out of scope
 
-- CustomTkinter / exe packaging
 - Web / Streamlit / Electron
 - Other classes, NX market prices, auto-search of `int_reset_level`
 - Additional hybrid shortfall variants beyond A/B

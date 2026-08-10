@@ -1,7 +1,16 @@
-# Phase 2 UI (not implemented)
+# Desktop UI (CustomTkinter)
 
-This package reserves `hp_wash_thief.ui` for a future CustomTkinter desktop UI and
-PyInstaller Windows packaging.
+Launch:
 
-Phase 1 ships the calculation core + terminal CLI only. The GUI must call
-`hp_wash_thief.core.api` (`optimize` / `simulate`) and must not embed wash logic.
+```bash
+pip install -e ".[gui]"
+python -m hp_wash_thief.ui
+```
+
+Windows exe folder (build on Windows):
+
+```bat
+scripts\build_windows.bat
+```
+
+The UI only calls `hp_wash_thief.core.api` (`optimize` / `simulate`).
