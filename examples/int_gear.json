@@ -1,0 +1,5 @@
+[
+  {"from_level": 1, "to_level": 20, "int_gear": 15, "mw_int": 0},
+  {"from_level": 21, "to_level": 70, "int_gear": 80, "mw_int": 0},
+  {"from_level": 71, "to_level": 200, "int_gear": 120, "mw_int": 20}
+]

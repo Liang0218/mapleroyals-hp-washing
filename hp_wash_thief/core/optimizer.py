@@ -1,0 +1,267 @@
+"""Coarse-to-fine dual-policy APR optimizer."""
+
+from __future__ import annotations
+
+from typing import Iterable, Optional
+
+from hp_wash_thief.core.models import (
+    CandidateResult,
+    ComparisonResult,
+    OptimizeConfig,
+    OptimizeResult,
+    PolicyBest,
+    PolicyName,
+    SimulateConfig,
+)
+from hp_wash_thief.core.simulator import simulate
+
+
+def optimize(config: OptimizeConfig) -> OptimizeResult:
+    by_policy: dict[PolicyName, PolicyBest] = {}
+    all_feasible: list[CandidateResult] = []
+
+    for policy in config.policies:
+        bests = _optimize_policy(config, policy)
+        by_policy[policy] = bests
+        all_feasible.extend(c for c in bests.top if c.reached_target)
+
+    all_feasible.sort(key=_candidate_sort_key)
+    top_candidates = all_feasible[: config.top_n]
+
+    policy_a = by_policy.get(PolicyName.MP_WASH_SHORTFALL)
+    policy_b = by_policy.get(PolicyName.INT_DUMP_SHORTFALL)
+    a_best = policy_a.best if policy_a else None
+    b_best = policy_b.best if policy_b else None
+    comparison = _compare(a_best, b_best)
+
+    winner = comparison.winner
+    if winner is None and top_candidates:
+        winner = top_candidates[0]
+    elif winner is None:
+        # Fall back to cheapest incomplete run if nothing hits target.
+        leftovers = [p.best for p in by_policy.values() if p.best is not None]
+        leftovers.sort(key=_candidate_sort_key)
+        winner = leftovers[0] if leftovers else None
+
+    return OptimizeResult(
+        by_policy=by_policy,
+        comparison=comparison,
+        winner=winner,
+        top_candidates=top_candidates,
+    )
+
+
+def _optimize_policy(config: OptimizeConfig, policy: PolicyName) -> PolicyBest:
+    coarse = list(_search(config, policy, coarse=True))
+    seeds = _unique_params(sorted(coarse, key=_candidate_sort_key)[: max(8, config.top_n)])
+    fine_results: list[CandidateResult] = []
+    seen: set[tuple] = set()
+
+    for seed in seeds:
+        for cand in _refine_around(config, policy, seed):
+            key = _param_key(cand)
+            if key in seen:
+                continue
+            seen.add(key)
+            fine_results.append(cand)
+
+    # Always include coarse hits so we never discard a feasible coarse winner.
+    for cand in coarse:
+        key = _param_key(cand)
+        if key not in seen:
+            seen.add(key)
+            fine_results.append(cand)
+
+    fine_results.sort(key=_candidate_sort_key)
+    feasible = [c for c in fine_results if c.reached_target]
+    pool = feasible if feasible else fine_results
+    top = pool[: config.top_n]
+    best = top[0] if top else None
+    return PolicyBest(policy=policy, best=best, top=top)
+
+
+def _search(config: OptimizeConfig, policy: PolicyName, *, coarse: bool) -> Iterable[CandidateResult]:
+    int_step = 40 if coarse else config.target_base_int_step
+    early_step = 10 if coarse else 5
+    mp_step = 10 if coarse else 5
+
+    int_values = list(
+        range(config.target_base_int_min, config.target_base_int_max + 1, int_step)
+    )
+    if config.target_base_int_max not in int_values:
+        int_values.append(config.target_base_int_max)
+
+    early_values = list(
+        range(config.early_phase_end_min, config.early_phase_end_max + 1, early_step)
+    )
+    if config.early_phase_end_max not in early_values:
+        early_values.append(config.early_phase_end_max)
+
+    for target_base_int in int_values:
+        for early_phase_end in early_values:
+            mp_min = early_phase_end + 1
+            mp_max = config.int_reset_level
+            if mp_min > mp_max:
+                continue
+            mp_values = list(range(mp_min, mp_max + 1, mp_step))
+            if mp_max not in mp_values:
+                mp_values.append(mp_max)
+            for mp_wash_end in mp_values:
+                for threshold in config.extra_mp_thresholds:
+                    yield _run(
+                        config,
+                        policy,
+                        target_base_int=target_base_int,
+                        early_phase_end=early_phase_end,
+                        mp_wash_end=mp_wash_end,
+                        extra_mp_threshold=threshold,
+                    )
+
+
+def _refine_around(
+    config: OptimizeConfig, policy: PolicyName, seed: CandidateResult
+) -> Iterable[CandidateResult]:
+    int_candidates = _neighbors(
+        seed.target_base_int,
+        low=config.target_base_int_min,
+        high=config.target_base_int_max,
+        step=config.target_base_int_step,
+        radius=2,
+    )
+    early_candidates = _neighbors(
+        seed.early_phase_end,
+        low=config.early_phase_end_min,
+        high=config.early_phase_end_max,
+        step=5,
+        radius=2,
+    )
+    for target_base_int in int_candidates:
+        for early_phase_end in early_candidates:
+            mp_min = early_phase_end + 1
+            mp_max = config.int_reset_level
+            if mp_min > mp_max:
+                continue
+            mp_center = min(max(seed.mp_wash_end, mp_min), mp_max)
+            mp_candidates = _neighbors(mp_center, low=mp_min, high=mp_max, step=5, radius=2)
+            for mp_wash_end in mp_candidates:
+                for threshold in config.extra_mp_thresholds:
+                    yield _run(
+                        config,
+                        policy,
+                        target_base_int=target_base_int,
+                        early_phase_end=early_phase_end,
+                        mp_wash_end=mp_wash_end,
+                        extra_mp_threshold=threshold,
+                    )
+
+
+def _run(
+    config: OptimizeConfig,
+    policy: PolicyName,
+    *,
+    target_base_int: int,
+    early_phase_end: int,
+    mp_wash_end: int,
+    extra_mp_threshold: int,
+) -> CandidateResult:
+    sim = simulate(
+        SimulateConfig(
+            policy=policy,
+            target_base_int=target_base_int,
+            target_hp=config.target_hp,
+            int_reset_level=config.int_reset_level,
+            int_gear=config.int_gear,
+            early_phase_end=early_phase_end,
+            mp_wash_end=mp_wash_end,
+            extra_mp_threshold=extra_mp_threshold,
+            quest_equip_hp=config.quest_equip_hp,
+            hp_mode=config.hp_mode,
+            max_level=config.max_level,
+            auto_method2=True,
+        )
+    )
+    return CandidateResult.from_simulate(sim)
+
+
+def _neighbors(center: int, *, low: int, high: int, step: int, radius: int) -> list[int]:
+    values = []
+    for i in range(-radius, radius + 1):
+        v = center + i * step
+        if low <= v <= high:
+            values.append(v)
+    if center not in values and low <= center <= high:
+        values.append(center)
+    return sorted(set(values))
+
+
+def _param_key(c: CandidateResult) -> tuple:
+    return (
+        c.policy.value,
+        c.target_base_int,
+        c.early_phase_end,
+        c.mp_wash_end,
+        c.extra_mp_threshold,
+    )
+
+
+def _unique_params(cands: list[CandidateResult]) -> list[CandidateResult]:
+    seen: set[tuple] = set()
+    out: list[CandidateResult] = []
+    for c in cands:
+        key = _param_key(c)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(c)
+    return out
+
+
+def _candidate_sort_key(c: CandidateResult) -> tuple:
+    # Prefer reaching target, then lower APR, then higher HP, then lower INT peak.
+    return (
+        0 if c.reached_target else 1,
+        c.total_apr,
+        -c.final_display_hp,
+        c.target_base_int,
+        c.base_int_peak,
+        c.early_phase_end,
+        c.mp_wash_end,
+        c.extra_mp_threshold,
+        c.policy.value,
+    )
+
+
+def _compare(
+    a: Optional[CandidateResult], b: Optional[CandidateResult]
+) -> ComparisonResult:
+    feasible = [c for c in (a, b) if c is not None and c.reached_target]
+    if not feasible:
+        # Choose lower APR among available, even if target missed.
+        available = [c for c in (a, b) if c is not None]
+        if not available:
+            return ComparisonResult(a, b, None, None, None)
+        available.sort(key=_candidate_sort_key)
+        winner = available[0]
+        other = available[1] if len(available) > 1 else None
+        return ComparisonResult(
+            policy_a=a,
+            policy_b=b,
+            winner=winner,
+            apr_delta=(winner.total_apr - other.total_apr) if other else None,
+            hp_delta=(winner.final_display_hp - other.final_display_hp) if other else None,
+        )
+
+    feasible.sort(key=_candidate_sort_key)
+    winner = feasible[0]
+    other = None
+    for c in (a, b):
+        if c is not None and c is not winner:
+            other = c
+            break
+    return ComparisonResult(
+        policy_a=a,
+        policy_b=b,
+        winner=winner,
+        apr_delta=(winner.total_apr - other.total_apr) if other else None,
+        hp_delta=(winner.final_display_hp - other.final_display_hp) if other else None,
+    )

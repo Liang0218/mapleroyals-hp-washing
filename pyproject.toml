@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hp-wash-thief"
+version = "0.1.0"
+description = "MapleRoyals Thief HP Wash APR Optimizer (Phase 1: core + CLI)"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "MapleRoyals HP Wash" }]
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0"]
+
+[project.scripts]
+hp-wash-thief = "hp_wash_thief.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["hp_wash_thief*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
