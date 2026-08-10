@@ -20,8 +20,6 @@ def test_simulate_cli(tmp_path):
             "130",
             "--int-gear-file",
             "examples/int_gear.json",
-            "--early-phase-end",
-            "70",
             "--mp-wash-end",
             "120",
             "--csv",

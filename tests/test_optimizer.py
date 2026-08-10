@@ -24,9 +24,8 @@ def test_optimize_both_policies_narrow():
             target_base_int_min=200,
             target_base_int_max=280,
             target_base_int_step=40,
-            early_phase_end_min=60,
-            early_phase_end_max=70,
-            extra_mp_thresholds=(60,),
+            mp_wash_end_min=70,
+            extra_mp_threshold=60,
             top_n=3,
         )
     )
@@ -35,3 +34,5 @@ def test_optimize_both_policies_narrow():
     assert PolicyName.INT_DUMP_SHORTFALL in result.by_policy
     assert result.comparison.winner is not None
     assert result.winner.apr.total_apr == result.winner.total_apr
+    assert result.winner.extra_mp_threshold == 60
+    assert result.winner.int_reached_level > 0

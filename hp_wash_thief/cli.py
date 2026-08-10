@@ -7,6 +7,7 @@ import sys
 from typing import Optional, Sequence
 
 from hp_wash_thief.core.api import optimize, simulate
+from hp_wash_thief.core.formulas import EXTRA_MP_THRESHOLD_DEFAULT
 from hp_wash_thief.core.gear import load_int_gear
 from hp_wash_thief.core.models import HpMode, OptimizeConfig, PolicyName, SimulateConfig
 from hp_wash_thief.core.report import (
@@ -43,9 +44,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         choices=["mp_wash_shortfall", "int_dump_shortfall"],
     )
     sim.add_argument("--target-base-int", type=int, required=True)
-    sim.add_argument("--early-phase-end", type=int, default=70)
     sim.add_argument("--mp-wash-end", type=int, default=135)
-    sim.add_argument("--extra-mp-threshold", type=int, default=60)
     sim.add_argument("--csv", dest="csv_path", default=None, help="Write plan CSV")
     sim.add_argument(
         "--no-method2",
@@ -85,6 +84,12 @@ def _add_shared_args(p: argparse.ArgumentParser) -> None:
         default=10,
         help="First level MW is active (default: 10)",
     )
+    p.add_argument(
+        "--extra-mp-threshold",
+        type=int,
+        default=EXTRA_MP_THRESHOLD_DEFAULT,
+        help=f"Extra MP needed for HP wash×5 (default: {EXTRA_MP_THRESHOLD_DEFAULT} = 12×5)",
+    )
 
 
 def _parse_policies(value: str) -> list[PolicyName]:
@@ -104,6 +109,7 @@ def _cmd_optimize(args: argparse.Namespace) -> int:
         hp_mode=HpMode(args.hp_mode),
         mw_percent=args.mw_percent,
         mw_from_level=args.mw_from_level,
+        extra_mp_threshold=args.extra_mp_threshold,
         top_n=args.top,
     )
     result = optimize(config)
@@ -125,7 +131,6 @@ def _cmd_simulate(args: argparse.Namespace) -> int:
         target_hp=args.target_hp,
         int_reset_level=args.int_reset_level,
         int_gear=gear,
-        early_phase_end=args.early_phase_end,
         mp_wash_end=args.mp_wash_end,
         extra_mp_threshold=args.extra_mp_threshold,
         quest_equip_hp=args.quest_equip_hp,

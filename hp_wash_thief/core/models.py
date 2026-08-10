@@ -54,13 +54,13 @@ class OptimizeConfig:
     # Maple Warrior: % of base INT added to total INT for level-up MP (not MP wash).
     mw_percent: float = 0.10
     mw_from_level: int = 10
+    # Extra MP threshold for early HP wash×5. Fixed at 60 (= 12 MP × 5 APR).
+    extra_mp_threshold: int = 60
     # Search bounds (overridable for tests)
     target_base_int_min: int = 100
     target_base_int_max: int = 500
     target_base_int_step: int = 10
-    early_phase_end_min: int = 50
-    early_phase_end_max: int = 90
-    extra_mp_thresholds: tuple[int, ...] = (48, 60, 72)
+    mp_wash_end_min: int = 50
     top_n: int = 5
 
 
@@ -71,8 +71,8 @@ class SimulateConfig:
     target_hp: int
     int_reset_level: int
     int_gear: list[IntGearSegment]
-    early_phase_end: int = 70
     mp_wash_end: int = 135
+    # 60 = 12 MP removed per APR × 5 fresh AP (one full HP5/MP5 level).
     extra_mp_threshold: int = 60
     quest_equip_hp: int = 0
     hp_mode: HpMode = HpMode.AVG
@@ -121,7 +121,7 @@ class LevelPlanRow:
 class SimulateResult:
     policy: PolicyName
     target_base_int: int
-    early_phase_end: int
+    int_reached_level: int
     mp_wash_end: int
     extra_mp_threshold: int
     final_base_hp: int
@@ -136,7 +136,7 @@ class SimulateResult:
 class CandidateResult:
     policy: PolicyName
     target_base_int: int
-    early_phase_end: int
+    int_reached_level: int
     mp_wash_end: int
     extra_mp_threshold: int
     final_base_hp: int
@@ -155,7 +155,7 @@ class CandidateResult:
         return cls(
             policy=result.policy,
             target_base_int=result.target_base_int,
-            early_phase_end=result.early_phase_end,
+            int_reached_level=result.int_reached_level,
             mp_wash_end=result.mp_wash_end,
             extra_mp_threshold=result.extra_mp_threshold,
             final_base_hp=result.final_base_hp,

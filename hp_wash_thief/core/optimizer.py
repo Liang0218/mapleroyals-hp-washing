@@ -38,7 +38,6 @@ def optimize(config: OptimizeConfig) -> OptimizeResult:
     if winner is None and top_candidates:
         winner = top_candidates[0]
     elif winner is None:
-        # Fall back to cheapest incomplete run if nothing hits target.
         leftovers = [p.best for p in by_policy.values() if p.best is not None]
         leftovers.sort(key=_candidate_sort_key)
         winner = leftovers[0] if leftovers else None
@@ -65,7 +64,6 @@ def _optimize_policy(config: OptimizeConfig, policy: PolicyName) -> PolicyBest:
             seen.add(key)
             fine_results.append(cand)
 
-    # Always include coarse hits so we never discard a feasible coarse winner.
     for cand in coarse:
         key = _param_key(cand)
         if key not in seen:
@@ -82,7 +80,6 @@ def _optimize_policy(config: OptimizeConfig, policy: PolicyName) -> PolicyBest:
 
 def _search(config: OptimizeConfig, policy: PolicyName, *, coarse: bool) -> Iterable[CandidateResult]:
     int_step = 40 if coarse else config.target_base_int_step
-    early_step = 10 if coarse else 5
     mp_step = 10 if coarse else 5
 
     int_values = list(
@@ -91,31 +88,25 @@ def _search(config: OptimizeConfig, policy: PolicyName, *, coarse: bool) -> Iter
     if config.target_base_int_max not in int_values:
         int_values.append(config.target_base_int_max)
 
-    early_values = list(
-        range(config.early_phase_end_min, config.early_phase_end_max + 1, early_step)
-    )
-    if config.early_phase_end_max not in early_values:
-        early_values.append(config.early_phase_end_max)
+    mp_min = max(config.mp_wash_end_min, 31)
+    mp_max = config.int_reset_level
+    if mp_min > mp_max:
+        return
 
+    mp_values = list(range(mp_min, mp_max + 1, mp_step))
+    if mp_max not in mp_values:
+        mp_values.append(mp_max)
+
+    threshold = config.extra_mp_threshold
     for target_base_int in int_values:
-        for early_phase_end in early_values:
-            mp_min = early_phase_end + 1
-            mp_max = config.int_reset_level
-            if mp_min > mp_max:
-                continue
-            mp_values = list(range(mp_min, mp_max + 1, mp_step))
-            if mp_max not in mp_values:
-                mp_values.append(mp_max)
-            for mp_wash_end in mp_values:
-                for threshold in config.extra_mp_thresholds:
-                    yield _run(
-                        config,
-                        policy,
-                        target_base_int=target_base_int,
-                        early_phase_end=early_phase_end,
-                        mp_wash_end=mp_wash_end,
-                        extra_mp_threshold=threshold,
-                    )
+        for mp_wash_end in mp_values:
+            yield _run(
+                config,
+                policy,
+                target_base_int=target_base_int,
+                mp_wash_end=mp_wash_end,
+                extra_mp_threshold=threshold,
+            )
 
 
 def _refine_around(
@@ -128,31 +119,20 @@ def _refine_around(
         step=config.target_base_int_step,
         radius=2,
     )
-    early_candidates = _neighbors(
-        seed.early_phase_end,
-        low=config.early_phase_end_min,
-        high=config.early_phase_end_max,
-        step=5,
-        radius=2,
-    )
+    mp_min = max(config.mp_wash_end_min, 31)
+    mp_max = config.int_reset_level
+    mp_center = min(max(seed.mp_wash_end, mp_min), mp_max)
+    mp_candidates = _neighbors(mp_center, low=mp_min, high=mp_max, step=5, radius=2)
+    threshold = config.extra_mp_threshold
     for target_base_int in int_candidates:
-        for early_phase_end in early_candidates:
-            mp_min = early_phase_end + 1
-            mp_max = config.int_reset_level
-            if mp_min > mp_max:
-                continue
-            mp_center = min(max(seed.mp_wash_end, mp_min), mp_max)
-            mp_candidates = _neighbors(mp_center, low=mp_min, high=mp_max, step=5, radius=2)
-            for mp_wash_end in mp_candidates:
-                for threshold in config.extra_mp_thresholds:
-                    yield _run(
-                        config,
-                        policy,
-                        target_base_int=target_base_int,
-                        early_phase_end=early_phase_end,
-                        mp_wash_end=mp_wash_end,
-                        extra_mp_threshold=threshold,
-                    )
+        for mp_wash_end in mp_candidates:
+            yield _run(
+                config,
+                policy,
+                target_base_int=target_base_int,
+                mp_wash_end=mp_wash_end,
+                extra_mp_threshold=threshold,
+            )
 
 
 def _run(
@@ -160,7 +140,6 @@ def _run(
     policy: PolicyName,
     *,
     target_base_int: int,
-    early_phase_end: int,
     mp_wash_end: int,
     extra_mp_threshold: int,
 ) -> CandidateResult:
@@ -171,7 +150,6 @@ def _run(
             target_hp=config.target_hp,
             int_reset_level=config.int_reset_level,
             int_gear=config.int_gear,
-            early_phase_end=early_phase_end,
             mp_wash_end=mp_wash_end,
             extra_mp_threshold=extra_mp_threshold,
             quest_equip_hp=config.quest_equip_hp,
@@ -200,7 +178,6 @@ def _param_key(c: CandidateResult) -> tuple:
     return (
         c.policy.value,
         c.target_base_int,
-        c.early_phase_end,
         c.mp_wash_end,
         c.extra_mp_threshold,
     )
@@ -219,16 +196,14 @@ def _unique_params(cands: list[CandidateResult]) -> list[CandidateResult]:
 
 
 def _candidate_sort_key(c: CandidateResult) -> tuple:
-    # Prefer reaching target, then lower APR, then higher HP, then lower INT peak.
     return (
         0 if c.reached_target else 1,
         c.total_apr,
         -c.final_display_hp,
         c.target_base_int,
         c.base_int_peak,
-        c.early_phase_end,
         c.mp_wash_end,
-        c.extra_mp_threshold,
+        c.int_reached_level,
         c.policy.value,
     )
 
@@ -238,7 +213,6 @@ def _compare(
 ) -> ComparisonResult:
     feasible = [c for c in (a, b) if c is not None and c.reached_target]
     if not feasible:
-        # Choose lower APR among available, even if target missed.
         available = [c for c in (a, b) if c is not None]
         if not available:
             return ComparisonResult(a, b, None, None, None)

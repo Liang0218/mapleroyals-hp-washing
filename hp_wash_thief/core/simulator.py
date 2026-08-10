@@ -28,6 +28,7 @@ class CharacterState:
     base_hp: float = F.STARTING_HP
     base_mp: float = F.STARTING_MP
     base_int_peak: int = F.STARTING_INT
+    int_reached_level: int = 0
     mp_wash_count: int = 0
     method1_hp_wash_count: int = 0
     method2_hp_wash_count: int = 0
@@ -50,12 +51,14 @@ def simulate(config: SimulateConfig) -> SimulateResult:
     _validate_config(config)
     state = CharacterState()
     _apply_starting_ap(state, config)
+    _maybe_mark_int_reached(state, config)
 
     # Level from 1 → max_level. Job advance bonuses apply when reaching those levels.
     for new_level in range(2, config.max_level + 1):
         _level_up(state, new_level, config)
         action = _decide_action(state, config)
         _execute_action(state, action, config)
+        _maybe_mark_int_reached(state, config)
         _maybe_reset_int(state, config)
 
     if config.auto_method2:
@@ -75,7 +78,7 @@ def simulate(config: SimulateConfig) -> SimulateResult:
     return SimulateResult(
         policy=config.policy,
         target_base_int=config.target_base_int,
-        early_phase_end=config.early_phase_end,
+        int_reached_level=state.int_reached_level,
         mp_wash_end=config.mp_wash_end,
         extra_mp_threshold=config.extra_mp_threshold,
         final_base_hp=int(round(state.base_hp)),
@@ -92,14 +95,17 @@ def _validate_config(config: SimulateConfig) -> None:
         raise ValueError("target_hp must be positive")
     if not (1 < config.int_reset_level <= config.max_level):
         raise ValueError("int_reset_level out of range")
-    if not (30 <= config.early_phase_end < config.max_level):
-        raise ValueError("early_phase_end must be >= 30 and < max_level")
-    if not (config.early_phase_end < config.mp_wash_end <= config.int_reset_level):
-        raise ValueError("mp_wash_end must satisfy early_phase_end < mp_wash_end <= int_reset_level")
+    if not (30 < config.mp_wash_end <= config.int_reset_level):
+        raise ValueError("mp_wash_end must satisfy 30 < mp_wash_end <= int_reset_level")
     if config.target_base_int < F.BASE_STAT_FLOOR:
         raise ValueError("target_base_int too low")
     if config.extra_mp_threshold < 0:
         raise ValueError("extra_mp_threshold must be >= 0")
+
+
+def _maybe_mark_int_reached(state: CharacterState, config: SimulateConfig) -> None:
+    if state.int_reached_level == 0 and state.base_int >= config.target_base_int:
+        state.int_reached_level = state.level
 
 
 def _apply_starting_ap(state: CharacterState, config: SimulateConfig) -> None:
@@ -162,11 +168,19 @@ def _decide_action(state: CharacterState, config: SimulateConfig) -> Action:
     level = state.level
     if level <= 30:
         return Action.BUILD
-    if level <= config.early_phase_end:
+    # Early shortfall logic continues until target_base_int is reached (not a fixed level).
+    if _in_early_phase(state, config):
         return choose_early_action(config.policy, state.extra_mp(), config.extra_mp_threshold)
     if level <= config.mp_wash_end:
         return Action.MP5
     return Action.HP5
+
+
+def _in_early_phase(state: CharacterState, config: SimulateConfig) -> bool:
+    """Early phase: post-30 while still building toward target_base_int."""
+    if state.int_reset_done or state.level >= config.int_reset_level:
+        return False
+    return state.base_int < config.target_base_int
 
 
 def _execute_action(state: CharacterState, action: Action, config: SimulateConfig) -> None:

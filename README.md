@@ -35,9 +35,7 @@ python -m hp_wash_thief simulate \
   --target-hp 30000 \
   --int-reset-level 145 \
   --int-gear-file examples/int_gear.json \
-  --early-phase-end 70 \
-  --mp-wash-end 145 \
-  --extra-mp-threshold 60
+  --mp-wash-end 145
 ```
 
 ## What it answers
@@ -50,12 +48,16 @@ Given INT gear segments, `int_reset_level`, and `target_hp`:
 
 ## Policies (post-30 early phase)
 
-| Extra MP vs threshold (default 60) | Policy A `mp_wash_shortfall` | Policy B `int_dump_shortfall` |
-| --- | --- | --- |
-| `>= threshold` | HP wash ×5 (Method 1) | HP wash ×5 (Method 1) |
-| `< threshold` | MP wash ×5 (5 APR) | 5 fresh AP → INT (0 wash APR that level) |
+Early phase lasts **until `target_base_int` is reached** (not a fixed level).
 
-Later phases (dense MP wash window, late Method 1 HP wash, Method 2 top-up, INT→LUK reset) share the same parameter framework.
+| Extra MP vs threshold (fixed **60** = 12×5) | Policy A `mp_wash_shortfall` | Policy B `int_dump_shortfall` |
+| --- | --- | --- |
+| `>= 60` | HP wash ×5 (Method 1) | HP wash ×5 (Method 1) |
+| `< 60` | MP wash ×5 (5 APR) | 5 fresh AP → INT (0 wash APR that level) |
+
+After target INT: dense MP wash until `mp_wash_end`, then late Method 1 HP wash, Method 2 top-up, INT→LUK at `int_reset_level`.
+
+Optimizer searches `target_base_int` + `mp_wash_end` only (threshold fixed at 60).
 
 ## APR cost
 

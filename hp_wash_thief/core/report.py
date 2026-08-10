@@ -36,7 +36,6 @@ def format_optimize_report(result: OptimizeResult) -> str:
         )
         if other is not None:
             delta = result.comparison.apr_delta
-            # apr_delta = winner - other; negative means winner cheaper
             saved = -delta
             lines.append("")
             lines.append(
@@ -58,13 +57,13 @@ def format_optimize_report(result: OptimizeResult) -> str:
         lines.append("  (none)")
     else:
         lines.append(
-            f"  {'#':>2}  {'policy':<20}  {'INT':>4}  {'early':>5}  {'mpEnd':>5}  "
+            f"  {'#':>2}  {'policy':<20}  {'INT':>4}  {'intLv':>5}  {'mpEnd':>5}  "
             f"{'thr':>3}  {'APR':>5}  {'HP':>6}  hit"
         )
         for i, c in enumerate(result.top_candidates, 1):
             lines.append(
                 f"  {i:>2}  {c.policy.value:<20}  {c.target_base_int:>4}  "
-                f"{c.early_phase_end:>5}  {c.mp_wash_end:>5}  {c.extra_mp_threshold:>3}  "
+                f"{c.int_reached_level:>5}  {c.mp_wash_end:>5}  {c.extra_mp_threshold:>3}  "
                 f"{c.total_apr:>5}  {c.final_display_hp:>6}  "
                 f"{'Y' if c.reached_target else 'N'}"
             )
@@ -150,7 +149,7 @@ def _policy_block(title: str, c: Optional[CandidateResult]) -> str:
     hit = "yes" if c.reached_target else "NO"
     return (
         f"  {title}:\n"
-        f"    target_base_int={c.target_base_int}  early_phase_end={c.early_phase_end}  "
+        f"    target_base_int={c.target_base_int}  int_reached_level={c.int_reached_level}  "
         f"mp_wash_end={c.mp_wash_end}  threshold={c.extra_mp_threshold}\n"
         f"    total_APR={c.total_apr}  final_HP={c.final_display_hp}  hit_target={hit}\n"
         f"    APR breakdown: MP={c.apr.mp_wash_count}  M1={c.apr.method1_hp_wash_count}  "
@@ -164,9 +163,10 @@ def _winner_block(c: Optional[CandidateResult]) -> str:
     return (
         f"  policy={c.policy.value}\n"
         f"  target_base_int={c.target_base_int}\n"
-        f"  early_phase_end={c.early_phase_end}\n"
+        f"  int_reached_level={c.int_reached_level}  "
+        f"(early phase = until target INT, not a fixed level)\n"
         f"  mp_wash_end={c.mp_wash_end}\n"
-        f"  extra_mp_threshold={c.extra_mp_threshold}\n"
+        f"  extra_mp_threshold={c.extra_mp_threshold}  (= 12×5 for full HP5)\n"
         f"  base_int_peak={c.base_int_peak}\n"
         f"  final_base_hp={c.final_base_hp}  final_display_hp={c.final_display_hp}\n"
         f"  reached_target={c.reached_target}\n"
@@ -180,7 +180,6 @@ def _winner_block(c: Optional[CandidateResult]) -> str:
 
 def _plan_summary(c: CandidateResult) -> list[str]:
     lines: list[str] = []
-    # Show phase transitions + every RESET_INT / M2, plus compact action runs.
     if not c.plan:
         return ["  (empty)"]
     lines.append(
@@ -188,12 +187,13 @@ def _plan_summary(c: CandidateResult) -> list[str]:
         f"{'xMP':>5}  {'APR':>4}  notes"
     )
     prev_action = None
+    markers = {c.int_reached_level, c.mp_wash_end, c.mp_wash_end + 1}
     for row in c.plan:
         show = (
             row.level <= 30
             or row.action.value in {"RESET_INT", "M2"}
             or row.action != prev_action
-            or row.level in {c.early_phase_end, c.mp_wash_end, c.early_phase_end + 1, c.mp_wash_end + 1}
+            or row.level in markers
             or row.level % 10 == 0
         )
         if show:

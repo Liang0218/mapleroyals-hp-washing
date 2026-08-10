@@ -65,6 +65,9 @@ def method2_hp_gain(mode: HpMode) -> float:
 
 
 MP_REMOVED_PER_APR = 12
+# Full level HP wash×5 needs Extra MP ≥ 12 × 5.
+EXTRA_MP_THRESHOLD_DEFAULT = MP_REMOVED_PER_APR * 5  # 60
+
 
 
 def job_advance_bonus(job_adv_number: int, mode: HpMode) -> tuple[float, float]:
