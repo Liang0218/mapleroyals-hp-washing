@@ -178,6 +178,8 @@ def _run(
             hp_mode=config.hp_mode,
             max_level=config.max_level,
             auto_method2=True,
+            mw_percent=config.mw_percent,
+            mw_from_level=config.mw_from_level,
         )
     )
     return CandidateResult.from_simulate(sim)

@@ -45,7 +45,7 @@ def levelup_mp_base_gain(*, is_beginner: bool, mode: HpMode) -> float:
 
 
 def levelup_mp_int_bonus(total_int: int) -> int:
-    """Level-up MP bonus from total INT (base + gear + MW): total_int // 10."""
+    """Level-up MP bonus from total INT (base + gear + MW%% of base): total_int // 10."""
     return max(0, int(total_int) // 10)
 
 

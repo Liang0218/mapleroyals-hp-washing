@@ -104,6 +104,14 @@ examples/int_gear.json
 - [Night Lord / Shadower HP Washing Above 20k HP (PerfectSin)](https://royals.ms/forum/threads/night-lord-shadower-hp-washing-above-20k-hp.146816/)
 - [HP Washing For New Players](https://royals.ms/forum/threads/hp-washing-for-new-players.41129/)
 
+### Maple Warrior (important)
+
+Level-up MP uses **total INT** = `base_int + int_gear + floor(base_int * mw_percent)`.
+
+Default: `--mw-percent 0.10 --mw-from-level 10` (10% of **base** INT from level 10 onward).
+
+MP wash still uses **base INT only** (gear/MW do not apply). Do not put MW into the gear JSON `mw_int` field as a flat constant — that field is only an optional flat add-on.
+
 ## Tests
 
 ```bash

@@ -24,6 +24,8 @@ def parse_int_gear(raw: Sequence[dict]) -> list[IntGearSegment]:
                 from_level=int(item["from_level"]),
                 to_level=int(item["to_level"]),
                 int_gear=int(item.get("int_gear", 0)),
+                # Optional flat bonus only. Real Maple Warrior % is applied via
+                # mw_percent on SimulateConfig / OptimizeConfig (default 10% base INT).
                 mw_int=int(item.get("mw_int", 0)),
             )
         )
@@ -51,13 +53,36 @@ def validate_int_gear(segments: Iterable[IntGearSegment]) -> None:
 
 
 def gear_for_level(segments: Sequence[IntGearSegment], level: int) -> tuple[int, int]:
-    """Return (int_gear, mw_int) for a level. Missing coverage → (0, 0)."""
+    """Return (int_gear, flat_mw_int) for a level. Missing coverage → (0, 0)."""
     for seg in segments:
         if seg.covers(level):
             return seg.int_gear, seg.mw_int
     return 0, 0
 
 
-def total_int(base_int: int, segments: Sequence[IntGearSegment], level: int) -> int:
-    gear, mw = gear_for_level(segments, level)
-    return int(base_int) + int(gear) + int(mw)
+def maple_warrior_int(
+    base_int: int, level: int, *, mw_percent: float = 0.10, mw_from_level: int = 10
+) -> int:
+    """Maple Warrior INT bonus = floor(base_int * mw_percent) from mw_from_level onward.
+
+    Uses base INT only (equipment INT is not multiplied). Default is 10% from level 10.
+    """
+    if level < mw_from_level or mw_percent <= 0:
+        return 0
+    return int(max(0, int(base_int)) * float(mw_percent))
+
+
+def total_int(
+    base_int: int,
+    segments: Sequence[IntGearSegment],
+    level: int,
+    *,
+    mw_percent: float = 0.10,
+    mw_from_level: int = 10,
+) -> int:
+    """Total INT for level-up MP: base + gear + MW(% of base) + optional flat mw_int."""
+    gear, flat_mw = gear_for_level(segments, level)
+    mw = maple_warrior_int(
+        base_int, level, mw_percent=mw_percent, mw_from_level=mw_from_level
+    )
+    return int(base_int) + int(gear) + int(mw) + int(flat_mw)

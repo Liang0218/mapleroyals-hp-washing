@@ -51,6 +51,9 @@ class OptimizeConfig:
     quest_equip_hp: int = 0
     hp_mode: HpMode = HpMode.AVG
     max_level: int = 200
+    # Maple Warrior: % of base INT added to total INT for level-up MP (not MP wash).
+    mw_percent: float = 0.10
+    mw_from_level: int = 10
     # Search bounds (overridable for tests)
     target_base_int_min: int = 100
     target_base_int_max: int = 500
@@ -75,6 +78,8 @@ class SimulateConfig:
     hp_mode: HpMode = HpMode.AVG
     max_level: int = 200
     auto_method2: bool = True
+    mw_percent: float = 0.10
+    mw_from_level: int = 10
 
 
 @dataclass

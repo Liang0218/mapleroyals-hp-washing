@@ -73,6 +73,18 @@ def _add_shared_args(p: argparse.ArgumentParser) -> None:
         choices=["avg", "min", "max"],
         help="Use avg/min/max of HP/MP gain ranges",
     )
+    p.add_argument(
+        "--mw-percent",
+        type=float,
+        default=0.10,
+        help="Maple Warrior as fraction of base INT for level-up MP (default: 0.10)",
+    )
+    p.add_argument(
+        "--mw-from-level",
+        type=int,
+        default=10,
+        help="First level MW is active (default: 10)",
+    )
 
 
 def _parse_policies(value: str) -> list[PolicyName]:
@@ -90,6 +102,8 @@ def _cmd_optimize(args: argparse.Namespace) -> int:
         policies=_parse_policies(args.policies),
         quest_equip_hp=args.quest_equip_hp,
         hp_mode=HpMode(args.hp_mode),
+        mw_percent=args.mw_percent,
+        mw_from_level=args.mw_from_level,
         top_n=args.top,
     )
     result = optimize(config)
@@ -117,6 +131,8 @@ def _cmd_simulate(args: argparse.Namespace) -> int:
         quest_equip_hp=args.quest_equip_hp,
         hp_mode=HpMode(args.hp_mode),
         auto_method2=not args.no_method2,
+        mw_percent=args.mw_percent,
+        mw_from_level=args.mw_from_level,
     )
     result = simulate(config)
     print_report(format_simulate_report(result))

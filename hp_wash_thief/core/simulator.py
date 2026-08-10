@@ -127,7 +127,13 @@ def _level_up(state: CharacterState, new_level: int, config: SimulateConfig) -> 
     # Gains are computed for the level you enter, using INT/gear at that new level.
     is_beginner = new_level <= 10
     # Gear at the level being entered (MW/gear worn at level-up).
-    t_int = total_int(state.base_int, config.int_gear, new_level)
+    t_int = total_int(
+        state.base_int,
+        config.int_gear,
+        new_level,
+        mw_percent=config.mw_percent,
+        mw_from_level=config.mw_from_level,
+    )
     hp_gain = F.levelup_hp_gain(is_beginner=is_beginner, mode=config.hp_mode)
     mp_gain = F.levelup_mp_base_gain(is_beginner=is_beginner, mode=config.hp_mode)
     mp_gain += F.levelup_mp_int_bonus(t_int)
