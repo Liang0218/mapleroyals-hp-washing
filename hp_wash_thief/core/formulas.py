@@ -69,6 +69,37 @@ MP_REMOVED_PER_APR = 12
 EXTRA_MP_THRESHOLD_DEFAULT = MP_REMOVED_PER_APR * 5  # 60
 
 
+def method1_washes_affordable(extra_mp: float, fresh_ap: int) -> int:
+    """How many Method 1 washes fit in Extra MP and fresh AP this level."""
+    if extra_mp < MP_REMOVED_PER_APR or fresh_ap <= 0:
+        return 0
+    return min(int(fresh_ap), int(extra_mp // MP_REMOVED_PER_APR))
+
+
+def mp_washes_affordable(
+    base_int: int,
+    base_mp: float,
+    level: int,
+    fresh_ap: int,
+    *,
+    mode: HpMode,
+) -> int:
+    """How many MP washes succeed this level (simulate add-then-remove per fresh AP)."""
+    if fresh_ap <= 0:
+        return 0
+    mp = float(base_mp)
+    done = 0
+    for _ in range(fresh_ap):
+        gain = fresh_ap_mp_gain(base_int, mode)
+        mp += gain
+        if extra_mp(mp, level) < MP_REMOVED_PER_APR:
+            mp -= gain
+            break
+        mp -= MP_REMOVED_PER_APR
+        done += 1
+    return done
+
+
 
 def job_advance_bonus(job_adv_number: int, mode: HpMode) -> tuple[float, float]:
     """Return (hp, mp) granted on job advancement.

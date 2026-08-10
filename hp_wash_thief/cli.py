@@ -29,9 +29,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     _add_shared_args(opt)
     opt.add_argument(
         "--policies",
-        default="both",
-        choices=["both", "mp_wash_shortfall", "int_dump_shortfall"],
-        help="Which shortfall policies to search (default: both)",
+        default="all",
+        choices=["all", "both", "mp_wash_shortfall", "int_dump_shortfall", "mp_wash_hardcore"],
+        help="Which policies to search: all=ABC (default), both=AB only",
     )
     opt.add_argument("--csv", dest="csv_path", default=None, help="Write winner plan CSV")
     opt.add_argument("--top", type=int, default=5, help="Top-N candidates to retain")
@@ -41,7 +41,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     sim.add_argument(
         "--policy",
         required=True,
-        choices=["mp_wash_shortfall", "int_dump_shortfall"],
+        choices=["mp_wash_shortfall", "int_dump_shortfall", "mp_wash_hardcore"],
     )
     sim.add_argument("--target-base-int", type=int, required=True)
     sim.add_argument("--mp-wash-end", type=int, default=135)
@@ -93,6 +93,12 @@ def _add_shared_args(p: argparse.ArgumentParser) -> None:
 
 
 def _parse_policies(value: str) -> list[PolicyName]:
+    if value == "all":
+        return [
+            PolicyName.MP_WASH_SHORTFALL,
+            PolicyName.INT_DUMP_SHORTFALL,
+            PolicyName.MP_WASH_HARDCORE,
+        ]
     if value == "both":
         return [PolicyName.MP_WASH_SHORTFALL, PolicyName.INT_DUMP_SHORTFALL]
     return [PolicyName(value)]

@@ -10,6 +10,7 @@ from typing import Optional
 class PolicyName(str, Enum):
     MP_WASH_SHORTFALL = "mp_wash_shortfall"
     INT_DUMP_SHORTFALL = "int_dump_shortfall"
+    MP_WASH_HARDCORE = "mp_wash_hardcore"
 
 
 class HpMode(str, Enum):
@@ -21,12 +22,86 @@ class HpMode(str, Enum):
 class Action(str, Enum):
     NONE = "NONE"
     BUILD = "BUILD"
+    HP1 = "HP1"
+    HP2 = "HP2"
+    HP3 = "HP3"
+    HP4 = "HP4"
     HP5 = "HP5"
+    MP1 = "MP1"
+    MP2 = "MP2"
+    MP3 = "MP3"
+    MP4 = "MP4"
     MP5 = "MP5"
+    HARDCORE_GREEDY = "HARDCORE_GREEDY"
     INT5 = "INT5"
     LUK5 = "LUK5"
     M2 = "M2"
     RESET_INT = "RESET_INT"
+
+
+HP_ACTIONS = frozenset(
+    {Action.HP1, Action.HP2, Action.HP3, Action.HP4, Action.HP5}
+)
+
+MP_ACTIONS = frozenset(
+    {Action.MP1, Action.MP2, Action.MP3, Action.MP4, Action.MP5}
+)
+
+
+def hp_action_for_wash_count(count: int) -> Action:
+    """Map 1–5 Method 1 washes to HP1…HP5 (6+ also labeled HP5)."""
+    if count < 1:
+        raise ValueError("wash count must be >= 1")
+    if count >= 5:
+        return Action.HP5
+    return Action(f"HP{count}")
+
+
+def mp_action_for_wash_count(count: int) -> Action:
+    """Map 1–5 MP washes to MP1…MP5 (6+ also labeled MP5)."""
+    if count < 1:
+        raise ValueError("wash count must be >= 1")
+    if count >= 5:
+        return Action.MP5
+    return Action(f"MP{count}")
+
+
+def planned_hp_washes(action: Action, *, extra_mp: float, fresh_ap: int) -> int:
+    """Resolve HP1…HP5 / HP5 into the wash count for this level."""
+    from hp_wash_thief.core import formulas as F
+
+    affordable = F.method1_washes_affordable(extra_mp, fresh_ap)
+    if affordable <= 0:
+        return 0
+    if action is Action.HP5:
+        return affordable
+    if action in HP_ACTIONS:
+        return min(int(action.value[2]), affordable)
+    return 0
+
+
+def planned_mp_washes(
+    action: Action,
+    *,
+    base_int: int,
+    base_mp: float,
+    level: int,
+    fresh_ap: int,
+    hp_mode: HpMode,
+) -> int:
+    """Resolve MP1…MP5 / MP5 into the wash count for this level."""
+    from hp_wash_thief.core import formulas as F
+
+    affordable = F.mp_washes_affordable(
+        base_int, base_mp, level, fresh_ap, mode=hp_mode
+    )
+    if affordable <= 0:
+        return 0
+    if action is Action.MP5:
+        return affordable
+    if action in MP_ACTIONS:
+        return min(int(action.value[2]), affordable)
+    return 0
 
 
 @dataclass(frozen=True)
@@ -45,7 +120,11 @@ class OptimizeConfig:
     int_reset_level: int
     int_gear: list[IntGearSegment]
     policies: list[PolicyName] = field(
-        default_factory=lambda: [PolicyName.MP_WASH_SHORTFALL, PolicyName.INT_DUMP_SHORTFALL]
+        default_factory=lambda: [
+            PolicyName.MP_WASH_SHORTFALL,
+            PolicyName.INT_DUMP_SHORTFALL,
+            PolicyName.MP_WASH_HARDCORE,
+        ]
     )
     quest_equip_hp: int = 0
     hp_mode: HpMode = HpMode.AVG
@@ -177,8 +256,9 @@ class PolicyBest:
 class ComparisonResult:
     policy_a: Optional[CandidateResult]
     policy_b: Optional[CandidateResult]
+    policy_c: Optional[CandidateResult]
     winner: Optional[CandidateResult]
-    apr_delta: Optional[int]  # winner_apr - other_apr (negative means winner cheaper)
+    apr_delta: Optional[int]  # winner_apr - runner_up_apr (negative means winner cheaper)
     hp_delta: Optional[int]
 
 

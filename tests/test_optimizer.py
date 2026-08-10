@@ -33,6 +33,36 @@ def test_optimize_both_policies_narrow():
     assert PolicyName.MP_WASH_SHORTFALL in result.by_policy
     assert PolicyName.INT_DUMP_SHORTFALL in result.by_policy
     assert result.comparison.winner is not None
+    assert result.comparison.policy_c is None
     assert result.winner.apr.total_apr == result.winner.total_apr
     assert result.winner.extra_mp_threshold == 60
     assert result.winner.int_reached_level > 0
+
+
+def test_optimize_all_policies_abc():
+    result = optimize(
+        OptimizeConfig(
+            target_hp=22000,
+            int_reset_level=140,
+            int_gear=GEAR,
+            target_base_int_min=200,
+            target_base_int_max=280,
+            target_base_int_step=40,
+            mp_wash_end_min=70,
+            top_n=3,
+        )
+    )
+    assert PolicyName.MP_WASH_HARDCORE in result.by_policy
+    assert result.comparison.policy_c is not None
+    assert result.comparison.winner is not None
+    bests = [
+        c
+        for c in (
+            result.comparison.policy_a,
+            result.comparison.policy_b,
+            result.comparison.policy_c,
+        )
+        if c is not None
+    ]
+    assert result.comparison.winner in bests
+    assert result.comparison.apr_delta is not None

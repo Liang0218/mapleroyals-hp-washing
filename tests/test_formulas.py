@@ -14,6 +14,7 @@ from hp_wash_thief.core.formulas import (
     levelup_mp_base_gain,
     levelup_mp_int_bonus,
     method1_hp_gain,
+    method1_washes_affordable,
     method2_hp_gain,
     min_mp,
 )
@@ -29,6 +30,23 @@ def test_min_mp_formula():
 def test_extra_mp_example_from_guide():
     # PerfectSin: level 34, 700 base MP → Extra MP 76
     assert extra_mp(700, 34) == 76
+
+
+def test_method1_washes_affordable():
+    assert method1_washes_affordable(12, 5) == 1
+    assert method1_washes_affordable(11, 5) == 0
+    assert method1_washes_affordable(76, 5) == 5
+    assert method1_washes_affordable(76, 10) == 6
+
+
+def test_mp_washes_affordable():
+    from hp_wash_thief.core.formulas import min_mp, mp_washes_affordable
+
+    level = 30
+    base_mp = float(min_mp(level) + 11)
+    count = mp_washes_affordable(200, base_mp, level, 5, mode=HpMode.AVG)
+    assert count >= 1
+    assert count <= 5
 
 
 def test_mp_removed_constant():

@@ -1,4 +1,4 @@
-"""Coarse-to-fine dual-policy APR optimizer."""
+"""Coarse-to-fine multi-policy APR optimizer."""
 
 from __future__ import annotations
 
@@ -30,9 +30,11 @@ def optimize(config: OptimizeConfig) -> OptimizeResult:
 
     policy_a = by_policy.get(PolicyName.MP_WASH_SHORTFALL)
     policy_b = by_policy.get(PolicyName.INT_DUMP_SHORTFALL)
+    policy_c = by_policy.get(PolicyName.MP_WASH_HARDCORE)
     a_best = policy_a.best if policy_a else None
     b_best = policy_b.best if policy_b else None
-    comparison = _compare(a_best, b_best)
+    c_best = policy_c.best if policy_c else None
+    comparison = _compare_abc(a_best, b_best, c_best)
 
     winner = comparison.winner
     if winner is None and top_candidates:
@@ -208,36 +210,24 @@ def _candidate_sort_key(c: CandidateResult) -> tuple:
     )
 
 
-def _compare(
-    a: Optional[CandidateResult], b: Optional[CandidateResult]
+def _compare_abc(
+    a: Optional[CandidateResult],
+    b: Optional[CandidateResult],
+    c: Optional[CandidateResult],
 ) -> ComparisonResult:
-    feasible = [c for c in (a, b) if c is not None and c.reached_target]
-    if not feasible:
-        available = [c for c in (a, b) if c is not None]
-        if not available:
-            return ComparisonResult(a, b, None, None, None)
-        available.sort(key=_candidate_sort_key)
-        winner = available[0]
-        other = available[1] if len(available) > 1 else None
-        return ComparisonResult(
-            policy_a=a,
-            policy_b=b,
-            winner=winner,
-            apr_delta=(winner.total_apr - other.total_apr) if other else None,
-            hp_delta=(winner.final_display_hp - other.final_display_hp) if other else None,
-        )
+    """Rank A/B/C bests; delta is winner vs runner-up."""
+    available = [x for x in (a, b, c) if x is not None]
+    if not available:
+        return ComparisonResult(a, b, c, None, None, None)
 
-    feasible.sort(key=_candidate_sort_key)
-    winner = feasible[0]
-    other = None
-    for c in (a, b):
-        if c is not None and c is not winner:
-            other = c
-            break
+    ranked = sorted(available, key=_candidate_sort_key)
+    winner = ranked[0]
+    runner_up = ranked[1] if len(ranked) > 1 else None
     return ComparisonResult(
         policy_a=a,
         policy_b=b,
+        policy_c=c,
         winner=winner,
-        apr_delta=(winner.total_apr - other.total_apr) if other else None,
-        hp_delta=(winner.final_display_hp - other.final_display_hp) if other else None,
+        apr_delta=(winner.total_apr - runner_up.total_apr) if runner_up else None,
+        hp_delta=(winner.final_display_hp - runner_up.final_display_hp) if runner_up else None,
     )

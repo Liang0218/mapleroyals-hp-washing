@@ -19,6 +19,7 @@ from hp_wash_thief.core.api import optimize, simulate
 from hp_wash_thief.core.gear import parse_int_gear
 from hp_wash_thief.core.models import HpMode, OptimizeConfig, PolicyName, SimulateConfig
 from hp_wash_thief.core.report import (
+    format_action_legend,
     format_optimize_report,
     format_simulate_report,
     write_plan_csv,
@@ -35,13 +36,16 @@ HP_MODE_LABELS = {
     "最大 (max)": "max",
 }
 OPT_POLICY_LABELS = {
-    "兩種都跑 (both)": "both",
+    "三種都跑 (ABC)": "all",
+    "兩種都跑 (AB)": "both",
     "A：不足時 MP wash": "mp_wash_shortfall",
     "B：不足時全點 INT": "int_dump_shortfall",
+    "C：硬核 A（≥12 逐 AP；30+ MP1）": "mp_wash_hardcore",
 }
 SIM_POLICY_LABELS = {
     "A：不足時 MP wash": "mp_wash_shortfall",
     "B：不足時全點 INT": "int_dump_shortfall",
+    "C：硬核 A（≥12 逐 AP；30+ MP1）": "mp_wash_hardcore",
 }
 
 
@@ -71,10 +75,15 @@ class HpWashApp(ctk.CTk):
         body.grid(row=1, column=0, sticky="nsew", padx=12, pady=(0, 12))
         self.tab_opt = body.add("最佳化 Optimize")
         self.tab_sim = body.add("模擬 Simulate")
+        self.tab_help = body.add("說明 Actions")
         self.tab_opt.grid_columnconfigure(0, weight=1)
         self.tab_opt.grid_rowconfigure(2, weight=1)
         self.tab_sim.grid_columnconfigure(0, weight=1)
         self.tab_sim.grid_rowconfigure(2, weight=1)
+        self.tab_help.grid_columnconfigure(0, weight=1)
+        self.tab_help.grid_rowconfigure(1, weight=1)
+
+        self._build_help_tab(self.tab_help)
 
         self._build_shared_params(self.tab_opt, prefix="opt")
         self._build_optimize_extra(self.tab_opt)
@@ -89,6 +98,17 @@ class HpWashApp(ctk.CTk):
         self._build_actions(
             self.tab_sim, prefix="sim", run_label="執行模擬", command=self._run_simulate
         )
+
+    def _build_help_tab(self, parent: ctk.CTkFrame) -> None:
+        ctk.CTkLabel(
+            parent,
+            text="政策與動作代碼說明（結果報告「逐等計畫」亦含「說明」欄）",
+            font=ctk.CTkFont(weight="bold"),
+        ).grid(row=0, column=0, sticky="w", padx=12, pady=(12, 6))
+        box = ctk.CTkTextbox(parent, font=ctk.CTkFont(family="Microsoft JhengHei UI", size=13))
+        box.grid(row=1, column=0, sticky="nsew", padx=12, pady=(0, 12))
+        box.insert("1.0", format_action_legend())
+        box.configure(state="disabled")
 
     def _build_shared_params(self, parent: ctk.CTkFrame, *, prefix: str) -> None:
         frame = ctk.CTkFrame(parent)
@@ -123,7 +143,7 @@ class HpWashApp(ctk.CTk):
 
         ctk.CTkLabel(frame, text="政策").grid(row=0, column=0, sticky="w", padx=6, pady=8)
         policies = ctk.CTkOptionMenu(frame, values=list(OPT_POLICY_LABELS.keys()))
-        policies.set("兩種都跑 (both)")
+        policies.set("三種都跑 (ABC)")
         policies.grid(row=0, column=1, sticky="w", padx=6, pady=8)
         self.opt_policies = policies
 
@@ -357,7 +377,13 @@ class HpWashApp(ctk.CTk):
             policies_raw = OPT_POLICY_LABELS.get(
                 self.opt_policies.get(), self.opt_policies.get()
             )
-            if policies_raw == "both":
+            if policies_raw == "all":
+                policies = [
+                    PolicyName.MP_WASH_SHORTFALL,
+                    PolicyName.INT_DUMP_SHORTFALL,
+                    PolicyName.MP_WASH_HARDCORE,
+                ]
+            elif policies_raw == "both":
                 policies = [PolicyName.MP_WASH_SHORTFALL, PolicyName.INT_DUMP_SHORTFALL]
             else:
                 policies = [PolicyName(policies_raw)]

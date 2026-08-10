@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from hp_wash_thief.core.formulas import EXTRA_MP_THRESHOLD_DEFAULT
 from hp_wash_thief.core.gear import parse_int_gear
-from hp_wash_thief.core.models import Action, HpMode, PolicyName, SimulateConfig
+from hp_wash_thief.core.models import Action, HP_ACTIONS, HpMode, MP_ACTIONS, PolicyName, SimulateConfig
 from hp_wash_thief.core.policy import choose_early_action
 from hp_wash_thief.core.simulator import simulate
 
@@ -70,10 +70,10 @@ def test_early_phase_lasts_until_target_int():
         )
     )
     assert result.int_reached_level > 0
-    # Before INT target, post-30 actions must be early-policy actions (HP5/MP5/INT5/LUK5).
+    # Before INT target, post-30 actions must be early-policy actions (HP/MP/INT/LUK).
     for row in result.plan:
         if 31 <= row.level < result.int_reached_level:
-            assert row.action in {Action.HP5, Action.MP5, Action.INT5, Action.LUK5}
+            assert row.action in HP_ACTIONS | MP_ACTIONS | {Action.INT5, Action.LUK5}
 
 
 def test_int_dump_policy_has_zero_wash_apr_on_int5_rows():
@@ -125,6 +125,51 @@ def test_job_advance_levels_grant_extra_ap():
     assert fresh_ap_total(lv10) == 5
     assert fresh_ap_total(lv70) == 10
     assert fresh_ap_total(lv120) == 10
+
+
+def test_hardcore_policy_can_hp_wash_before_30():
+    result = simulate(
+        SimulateConfig(
+            policy=PolicyName.MP_WASH_HARDCORE,
+            target_base_int=300,
+            target_hp=25000,
+            int_reset_level=145,
+            int_gear=GEAR,
+            mp_wash_end=140,
+        )
+    )
+    pre30_hp = [
+        r
+        for r in result.plan
+        if 10 <= r.level < 30
+        and r.action is Action.HARDCORE_GREEDY
+        and r.fresh_ap_hp > 0
+    ]
+    assert pre30_hp, "expected Method 1 HP washes between levels 10–29"
+    assert any(r.fresh_ap_hp == 1 for r in pre30_hp), "expected some single-HP greedy levels"
+    assert not any(
+        r.fresh_ap_mp > 0 for r in result.plan if r.level < 30
+    ), "Policy C must not MP wash before level 30"
+
+
+def test_partial_hp1_leaves_remaining_ap_for_int():
+    """Extra MP = 12 → only 1 Method1; other 4 fresh AP go to INT (0 APR)."""
+    result = simulate(
+        SimulateConfig(
+            policy=PolicyName.MP_WASH_HARDCORE,
+            target_base_int=500,
+            target_hp=25000,
+            int_reset_level=145,
+            int_gear=GEAR,
+            mp_wash_end=140,
+        )
+    )
+    partial = [
+        r
+        for r in result.plan
+        if r.action is Action.HARDCORE_GREEDY and r.apr_spent == 1 and r.fresh_ap_int >= 1
+    ]
+    assert partial, "expected greedy rows with 1 HP wash and leftover AP dumped to INT"
 
 
 def test_method2_can_close_gap():

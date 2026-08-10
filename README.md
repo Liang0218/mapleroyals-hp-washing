@@ -51,7 +51,7 @@ python -m hp_wash_thief optimize \
   --target-hp 27000 \
   --int-reset-level 155 \
   --int-gear-file examples/int_gear.json \
-  --policies both \
+  --policies all \
   --csv plan.csv
 ```
 
@@ -69,11 +69,13 @@ python -m hp_wash_thief simulate \
 
 Given INT gear segments, `int_reset_level`, and `target_hp`:
 
-1. Best (lowest APR) `target_base_int` + phase params for **Policy A** and **Policy B**
-2. Cross-policy comparison: which total APR is lower, by how much, and final HP
+1. Best (lowest APR) `target_base_int` + phase params for **Policy A**, **B**, and **C**
+2. Cross-policy comparison (A vs B vs C): which total APR is lower, by how much, and final HP
 3. Global winner with full per-level plan (CSV: `HP5` / `MP5` / `INT5` / `M2` / `RESET_INT`)
 
-## Policies (post-30 early phase)
+## Policies (early phase until `target_base_int`)
+
+### A / B (from level 31)
 
 Early phase lasts **until `target_base_int` is reached** (not a fixed level).
 
@@ -81,6 +83,20 @@ Early phase lasts **until `target_base_int` is reached** (not a fixed level).
 | --- | --- | --- |
 | `>= 60` | HP wash ×5 (Method 1) | HP wash ×5 (Method 1) |
 | `< 60` | MP wash ×5 (5 APR) | 5 fresh AP → INT (0 wash APR that level) |
+
+### C — hardcore A (`mp_wash_hardcore`, from level 10)
+
+Until `target_base_int` is reached, **each fresh AP slot** (5 per level, +5 at job advance):
+
+| Step | Condition | Action |
+| --- | --- | --- |
+| 1 | Extra MP ≥ 12 | **HP1** (Method 1), then re-check next AP |
+| 2 | Still &lt; 12, level ≥ 30 | **MP1**, then re-check |
+| 3 | Cannot wash | Remaining AP → INT/LUK (0 APR) |
+
+Levels 10–29 skip step 2 (MP wash not allowed). Levels 2–9 still use BUILD (DEX/INT).
+
+After target INT: same as A/B (dense MP wash → late HP wash → Method 2 → INT reset).
 
 After target INT: dense MP wash until `mp_wash_end`, then late Method 1 HP wash, Method 2 top-up, INT→LUK at `int_reset_level`.
 

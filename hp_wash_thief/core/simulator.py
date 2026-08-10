@@ -9,13 +9,19 @@ from hp_wash_thief.core.gear import total_int
 from hp_wash_thief.core.models import (
     Action,
     AprBreakdown,
+    HP_ACTIONS,
     HpMode,
     LevelPlanRow,
+    MP_ACTIONS,
     PolicyName,
     SimulateConfig,
     SimulateResult,
+    hp_action_for_wash_count,
+    mp_action_for_wash_count,
+    planned_hp_washes,
+    planned_mp_washes,
 )
-from hp_wash_thief.core.policy import choose_early_action
+from hp_wash_thief.core.policy import choose_early_action, mp_wash_hardcore
 
 
 @dataclass
@@ -169,14 +175,36 @@ def _maybe_reset_int(state: CharacterState, config: SimulateConfig) -> None:
 
 def _decide_action(state: CharacterState, config: SimulateConfig) -> Action:
     level = state.level
+    if _in_hardcore_early_phase(state, config):
+        return mp_wash_hardcore.choose_level_action(state.level)
     if level <= 30:
         return Action.BUILD
     # Early shortfall logic continues until target_base_int is reached (not a fixed level).
     if _in_early_phase(state, config):
-        return choose_early_action(config.policy, state.extra_mp(), config.extra_mp_threshold)
+        return choose_early_action(
+            config.policy,
+            state.extra_mp(),
+            config.extra_mp_threshold,
+            level=level,
+            fresh_ap=state.level_fresh_ap,
+            base_int=state.base_int,
+            base_mp=state.base_mp,
+            hp_mode=config.hp_mode,
+        )
     if level <= config.mp_wash_end:
         return Action.MP5
     return Action.HP5
+
+
+def _in_hardcore_early_phase(state: CharacterState, config: SimulateConfig) -> bool:
+    """Policy C: lv10+ until target INT; HP wash at Extra MP >= 12; MP5 only lv30+."""
+    if config.policy is not PolicyName.MP_WASH_HARDCORE:
+        return False
+    if state.int_reset_done or state.level >= config.int_reset_level:
+        return False
+    if state.base_int >= config.target_base_int:
+        return False
+    return state.level >= mp_wash_hardcore.EARLY_START_LEVEL
 
 
 def _in_early_phase(state: CharacterState, config: SimulateConfig) -> bool:
@@ -191,16 +219,118 @@ def _execute_action(state: CharacterState, action: Action, config: SimulateConfi
     if action is Action.BUILD:
         _build_ap(state, config, ap=fresh_ap)
         return
-    if action is Action.HP5:
-        _hp_wash_method1(state, config, washes=fresh_ap)
+    if action is Action.HARDCORE_GREEDY:
+        _execute_hardcore_greedy_level(state, config, fresh_ap=fresh_ap)
         return
-    if action is Action.MP5:
-        _mp_wash(state, config, washes=fresh_ap)
+    if action in HP_ACTIONS or action is Action.HP5:
+        hp_washes = planned_hp_washes(
+            action, extra_mp=state.extra_mp(), fresh_ap=fresh_ap
+        )
+        _hp_wash_method1(state, config, fresh_ap=fresh_ap, hp_washes=hp_washes)
+        return
+    if action in MP_ACTIONS or action is Action.MP5:
+        mp_washes = planned_mp_washes(
+            action,
+            base_int=state.base_int,
+            base_mp=state.base_mp,
+            level=state.level,
+            fresh_ap=fresh_ap,
+            hp_mode=config.hp_mode,
+        )
+        _mp_wash(state, config, fresh_ap=fresh_ap, mp_washes=mp_washes)
         return
     if action is Action.INT5:
         _dump_fresh_ap_to_int_or_luk(state, config, points=fresh_ap)
         return
     raise ValueError(f"unsupported action: {action}")
+
+
+def _try_one_hp_wash(state: CharacterState, config: SimulateConfig) -> float:
+    """One Method 1 wash. Returns HP gained, or 0.0 if Extra MP insufficient."""
+    if not state.can_remove_mp(1):
+        return 0.0
+    gain = F.method1_hp_gain(config.hp_mode)
+    state.base_hp += gain
+    state.base_mp -= F.MP_REMOVED_PER_APR
+    _assign_wash_points(state, config, 1)
+    state.method1_hp_wash_count += 1
+    return gain
+
+
+def _try_one_mp_wash(state: CharacterState, config: SimulateConfig) -> float:
+    """One MP wash. Returns net MP change, or 0.0 if wash fails."""
+    gain = F.fresh_ap_mp_gain(state.base_int, config.hp_mode)
+    state.base_mp += gain
+    if state.extra_mp() < F.MP_REMOVED_PER_APR:
+        state.base_mp -= gain
+        return 0.0
+    state.base_mp -= F.MP_REMOVED_PER_APR
+    net = gain - F.MP_REMOVED_PER_APR
+    _assign_wash_points(state, config, 1)
+    state.mp_wash_count += 1
+    return net
+
+
+def _execute_hardcore_greedy_level(
+    state: CharacterState, config: SimulateConfig, *, fresh_ap: int
+) -> None:
+    """Policy C: each AP slot — HP1 if Extra MP >= 12, else MP1 (lv30+), else dump INT."""
+    allow_mp = state.level >= mp_wash_hardcore.MP_WASH_MIN_LEVEL
+    hp_done = mp_done = 0
+    hp_gain_total = 0.0
+    net_mp_total = 0.0
+    remaining = int(fresh_ap)
+    step_notes: list[str] = []
+
+    while remaining > 0:
+        hp_gain = _try_one_hp_wash(state, config)
+        if hp_gain > 0:
+            hp_done += 1
+            hp_gain_total += hp_gain
+            remaining -= 1
+            step_notes.append("HP1")
+            continue
+        if allow_mp:
+            prev_mp_count = state.mp_wash_count
+            net_mp = _try_one_mp_wash(state, config)
+            if state.mp_wash_count > prev_mp_count:
+                mp_done += 1
+                net_mp_total += net_mp
+                remaining -= 1
+                step_notes.append("MP1")
+                continue
+        break
+
+    leftover_int = leftover_luk = 0
+    if remaining > 0:
+        leftover_int, leftover_luk = _dump_points(state, config, remaining)
+        step_notes.append(f"INT {remaining}")
+
+    notes = "greedy: " + " → ".join(step_notes) if step_notes else "greedy: （無）"
+    if hp_done:
+        notes += f"；M1×{hp_done}（+{hp_gain_total:.1f} HP）"
+    if mp_done:
+        notes += f"；MP×{mp_done}（淨增 {net_mp_total:.1f} MP）"
+    if leftover_int or leftover_luk:
+        notes += f"；剩餘 AP → INT {leftover_int} LUK {leftover_luk}"
+
+    state.plan.append(
+        LevelPlanRow(
+            level=state.level,
+            action=Action.HARDCORE_GREEDY,
+            base_int=state.base_int,
+            base_luk=state.base_luk,
+            base_hp=int(round(state.base_hp)),
+            base_mp=int(round(state.base_mp)),
+            extra_mp=int(round(state.extra_mp())),
+            fresh_ap_hp=hp_done,
+            fresh_ap_mp=mp_done,
+            fresh_ap_int=leftover_int,
+            fresh_ap_luk=leftover_luk,
+            apr_spent=hp_done + mp_done,
+            notes=notes,
+        )
+    )
 
 
 def _int_building_allowed(state: CharacterState, config: SimulateConfig) -> bool:
@@ -278,13 +408,16 @@ def _build_ap(state: CharacterState, config: SimulateConfig, *, ap: int) -> None
     )
 
 
-def _hp_wash_method1(state: CharacterState, config: SimulateConfig, washes: int) -> None:
-    """Spend fresh AP on HP, then APR MP → INT/LUK."""
+def _hp_wash_method1(
+    state: CharacterState, config: SimulateConfig, *, fresh_ap: int, hp_washes: int
+) -> None:
+    """Spend up to ``hp_washes`` fresh AP on HP (Method 1); rest → INT/LUK (0 APR)."""
+    hp_washes = max(0, min(int(hp_washes), int(fresh_ap)))
     done = 0
     to_int = 0
     to_luk = 0
     hp_gain_total = 0.0
-    for _ in range(washes):
+    for _ in range(hp_washes):
         if not state.can_remove_mp(1):
             break
         gain = F.method1_hp_gain(config.hp_mode)
@@ -295,14 +428,18 @@ def _hp_wash_method1(state: CharacterState, config: SimulateConfig, washes: int)
         to_int += i
         to_luk += l
         done += 1
-    leftover = washes - done
+    leftover = fresh_ap - done
     leftover_int = leftover_luk = 0
     if leftover > 0:
-        # Not enough Extra MP: dump remaining fresh AP into INT/LUK (0 APR).
         leftover_int, leftover_luk = _dump_points(state, config, leftover)
 
     state.method1_hp_wash_count += done
-    action = Action.HP5 if done > 0 else (Action.INT5 if leftover_int else Action.LUK5)
+    if done > 0:
+        action = hp_action_for_wash_count(done)
+    elif leftover_int:
+        action = Action.INT5
+    else:
+        action = Action.LUK5
     state.plan.append(
         LevelPlanRow(
             level=state.level,
@@ -324,19 +461,18 @@ def _hp_wash_method1(state: CharacterState, config: SimulateConfig, washes: int)
     )
 
 
-def _mp_wash(state: CharacterState, config: SimulateConfig, washes: int) -> None:
+def _mp_wash(
+    state: CharacterState, config: SimulateConfig, *, fresh_ap: int, mp_washes: int
+) -> None:
+    mp_washes = max(0, min(int(mp_washes), int(fresh_ap)))
     done = 0
     to_int = 0
     to_luk = 0
     net_mp = 0.0
-    for _ in range(washes):
+    for _ in range(mp_washes):
         gain = F.fresh_ap_mp_gain(state.base_int, config.hp_mode)
         state.base_mp += gain
-        # APR always removes 12 MP; Extra MP may go temporarily below 0 mid-wash
-        # only if we somehow started below — require post-add room conceptually:
-        # After adding, we always can remove as long as resulting MP stays >= min.
         if state.extra_mp() < F.MP_REMOVED_PER_APR:
-            # Roll back the fresh AP MP add and stop washing.
             state.base_mp -= gain
             break
         state.base_mp -= F.MP_REMOVED_PER_APR
@@ -345,13 +481,18 @@ def _mp_wash(state: CharacterState, config: SimulateConfig, washes: int) -> None
         to_int += i
         to_luk += l
         done += 1
-    leftover = washes - done
+    leftover = fresh_ap - done
     leftover_int = leftover_luk = 0
     if leftover > 0:
         leftover_int, leftover_luk = _dump_points(state, config, leftover)
 
     state.mp_wash_count += done
-    action = Action.MP5 if done > 0 else (Action.INT5 if leftover_int else Action.LUK5)
+    if done > 0:
+        action = mp_action_for_wash_count(done)
+    elif leftover_int:
+        action = Action.INT5
+    else:
+        action = Action.LUK5
     state.plan.append(
         LevelPlanRow(
             level=state.level,
