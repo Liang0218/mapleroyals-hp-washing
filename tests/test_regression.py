@@ -200,6 +200,7 @@ def test_regression_policy_labels_stable():
     assert "全點 INT" in policy_label(PolicyName.INT_DUMP_SHORTFALL)
 
 
+@pytest.mark.regression
 def test_regression_hp_mode_monotonic_apr(example_gear):
     """MAX rolls spend ≤ AVG ≤ MIN APR to hit the same display HP target."""
     avg = _sim(example_gear, policy=PolicyName.MP_WASH_SHORTFALL)

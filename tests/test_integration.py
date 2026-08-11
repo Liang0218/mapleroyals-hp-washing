@@ -5,6 +5,8 @@ from __future__ import annotations
 import csv
 from pathlib import Path
 
+import pytest
+
 from hp_wash_thief.cli import main
 from hp_wash_thief.core.api import optimize, simulate
 from hp_wash_thief.core.models import (
@@ -20,9 +22,6 @@ from hp_wash_thief.core.report import (
     write_plan_csv,
 )
 from tests.helpers import assert_apr_identity, assert_plan_invariants
-
-
-import pytest
 
 
 @pytest.mark.integration
