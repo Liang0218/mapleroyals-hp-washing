@@ -56,8 +56,8 @@ Official Windows builds are attached to [GitHub Releases](https://github.com/Lia
 
 ```bash
 # bump version in pyproject.toml first, then:
-git tag v0.2.0
-git push origin v0.2.0
+git tag v0.3.0
+git push origin v0.3.0
 ```
 
 GitHub Actions (`.github/workflows/release-windows.yml`) runs tests, builds with PyInstaller on `windows-latest`, and uploads the zip to Releases.
@@ -113,7 +113,7 @@ python -m hp_wash_thief optimize \
 
 Given INT gear segments, `int_reset_level`, and `target_hp`:
 
-1. Best (lowest APR) `target_base_int` + phase params for **Policy A–E**
+1. Best (lowest APR) `target_base_int` + phase params for **Policy A–D**
 2. Cross-policy comparison: which total APR is lower, by how much, and final HP
 3. Global winner with full per-level plan (CSV: `HP5` / `MP5` / `INT5` / `M2` / `RESET_INT`)
 
@@ -127,17 +127,6 @@ Early phase lasts **until `target_base_int` is reached** (not a fixed level).
 | --- | --- | --- |
 | `>= 60` | HP wash ×5 (Method 1) | HP wash ×5 (Method 1) |
 | `< 60` | MP wash ×5 (5 APR) | 5 fresh AP → INT (0 wash APR that level) |
-
-### E — deferred MP5 (`deferred_mp_shortfall`, hybrid A/B)
-
-Same ≥60 → HP×5 rule. On shortfall (`< 60`):
-
-| Level | Action |
-| --- | --- |
-| `< mp5_start_level` | 5 AP → INT (like B) |
-| `≥ mp5_start_level` | MP wash ×5 (like A) |
-
-Optimizer also searches `mp5_start_level` (default grid 31–90).
 
 ### C — hardcore A (`mp_wash_hardcore`, from level 10)
 
@@ -153,7 +142,7 @@ Levels 10–29 skip step 2 (MP wash not allowed). Levels 2–9 still use BUILD (
 
 After target INT: same as A/B (dense MP wash → late HP wash → Method 2 → INT reset).
 
-Optimizer searches `target_base_int` + `mp_wash_end` (+ `mp5_start_level` for E); threshold fixed at 60 for A/B/E.
+Optimizer searches `target_base_int` + `mp_wash_end`; threshold fixed at 60 for A/B.
 ## APR cost
 
 ```

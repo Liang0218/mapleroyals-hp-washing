@@ -39,21 +39,18 @@ HP_MODE_LABELS = {
     "最大 (max)": "max",
 }
 OPT_POLICY_LABELS = {
-    "五種都跑 (ABCDE)": "all",
+    "四種都跑 (ABCD)": "all",
     "三種都跑 (ABD)": "abd",
-    "三種都跑 (ABE)": "abe",
     "A：不足時 MP wash": "mp_wash_shortfall",
     "B：不足時全點 INT": "int_dump_shortfall",
     "C：硬核 A（≥12 逐 AP；30+ MP1）": "mp_wash_hardcore",
     "D：純樸（達標 INT 前只堆 INT）": "int_only_plain",
-    "E：延遲 MP5（先 INT 後 MP）": "deferred_mp_shortfall",
 }
 SIM_POLICY_LABELS = {
     "A：不足時 MP wash": "mp_wash_shortfall",
     "B：不足時全點 INT": "int_dump_shortfall",
     "C：硬核 A（≥12 逐 AP；30+ MP1）": "mp_wash_hardcore",
     "D：純樸（達標 INT 前只堆 INT）": "int_only_plain",
-    "E：延遲 MP5（先 INT 後 MP）": "deferred_mp_shortfall",
 }
 
 
@@ -238,7 +235,7 @@ class HpWashApp(ctk.CTk):
 
         ctk.CTkLabel(frame, text="政策").grid(row=0, column=0, sticky="w", padx=6, pady=8)
         policies = ctk.CTkOptionMenu(frame, values=list(OPT_POLICY_LABELS.keys()))
-        policies.set("五種都跑 (ABCDE)")
+        policies.set("四種都跑 (ABCD)")
         policies.grid(row=0, column=1, sticky="w", padx=6, pady=8)
         self.opt_policies = policies
 
@@ -263,7 +260,6 @@ class HpWashApp(ctk.CTk):
         specs = [
             ("target_base_int", "目標 base INT", "350"),
             ("mp_wash_end", "MP wash 結束等級", "100"),
-            ("mp5_start_level", "E：開始 MP5 等級", "50"),
         ]
         for i, (key, label, default) in enumerate(specs, start=1):
             ctk.CTkLabel(frame, text=label).grid(row=0, column=i, sticky="w", padx=6)
@@ -286,7 +282,7 @@ class HpWashApp(ctk.CTk):
 
         enabled = ctk.CTkCheckBox(
             frame,
-            text="中途接續（填目前等級／HP／MP／INT，從剩餘 AP 起算最省路徑）",
+            text="中途接續（填目前等級／HP／MP／INT，從尚未點的 AP 起算最省路徑）",
             command=lambda p=prefix: self._toggle_resume(p),
         )
         enabled.grid(row=0, column=0, columnspan=6, sticky="w", padx=6, pady=(8, 4))
@@ -294,11 +290,11 @@ class HpWashApp(ctk.CTk):
 
         fields = [
             ("from_level", "目前等級", ""),
-            ("base_hp", "base HP", ""),
-            ("base_mp", "base MP", ""),
-            ("extra_mp", "Extra MP（可代替 base MP）", ""),
+            ("base_hp", "base HP（APR 顯示的數值）", ""),
+            ("base_mp", "base MP（APR 顯示的數值）", ""),
             ("base_int", "base INT", ""),
             ("base_luk", "base LUK", "4"),
+            ("base_dex", "base DEX", "25"),
         ]
         for i, (key, label, default) in enumerate(fields):
             ctk.CTkLabel(frame, text=label).grid(row=1, column=i, sticky="w", padx=6)
@@ -309,8 +305,7 @@ class HpWashApp(ctk.CTk):
             setattr(self, f"{prefix}_resume_{key}", entry)
 
         more = [
-            ("base_dex", "base DEX", "25"),
-            ("fresh_ap", "本等剩餘 AP（70/120 未花職轉 AP 填 10）", "5"),
+            ("fresh_ap", "尚未點的 AP", "5"),
         ]
         for i, (key, label, default) in enumerate(more):
             ctk.CTkLabel(frame, text=label).grid(row=3, column=i, sticky="w", padx=6)
@@ -320,12 +315,12 @@ class HpWashApp(ctk.CTk):
             setattr(self, f"{prefix}_resume_{key}", entry)
 
         reset_done = ctk.CTkCheckBox(frame, text="INT 已洗回（base INT=4）")
-        reset_done.grid(row=4, column=2, sticky="w", padx=6, pady=(0, 8))
+        reset_done.grid(row=4, column=1, sticky="w", padx=6, pady=(0, 8))
         setattr(self, f"{prefix}_resume_int_reset_done", reset_done)
 
         note = ctk.CTkLabel(
             frame,
-            text="語意：已升到該等（HP/MP 含自然／職轉加成），本等 AP 尚未分配。報告 APR 為接續後剩餘。",
+            text="語意：已升到該等；base HP／MP 請填 APR 視窗看到的數值。報告 APR 為接續後剩餘。",
             text_color=("gray30", "gray70"),
         )
         note.grid(row=5, column=0, columnspan=6, sticky="w", padx=6, pady=(0, 8))
@@ -338,7 +333,6 @@ class HpWashApp(ctk.CTk):
             "from_level",
             "base_hp",
             "base_mp",
-            "extra_mp",
             "base_int",
             "base_luk",
             "base_dex",
@@ -495,23 +489,21 @@ class HpWashApp(ctk.CTk):
         if not bool(getattr(self, f"{prefix}_resume_enabled").get()):
             return None
         level = self._int(getattr(self, f"{prefix}_resume_from_level"), "目前等級")
-        base_hp = self._float(getattr(self, f"{prefix}_resume_base_hp"), "base HP")
+        base_hp = self._float(
+            getattr(self, f"{prefix}_resume_base_hp"), "base HP（APR 顯示的數值）"
+        )
+        base_mp = self._float(
+            getattr(self, f"{prefix}_resume_base_mp"), "base MP（APR 顯示的數值）"
+        )
         base_int = self._int(getattr(self, f"{prefix}_resume_base_int"), "base INT")
         base_luk = self._int(getattr(self, f"{prefix}_resume_base_luk"), "base LUK")
         base_dex = self._int(getattr(self, f"{prefix}_resume_base_dex"), "base DEX")
         fresh_raw = getattr(self, f"{prefix}_resume_fresh_ap").get().strip()
         fresh_ap = int(fresh_raw) if fresh_raw else None
-        mp_raw = getattr(self, f"{prefix}_resume_base_mp").get().strip()
-        emp_raw = getattr(self, f"{prefix}_resume_extra_mp").get().strip()
-        base_mp = float(mp_raw) if mp_raw else None
-        extra_mp = float(emp_raw) if emp_raw else None
-        if base_mp is None and extra_mp is None:
-            raise ValueError("中途接續請填 base MP 或 Extra MP（擇一即可）。")
         return ResumeFrom.from_stats(
             level=level,
             base_hp=base_hp,
             base_mp=base_mp,
-            extra_mp=extra_mp,
             base_int=base_int,
             base_luk=base_luk,
             base_dex=base_dex,
@@ -531,19 +523,12 @@ class HpWashApp(ctk.CTk):
                     PolicyName.INT_DUMP_SHORTFALL,
                     PolicyName.MP_WASH_HARDCORE,
                     PolicyName.INT_ONLY_PLAIN,
-                    PolicyName.DEFERRED_MP_SHORTFALL,
                 ]
             elif policies_raw == "abd":
                 policies = [
                     PolicyName.MP_WASH_SHORTFALL,
                     PolicyName.INT_DUMP_SHORTFALL,
                     PolicyName.INT_ONLY_PLAIN,
-                ]
-            elif policies_raw == "abe":
-                policies = [
-                    PolicyName.MP_WASH_SHORTFALL,
-                    PolicyName.INT_DUMP_SHORTFALL,
-                    PolicyName.DEFERRED_MP_SHORTFALL,
                 ]
             else:
                 policies = [PolicyName(policies_raw)]
@@ -589,7 +574,6 @@ class HpWashApp(ctk.CTk):
                 int_gear=shared["int_gear"],
                 int_gear_after_reset=shared["int_gear_after_reset"],
                 mp_wash_end=self._int(self.sim_mp_wash_end, "MP wash 結束等級"),
-                mp5_start_level=self._int(self.sim_mp5_start_level, "E：開始 MP5 等級"),
                 quest_equip_hp=shared["quest_equip_hp"],
                 hp_mode=shared["hp_mode"],
                 auto_method2=bool(self.sim_auto_method2.get()),

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "hp-wash-thief"
-version = "0.2.0"
+version = "0.3.0"
 description = "MapleRoyals Thief HP Wash APR Optimizer (core + CLI + CustomTkinter GUI)"
 readme = "README.md"
 requires-python = ">=3.11"

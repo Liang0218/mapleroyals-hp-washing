@@ -12,7 +12,6 @@ class PolicyName(str, Enum):
     INT_DUMP_SHORTFALL = "int_dump_shortfall"
     MP_WASH_HARDCORE = "mp_wash_hardcore"
     INT_ONLY_PLAIN = "int_only_plain"
-    DEFERRED_MP_SHORTFALL = "deferred_mp_shortfall"
 
 
 class HpMode(str, Enum):
@@ -186,7 +185,6 @@ class OptimizeConfig:
             PolicyName.INT_DUMP_SHORTFALL,
             PolicyName.MP_WASH_HARDCORE,
             PolicyName.INT_ONLY_PLAIN,
-            PolicyName.DEFERRED_MP_SHORTFALL,
         ]
     )
     quest_equip_hp: int = 0
@@ -204,9 +202,6 @@ class OptimizeConfig:
     target_base_int_max: int = 500
     target_base_int_step: int = 10
     mp_wash_end_min: int = 50
-    # Policy E: shortfall switches from INT dump → MP5 at this level (searched).
-    mp5_start_level_min: int = 31
-    mp5_start_level_max: int = 90
     top_n: int = 5
     # Optional: continue from an in-progress character instead of level 1.
     resume_from: Optional[ResumeFrom] = None
@@ -229,8 +224,6 @@ class SimulateConfig:
     mw_percent: float = 0.10
     mw_from_level: int = 10
     int_gear_after_reset: int = 50
-    # Policy E only: before this level, shortfall → INT5; from here → MP5.
-    mp5_start_level: int = 50
     resume_from: Optional[ResumeFrom] = None
 
 
@@ -283,7 +276,6 @@ class SimulateResult:
     reached_target: bool
     apr: AprBreakdown
     plan: list[LevelPlanRow] = field(default_factory=list)
-    mp5_start_level: Optional[int] = None
     resume_from: Optional[ResumeFrom] = None
 
 
@@ -301,7 +293,6 @@ class CandidateResult:
     reached_target: bool
     apr: AprBreakdown
     plan: list[LevelPlanRow] = field(default_factory=list)
-    mp5_start_level: Optional[int] = None
     resume_from: Optional[ResumeFrom] = None
 
     @property
@@ -323,7 +314,6 @@ class CandidateResult:
             reached_target=result.reached_target,
             apr=result.apr,
             plan=result.plan,
-            mp5_start_level=result.mp5_start_level,
             resume_from=result.resume_from,
         )
 
@@ -341,7 +331,6 @@ class ComparisonResult:
     policy_b: Optional[CandidateResult]
     policy_c: Optional[CandidateResult]
     policy_d: Optional[CandidateResult]
-    policy_e: Optional[CandidateResult]
     winner: Optional[CandidateResult]
     apr_delta: Optional[int]  # winner_apr - runner_up_apr (negative means winner cheaper)
     hp_delta: Optional[int]

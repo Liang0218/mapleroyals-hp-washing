@@ -33,8 +33,7 @@ def optimize(config: OptimizeConfig) -> OptimizeResult:
     b_best = _best_of(by_policy, PolicyName.INT_DUMP_SHORTFALL)
     c_best = _best_of(by_policy, PolicyName.MP_WASH_HARDCORE)
     d_best = _best_of(by_policy, PolicyName.INT_ONLY_PLAIN)
-    e_best = _best_of(by_policy, PolicyName.DEFERRED_MP_SHORTFALL)
-    comparison = _compare_policies(a_best, b_best, c_best, d_best, e_best)
+    comparison = _compare_policies(a_best, b_best, c_best, d_best)
 
     winner = comparison.winner
     if winner is None and top_candidates:
@@ -105,27 +104,6 @@ def _int_search_bounds(config: OptimizeConfig) -> tuple[int, int]:
     return lo, hi
 
 
-def _mp5_start_bounds(config: OptimizeConfig) -> tuple[int, int]:
-    lo = config.mp5_start_level_min
-    hi = config.mp5_start_level_max
-    resume = config.resume_from
-    if resume is not None and not resume.int_reset_done:
-        # Values below current level are equivalent from here on; collapse them.
-        lo = max(lo, resume.level)
-    if lo > hi:
-        hi = lo
-    return lo, hi
-
-
-def _mp5_start_values(config: OptimizeConfig, *, coarse: bool) -> list[int]:
-    step = 10 if coarse else 5
-    low, high = _mp5_start_bounds(config)
-    values = list(range(low, high + 1, step))
-    if high not in values:
-        values.append(high)
-    return values
-
-
 def _search(config: OptimizeConfig, policy: PolicyName, *, coarse: bool) -> Iterable[CandidateResult]:
     int_step = 40 if coarse else config.target_base_int_step
     mp_step = 10 if coarse else 5
@@ -145,23 +123,16 @@ def _search(config: OptimizeConfig, policy: PolicyName, *, coarse: bool) -> Iter
         mp_values.append(mp_max)
 
     threshold = config.extra_mp_threshold
-    mp5_starts: list[Optional[int]]
-    if policy is PolicyName.DEFERRED_MP_SHORTFALL:
-        mp5_starts = list(_mp5_start_values(config, coarse=coarse))
-    else:
-        mp5_starts = [None]
 
     for target_base_int in int_values:
         for mp_wash_end in mp_values:
-            for mp5_start in mp5_starts:
-                yield _run(
-                    config,
-                    policy,
-                    target_base_int=target_base_int,
-                    mp_wash_end=mp_wash_end,
-                    extra_mp_threshold=threshold,
-                    mp5_start_level=mp5_start,
-                )
+            yield _run(
+                config,
+                policy,
+                target_base_int=target_base_int,
+                mp_wash_end=mp_wash_end,
+                extra_mp_threshold=threshold,
+            )
 
 
 def _refine_around(
@@ -181,30 +152,15 @@ def _refine_around(
     mp_candidates = _neighbors(mp_center, low=mp_min, high=mp_max, step=5, radius=2)
     threshold = config.extra_mp_threshold
 
-    if policy is PolicyName.DEFERRED_MP_SHORTFALL:
-        mp5_lo, mp5_hi = _mp5_start_bounds(config)
-        start_center = seed.mp5_start_level or mp5_lo
-        mp5_candidates = _neighbors(
-            start_center,
-            low=mp5_lo,
-            high=mp5_hi,
-            step=5,
-            radius=2,
-        )
-    else:
-        mp5_candidates = [None]
-
     for target_base_int in int_candidates:
         for mp_wash_end in mp_candidates:
-            for mp5_start in mp5_candidates:
-                yield _run(
-                    config,
-                    policy,
-                    target_base_int=target_base_int,
-                    mp_wash_end=mp_wash_end,
-                    extra_mp_threshold=threshold,
-                    mp5_start_level=mp5_start,
-                )
+            yield _run(
+                config,
+                policy,
+                target_base_int=target_base_int,
+                mp_wash_end=mp_wash_end,
+                extra_mp_threshold=threshold,
+            )
 
 
 def _run(
@@ -214,7 +170,6 @@ def _run(
     target_base_int: int,
     mp_wash_end: int,
     extra_mp_threshold: int,
-    mp5_start_level: Optional[int],
 ) -> CandidateResult:
     sim = simulate(
         SimulateConfig(
@@ -232,7 +187,6 @@ def _run(
             mw_percent=config.mw_percent,
             mw_from_level=config.mw_from_level,
             int_gear_after_reset=config.int_gear_after_reset,
-            mp5_start_level=mp5_start_level if mp5_start_level is not None else 50,
             resume_from=config.resume_from,
         )
     )
@@ -256,7 +210,6 @@ def _param_key(c: CandidateResult) -> tuple:
         c.target_base_int,
         c.mp_wash_end,
         c.extra_mp_threshold,
-        c.mp5_start_level,
     )
 
 
@@ -280,7 +233,6 @@ def _candidate_sort_key(c: CandidateResult) -> tuple:
         c.target_base_int,
         c.base_int_peak,
         c.mp_wash_end,
-        c.mp5_start_level if c.mp5_start_level is not None else 0,
         c.int_reached_level,
         c.policy.value,
     )
@@ -291,12 +243,11 @@ def _compare_policies(
     b: Optional[CandidateResult],
     c: Optional[CandidateResult],
     d: Optional[CandidateResult],
-    e: Optional[CandidateResult],
 ) -> ComparisonResult:
-    """Rank A–E bests; delta is winner vs runner-up."""
-    available = [x for x in (a, b, c, d, e) if x is not None]
+    """Rank A–D bests; delta is winner vs runner-up."""
+    available = [x for x in (a, b, c, d) if x is not None]
     if not available:
-        return ComparisonResult(a, b, c, d, e, None, None, None)
+        return ComparisonResult(a, b, c, d, None, None, None)
 
     ranked = sorted(available, key=_candidate_sort_key)
     winner = ranked[0]
@@ -306,7 +257,6 @@ def _compare_policies(
         policy_b=b,
         policy_c=c,
         policy_d=d,
-        policy_e=e,
         winner=winner,
         apr_delta=(winner.total_apr - runner_up.total_apr) if runner_up else None,
         hp_delta=(winner.final_display_hp - runner_up.final_display_hp) if runner_up else None,

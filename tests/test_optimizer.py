@@ -45,7 +45,7 @@ def test_optimize_abd_policies_narrow():
     assert result.winner.int_reached_level > 0
 
 
-def test_optimize_all_policies_abcde():
+def test_optimize_all_policies_abcd():
     result = optimize(
         OptimizeConfig(
             target_hp=22000,
@@ -55,17 +55,13 @@ def test_optimize_all_policies_abcde():
             target_base_int_max=280,
             target_base_int_step=40,
             mp_wash_end_min=70,
-            mp5_start_level_min=40,
-            mp5_start_level_max=70,
             top_n=3,
         )
     )
     assert PolicyName.MP_WASH_HARDCORE in result.by_policy
     assert PolicyName.INT_ONLY_PLAIN in result.by_policy
-    assert PolicyName.DEFERRED_MP_SHORTFALL in result.by_policy
     assert result.comparison.policy_c is not None
     assert result.comparison.policy_d is not None
-    assert result.comparison.policy_e is not None
     assert result.comparison.winner is not None
     bests = [
         c
@@ -74,7 +70,6 @@ def test_optimize_all_policies_abcde():
             result.comparison.policy_b,
             result.comparison.policy_c,
             result.comparison.policy_d,
-            result.comparison.policy_e,
         )
         if c is not None
     ]

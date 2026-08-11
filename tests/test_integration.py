@@ -10,7 +10,6 @@ import pytest
 from hp_wash_thief.cli import main
 from hp_wash_thief.core.api import optimize, simulate
 from hp_wash_thief.core.models import (
-    Action,
     HpMode,
     OptimizeConfig,
     PolicyName,
@@ -32,7 +31,6 @@ def test_integration_simulate_all_policies_with_example_gear(example_gear):
         PolicyName.INT_DUMP_SHORTFALL,
         PolicyName.MP_WASH_HARDCORE,
         PolicyName.INT_ONLY_PLAIN,
-        PolicyName.DEFERRED_MP_SHORTFALL,
     ]
     for policy in policies:
         result = simulate(
@@ -43,7 +41,6 @@ def test_integration_simulate_all_policies_with_example_gear(example_gear):
                 int_reset_level=155,
                 int_gear=example_gear,
                 mp_wash_end=130,
-                mp5_start_level=50,
                 hp_mode=HpMode.AVG,
                 int_gear_after_reset=50,
             )
@@ -57,8 +54,8 @@ def test_integration_simulate_all_policies_with_example_gear(example_gear):
 
 
 @pytest.mark.integration
-def test_integration_optimize_abe_exports_csv_and_report(example_gear, tmp_path):
-    """Optimize A/B/E → Chinese report + winner CSV with action_desc."""
+def test_integration_optimize_ab_exports_csv_and_report(example_gear, tmp_path):
+    """Optimize A/B → Chinese report + winner CSV with action_desc."""
     result = optimize(
         OptimizeConfig(
             target_hp=27000,
@@ -67,14 +64,11 @@ def test_integration_optimize_abe_exports_csv_and_report(example_gear, tmp_path)
             policies=[
                 PolicyName.MP_WASH_SHORTFALL,
                 PolicyName.INT_DUMP_SHORTFALL,
-                PolicyName.DEFERRED_MP_SHORTFALL,
             ],
             target_base_int_min=280,
             target_base_int_max=360,
             target_base_int_step=40,
             mp_wash_end_min=100,
-            mp5_start_level_min=40,
-            mp5_start_level_max=70,
             int_gear_after_reset=50,
             top_n=3,
         )
@@ -84,13 +78,12 @@ def test_integration_optimize_abe_exports_csv_and_report(example_gear, tmp_path)
     assert_apr_identity(result.winner.apr)
     assert result.comparison.policy_a is not None
     assert result.comparison.policy_b is not None
-    assert result.comparison.policy_e is not None
     assert result.comparison.apr_delta is not None
 
     report = format_optimize_report(result)
     assert "政策比較" in report
     assert "優勝方案" in report
-    assert "A：" in report or "B：" in report or "E：" in report
+    assert "A：" in report or "B：" in report
 
     csv_path = tmp_path / "winner.csv"
     write_plan_csv(result.winner.plan, csv_path)
@@ -103,8 +96,8 @@ def test_integration_optimize_abe_exports_csv_and_report(example_gear, tmp_path)
 
 
 @pytest.mark.integration
-def test_integration_optimize_abcde_finds_feasible_winner(example_gear):
-    """Full A–E search still yields a feasible global winner."""
+def test_integration_optimize_abcd_finds_feasible_winner(example_gear):
+    """Full A–D search still yields a feasible global winner."""
     result = optimize(
         OptimizeConfig(
             target_hp=25000,
@@ -114,8 +107,6 @@ def test_integration_optimize_abcde_finds_feasible_winner(example_gear):
             target_base_int_max=360,
             target_base_int_step=40,
             mp_wash_end_min=90,
-            mp5_start_level_min=40,
-            mp5_start_level_max=70,
             int_gear_after_reset=50,
             top_n=5,
         )
@@ -125,7 +116,6 @@ def test_integration_optimize_abcde_finds_feasible_winner(example_gear):
         PolicyName.INT_DUMP_SHORTFALL,
         PolicyName.MP_WASH_HARDCORE,
         PolicyName.INT_ONLY_PLAIN,
-        PolicyName.DEFERRED_MP_SHORTFALL,
     }
     assert result.winner is not None
     assert result.winner.reached_target
@@ -136,7 +126,7 @@ def test_integration_optimize_abcde_finds_feasible_winner(example_gear):
 
 @pytest.mark.integration
 def test_integration_cli_optimize_and_simulate(example_gear_path: Path, tmp_path: Path):
-    """CLI optimize (E) and simulate (E) both write CSV."""
+    """CLI optimize (B) and simulate (B) both write CSV."""
     opt_csv = tmp_path / "opt.csv"
     rc = main(
         [
@@ -148,7 +138,7 @@ def test_integration_cli_optimize_and_simulate(example_gear_path: Path, tmp_path
             "--int-gear-file",
             str(example_gear_path),
             "--policies",
-            "deferred_mp_shortfall",
+            "int_dump_shortfall",
             "--csv",
             str(opt_csv),
         ]
@@ -162,7 +152,7 @@ def test_integration_cli_optimize_and_simulate(example_gear_path: Path, tmp_path
         [
             "simulate",
             "--policy",
-            "deferred_mp_shortfall",
+            "int_dump_shortfall",
             "--target-base-int",
             "320",
             "--target-hp",
@@ -173,8 +163,6 @@ def test_integration_cli_optimize_and_simulate(example_gear_path: Path, tmp_path
             str(example_gear_path),
             "--mp-wash-end",
             "120",
-            "--mp5-start-level",
-            "55",
             "--csv",
             str(sim_csv),
         ]
@@ -183,32 +171,3 @@ def test_integration_cli_optimize_and_simulate(example_gear_path: Path, tmp_path
     assert sim_csv.is_file()
     header = sim_csv.read_text(encoding="utf-8-sig").splitlines()[0]
     assert "action_desc" in header
-
-
-@pytest.mark.integration
-def test_integration_policy_e_plan_transitions(example_gear):
-    """Policy E plan: INT dump before mp5_start, MP5 allowed after, then reset."""
-    result = simulate(
-        SimulateConfig(
-            policy=PolicyName.DEFERRED_MP_SHORTFALL,
-            target_base_int=300,
-            target_hp=24000,
-            int_reset_level=150,
-            int_gear=example_gear,
-            mp_wash_end=125,
-            mp5_start_level=60,
-            int_gear_after_reset=50,
-        )
-    )
-    assert_plan_invariants(result)
-    before = [r for r in result.plan if 31 <= r.level < 60]
-    after = [
-        r
-        for r in result.plan
-        if 60 <= r.level <= result.int_reached_level and result.int_reached_level
-    ]
-    assert before
-    assert all(r.action is not Action.MP5 for r in before)
-    # After start, shortfall may be MP5 (or HP5 if Extra MP enough).
-    if after:
-        assert any(r.action in {Action.MP5, Action.HP5, Action.INT5} for r in after)

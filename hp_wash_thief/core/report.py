@@ -33,7 +33,6 @@ def policy_short(policy: PolicyName) -> str:
         PolicyName.INT_DUMP_SHORTFALL: "B",
         PolicyName.MP_WASH_HARDCORE: "C",
         PolicyName.INT_ONLY_PLAIN: "D",
-        PolicyName.DEFERRED_MP_SHORTFALL: "E",
     }.get(policy, policy.value)
 
 
@@ -44,7 +43,6 @@ def _comparison_slots(result: OptimizeResult) -> list[tuple[PolicyName, Optional
         (PolicyName.INT_DUMP_SHORTFALL, comp.policy_b),
         (PolicyName.MP_WASH_HARDCORE, comp.policy_c),
         (PolicyName.INT_ONLY_PLAIN, comp.policy_d),
-        (PolicyName.DEFERRED_MP_SHORTFALL, comp.policy_e),
     ]
 
 
@@ -104,7 +102,7 @@ def format_ui_guide() -> str:
             "快速開始",
             "",
             "  1. 裝備 Equipment — 設定裝備 INT（預設 0，請先做這步）",
-            "  2. 最佳化 Optimize — 自動搜尋最低 APR（A/B/C/D/E 比較）",
+            "  2. 最佳化 Optimize — 自動搜尋最低 APR（A/B/C/D 比較）",
             "  3. 模擬 Simulate — 手動參數跑單一方案",
             "  4. 說明 Actions — 查動作代碼意思",
             "",
@@ -112,8 +110,8 @@ def format_ui_guide() -> str:
             "改完直接按最佳化／模擬，會自動帶入智裝 INT。",
             "INT 洗回等級、reset 後智裝 INT 在 Optimize 參數列設定。",
             "",
-            "中途接續：勾選後填目前等級、base HP／MP（或 Extra MP）、INT 等，",
-            "會從該等剩餘 AP 起算，搜尋後面最省 APR 的做法（報告 APR 為剩餘）。",
+            "中途接續：勾選後填目前等級、base HP／MP（APR 顯示數值）、INT 等，",
+            "會從尚未點的 AP 起算，搜尋後面最省 APR 的做法（報告 APR 為剩餘）。",
         ]
     )
 
@@ -138,11 +136,6 @@ def format_action_legend() -> str:
         "  達標 INT 前：30 等前 BUILD；31 等起 5 AP 全點 INT（不洗 HP/MP）。",
         "  達標 INT 後：與 A/B/C 相同（MP wash → HP wash → M2 → INT reset）。",
         "",
-        policy_label(PolicyName.DEFERRED_MP_SHORTFALL),
-        "  Extra MP ≥60 → HP wash×5；不足時：",
-        "  在「開始 MP5 等級」前全點 INT（像 B），該等級起改 MP wash×5（像 A）。",
-        "  優化器會搜尋最佳「開始 MP5 等級」。",
-        "",
         "【動作代碼】",
         "",
     ]
@@ -164,8 +157,6 @@ def policy_label(policy: PolicyName) -> str:
         return "C：硬核 A（≥12 MP 即洗；逐 AP 貪婪 HP1/MP1）"
     if policy is PolicyName.INT_ONLY_PLAIN:
         return "D：純樸（達標 INT 前只堆 INT）"
-    if policy is PolicyName.DEFERRED_MP_SHORTFALL:
-        return "E：延遲 MP5（先 INT 後 MP wash，結合 A/B）"
     return policy.value
 
 
@@ -179,8 +170,6 @@ def policy_playbook(policy: PolicyName) -> str:
         return "10 等起：每 AP 檢查 Extra MP≥12 洗 HP1；30+ 不足洗 MP1"
     if policy is PolicyName.INT_ONLY_PLAIN:
         return "達標 INT 前只堆 INT；達標後 MP wash→HP wash 洗到目標 HP"
-    if policy is PolicyName.DEFERRED_MP_SHORTFALL:
-        return "≥60 洗 HP×5；不足時先點 INT，到指定等級後才改 MP wash×5"
     return policy.value
 
 
@@ -198,7 +187,7 @@ def _resume_block(resume: Optional[ResumeFrom]) -> list[str]:
             f"base MP {int(round(resume.base_mp))}（Extra MP≈{emp}）｜"
             f"INT {resume.base_int}｜LUK {resume.base_luk}｜DEX {resume.base_dex}"
         ),
-        f"  本等剩餘 AP {fresh}"
+        f"  尚未點的 AP {fresh}"
         + ("｜INT 已洗回" if resume.int_reset_done else "")
         + "｜下列 APR 為接續後剩餘",
         "",
@@ -221,8 +210,6 @@ def _lazy_summary_optimize(result: OptimizeResult) -> list[str]:
         f"MP wash 洗到 Lv{w.mp_wash_end}",
         f"約 Lv{w.int_reached_level} 前達標 INT",
     ]
-    if w.mp5_start_level is not None:
-        key_bits.append(f"不足時 Lv{w.mp5_start_level} 起才 MP5")
     lines.append("  ★ 關鍵參數：" + "｜".join(key_bits))
     hit = "有" if w.reached_target else "無"
     apr_label = "剩餘 APR" if result.resume_from else "總 APR"
@@ -249,8 +236,6 @@ def _lazy_summary_simulate(c: CandidateResult) -> list[str]:
     lines.append(f"  ★ 政策：{policy_label(c.policy)}")
     lines.append(f"  ★ 怎麼洗：{policy_playbook(c.policy)}")
     param = f"base INT 目標 {c.target_base_int}｜MP wash 至 Lv{c.mp_wash_end}"
-    if c.mp5_start_level is not None:
-        param += f"｜MP5 起始 Lv{c.mp5_start_level}"
     lines.append(f"  ★ 參數：{param}")
     hit = "有" if c.reached_target else "無"
     apr_label = "剩餘 APR" if c.resume_from else "總 APR"
@@ -292,13 +277,11 @@ def _comparison_notes(result: OptimizeResult) -> list[str]:
 
 
 def _candidate_row_values(c: CandidateResult) -> tuple[str, ...]:
-    mp5 = str(c.mp5_start_level) if c.mp5_start_level is not None else "—"
     return (
         policy_short(c.policy),
         str(c.target_base_int),
         str(c.int_reached_level),
         str(c.mp_wash_end),
-        mp5,
         str(c.total_apr),
         str(c.final_display_hp),
         "是" if c.reached_target else "否",
@@ -312,7 +295,6 @@ def build_optimize_tables(result: OptimizeResult) -> list[ReportTable]:
         "目標INT",
         "達標等級",
         "洗MP結束等級",
-        "MP5起始",
         "總APR",
         "最終HP",
         "達標",
@@ -320,7 +302,7 @@ def build_optimize_tables(result: OptimizeResult) -> list[ReportTable]:
     compare_rows: list[tuple[str, ...]] = []
     for pol, cand in _comparison_slots(result):
         if cand is None:
-            compare_rows.append((policy_short(pol), "—", "—", "—", "—", "—", "—", "未執行"))
+            compare_rows.append((policy_short(pol), "—", "—", "—", "—", "—", "未執行"))
         else:
             compare_rows.append(_candidate_row_values(cand))
     title = f"政策比較（{comparison_letters(result)}）"
@@ -460,14 +442,10 @@ def _policy_block(title: str, c: Optional[CandidateResult]) -> str:
     if c is None:
         return f"  {title}：（未執行）"
     hit = "是" if c.reached_target else "否"
-    mp5_line = ""
-    if c.mp5_start_level is not None:
-        mp5_line = f"  不足時 MP5 起始等級={c.mp5_start_level}\n"
     return (
         f"  {title}：\n"
         f"    目標 base INT={c.target_base_int}  達標等級={c.int_reached_level}  "
         f"MP wash 結束={c.mp_wash_end}  {extra_mp_threshold_display(c.policy, c.extra_mp_threshold)}\n"
-        f"{mp5_line}"
         f"    總 APR={c.total_apr}  最終 HP={c.final_display_hp}  達標={hit}\n"
         f"    APR 拆解：MP wash={c.apr.mp_wash_count}  Method1={c.apr.method1_hp_wash_count}  "
         f"Method2={c.apr.method2_hp_wash_count}  INT 洗回={c.apr.int_reset_apr}"
@@ -477,19 +455,12 @@ def _policy_block(title: str, c: Optional[CandidateResult]) -> str:
 def _winner_block(c: Optional[CandidateResult]) -> str:
     if c is None:
         return "  （無優勝方案）"
-    mp5_line = ""
-    if c.mp5_start_level is not None:
-        mp5_line = (
-            f"  不足時 MP5 起始等級={c.mp5_start_level}  "
-            f"（此前 shortfall 全點 INT，之後才 MP wash×5）\n"
-        )
     return (
         f"  政策={policy_label(c.policy)}\n"
         f"  目標 base INT={c.target_base_int}\n"
         f"  達標等級={c.int_reached_level}  "
         f"（early 階段＝到目標 INT 為止，非固定等級）\n"
         f"  MP wash 結束等級={c.mp_wash_end}\n"
-        f"{mp5_line}"
         f"  {extra_mp_threshold_display(c.policy, c.extra_mp_threshold)}\n"
         f"  INT reset 後 int_gear={c.int_gear_after_reset}\n"
         f"  base INT 峰值={c.base_int_peak}\n"

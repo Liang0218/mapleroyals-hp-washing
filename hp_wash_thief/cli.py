@@ -34,14 +34,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         choices=[
             "all",
             "abd",
-            "abe",
             "mp_wash_shortfall",
             "int_dump_shortfall",
             "mp_wash_hardcore",
             "int_only_plain",
-            "deferred_mp_shortfall",
         ],
-        help="Which policies: all=ABCDE (default), abd/abe subsets, or one policy",
+        help="Which policies: all=ABCD (default), abd subset, or one policy",
     )
     opt.add_argument("--csv", dest="csv_path", default=None, help="Write winner plan CSV")
     opt.add_argument("--top", type=int, default=5, help="Top-N candidates to retain")
@@ -57,17 +55,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             "int_dump_shortfall",
             "mp_wash_hardcore",
             "int_only_plain",
-            "deferred_mp_shortfall",
         ],
     )
     sim.add_argument("--target-base-int", type=int, required=True)
     sim.add_argument("--mp-wash-end", type=int, default=135)
-    sim.add_argument(
-        "--mp5-start-level",
-        type=int,
-        default=50,
-        help="Policy E only: shortfall uses INT dump before this level, MP5 from here",
-    )
     sim.add_argument("--csv", dest="csv_path", default=None, help="Write plan CSV")
     sim.add_argument(
         "--no-method2",
@@ -191,19 +182,12 @@ def _parse_policies(value: str) -> list[PolicyName]:
             PolicyName.INT_DUMP_SHORTFALL,
             PolicyName.MP_WASH_HARDCORE,
             PolicyName.INT_ONLY_PLAIN,
-            PolicyName.DEFERRED_MP_SHORTFALL,
         ]
     if value == "abd":
         return [
             PolicyName.MP_WASH_SHORTFALL,
             PolicyName.INT_DUMP_SHORTFALL,
             PolicyName.INT_ONLY_PLAIN,
-        ]
-    if value == "abe":
-        return [
-            PolicyName.MP_WASH_SHORTFALL,
-            PolicyName.INT_DUMP_SHORTFALL,
-            PolicyName.DEFERRED_MP_SHORTFALL,
         ]
     return [PolicyName(value)]
 
@@ -251,7 +235,6 @@ def _cmd_simulate(args: argparse.Namespace) -> int:
         mw_percent=args.mw_percent,
         mw_from_level=args.mw_from_level,
         int_gear_after_reset=args.int_gear_after_reset,
-        mp5_start_level=args.mp5_start_level,
         resume_from=_parse_resume(args),
     )
     result = simulate(config)

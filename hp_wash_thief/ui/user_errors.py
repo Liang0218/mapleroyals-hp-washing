@@ -23,19 +23,16 @@ _EXACT: dict[str, str] = {
     "int_gear must be >= 0": "int_gear 不可為負數。",
     "max_level must be >= 1": "等級上限必須 ≥ 1。",
     "沒有可匯出的優勝計畫。": "無優勝方案，無法匯出 CSV。請調整參數後再試，或先取消 CSV 路徑。",
-    "mp5_start_level must be in [31, max_level] for Policy E": (
-        "Policy E 的「開始 MP5 等級」須在 31–等級上限之間。"
-    ),
     "resume level out of range": "中途接續等級超出有效範圍。",
     "resume base_hp must be positive": "中途接續的 base HP 必須大於 0。",
     "resume base_mp must be >= 0": "中途接續的 base MP 不可為負數。",
     "resume base_int too low": "中途接續的 base INT 過低（至少需 4）。",
     "resume base_luk too low": "中途接續的 base LUK 過低（至少需 4）。",
     "resume base_dex too low": "中途接續的 base DEX 過低（至少需 4）。",
-    "resume fresh_ap must be >= 0": "本等剩餘 AP 不可為負數。",
+    "resume fresh_ap must be >= 0": "尚未點的 AP 不可為負數。",
     "int_reset_done but base_int > 4": "已勾選 INT 洗回時，base INT 應為 4。",
     "resume base_int_peak must be >= base_int": "INT 峰值不可小於目前 base INT。",
-    "resume requires base_mp or extra_mp": "中途接續請填 base MP 或 Extra MP。",
+    "resume requires base_mp or extra_mp": "中途接續請填 base MP（APR 顯示的數值）。",
 }
 
 # Substring patterns (regex) → 繁中

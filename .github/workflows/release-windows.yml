@@ -1,8 +1,8 @@
 # Build Windows GUI (PyInstaller onedir) and publish to GitHub Releases on version tags.
 #
 # Publish:
-#   git tag v0.2.0
-#   git push origin v0.2.0
+#   git tag v0.3.0
+#   git push origin v0.3.0
 #
 # Manual test (artifact only, no Release):
 #   GitHub → Actions → Release Windows → Run workflow
