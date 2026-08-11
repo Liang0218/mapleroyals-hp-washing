@@ -39,18 +39,21 @@ HP_MODE_LABELS = {
     "最大 (max)": "max",
 }
 OPT_POLICY_LABELS = {
-    "四種都跑 (ABCD)": "all",
+    "五種都跑 (ABCDE)": "all",
     "三種都跑 (ABD)": "abd",
+    "三種都跑 (ABE)": "abe",
     "A：不足時 MP wash": "mp_wash_shortfall",
     "B：不足時全點 INT": "int_dump_shortfall",
     "C：硬核 A（≥12 逐 AP；30+ MP1）": "mp_wash_hardcore",
     "D：純樸（達標 INT 前只堆 INT）": "int_only_plain",
+    "E：延遲 MP5（先 INT 後 MP）": "deferred_mp_shortfall",
 }
 SIM_POLICY_LABELS = {
     "A：不足時 MP wash": "mp_wash_shortfall",
     "B：不足時全點 INT": "int_dump_shortfall",
     "C：硬核 A（≥12 逐 AP；30+ MP1）": "mp_wash_hardcore",
     "D：純樸（達標 INT 前只堆 INT）": "int_only_plain",
+    "E：延遲 MP5（先 INT 後 MP）": "deferred_mp_shortfall",
 }
 
 
@@ -233,7 +236,7 @@ class HpWashApp(ctk.CTk):
 
         ctk.CTkLabel(frame, text="政策").grid(row=0, column=0, sticky="w", padx=6, pady=8)
         policies = ctk.CTkOptionMenu(frame, values=list(OPT_POLICY_LABELS.keys()))
-        policies.set("四種都跑 (ABCD)")
+        policies.set("五種都跑 (ABCDE)")
         policies.grid(row=0, column=1, sticky="w", padx=6, pady=8)
         self.opt_policies = policies
 
@@ -246,7 +249,7 @@ class HpWashApp(ctk.CTk):
     def _build_simulate_extra(self, parent: ctk.CTkFrame) -> None:
         frame = ctk.CTkFrame(parent)
         frame.grid(row=1, column=0, sticky="ew", padx=8, pady=(0, 8))
-        for col in range(5):
+        for col in range(6):
             frame.grid_columnconfigure(col, weight=1)
 
         ctk.CTkLabel(frame, text="政策").grid(row=0, column=0, sticky="w", padx=6)
@@ -258,6 +261,7 @@ class HpWashApp(ctk.CTk):
         specs = [
             ("target_base_int", "目標 base INT", "350"),
             ("mp_wash_end", "MP wash 結束等級", "100"),
+            ("mp5_start_level", "E：開始 MP5 等級", "50"),
         ]
         for i, (key, label, default) in enumerate(specs, start=1):
             ctk.CTkLabel(frame, text=label).grid(row=0, column=i, sticky="w", padx=6)
@@ -268,7 +272,7 @@ class HpWashApp(ctk.CTk):
 
         auto_m2 = ctk.CTkCheckBox(frame, text="自動 Method 2 補洗")
         auto_m2.select()
-        auto_m2.grid(row=1, column=3, sticky="w", padx=6, pady=(0, 8))
+        auto_m2.grid(row=1, column=4, sticky="w", padx=6, pady=(0, 8))
         self.sim_auto_method2 = auto_m2
 
     def _build_output_panel(self, parent: ctk.CTkFrame, *, prefix: str) -> None:
@@ -427,12 +431,19 @@ class HpWashApp(ctk.CTk):
                     PolicyName.INT_DUMP_SHORTFALL,
                     PolicyName.MP_WASH_HARDCORE,
                     PolicyName.INT_ONLY_PLAIN,
+                    PolicyName.DEFERRED_MP_SHORTFALL,
                 ]
             elif policies_raw == "abd":
                 policies = [
                     PolicyName.MP_WASH_SHORTFALL,
                     PolicyName.INT_DUMP_SHORTFALL,
                     PolicyName.INT_ONLY_PLAIN,
+                ]
+            elif policies_raw == "abe":
+                policies = [
+                    PolicyName.MP_WASH_SHORTFALL,
+                    PolicyName.INT_DUMP_SHORTFALL,
+                    PolicyName.DEFERRED_MP_SHORTFALL,
                 ]
             else:
                 policies = [PolicyName(policies_raw)]
@@ -477,6 +488,7 @@ class HpWashApp(ctk.CTk):
                 int_gear=shared["int_gear"],
                 int_gear_after_reset=shared["int_gear_after_reset"],
                 mp_wash_end=self._int(self.sim_mp_wash_end, "MP wash 結束等級"),
+                mp5_start_level=self._int(self.sim_mp5_start_level, "E：開始 MP5 等級"),
                 quest_equip_hp=shared["quest_equip_hp"],
                 hp_mode=shared["hp_mode"],
                 auto_method2=bool(self.sim_auto_method2.get()),

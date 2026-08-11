@@ -28,15 +28,12 @@ def optimize(config: OptimizeConfig) -> OptimizeResult:
     all_feasible.sort(key=_candidate_sort_key)
     top_candidates = all_feasible[: config.top_n]
 
-    policy_a = by_policy.get(PolicyName.MP_WASH_SHORTFALL)
-    policy_b = by_policy.get(PolicyName.INT_DUMP_SHORTFALL)
-    policy_c = by_policy.get(PolicyName.MP_WASH_HARDCORE)
-    policy_d = by_policy.get(PolicyName.INT_ONLY_PLAIN)
-    a_best = policy_a.best if policy_a else None
-    b_best = policy_b.best if policy_b else None
-    c_best = policy_c.best if policy_c else None
-    d_best = policy_d.best if policy_d else None
-    comparison = _compare_abcd(a_best, b_best, c_best, d_best)
+    a_best = _best_of(by_policy, PolicyName.MP_WASH_SHORTFALL)
+    b_best = _best_of(by_policy, PolicyName.INT_DUMP_SHORTFALL)
+    c_best = _best_of(by_policy, PolicyName.MP_WASH_HARDCORE)
+    d_best = _best_of(by_policy, PolicyName.INT_ONLY_PLAIN)
+    e_best = _best_of(by_policy, PolicyName.DEFERRED_MP_SHORTFALL)
+    comparison = _compare_policies(a_best, b_best, c_best, d_best, e_best)
 
     winner = comparison.winner
     if winner is None and top_candidates:
@@ -52,6 +49,13 @@ def optimize(config: OptimizeConfig) -> OptimizeResult:
         winner=winner,
         top_candidates=top_candidates,
     )
+
+
+def _best_of(
+    by_policy: dict[PolicyName, PolicyBest], policy: PolicyName
+) -> Optional[CandidateResult]:
+    slot = by_policy.get(policy)
+    return slot.best if slot else None
 
 
 def _optimize_policy(config: OptimizeConfig, policy: PolicyName) -> PolicyBest:
@@ -82,6 +86,16 @@ def _optimize_policy(config: OptimizeConfig, policy: PolicyName) -> PolicyBest:
     return PolicyBest(policy=policy, best=best, top=top)
 
 
+def _mp5_start_values(config: OptimizeConfig, *, coarse: bool) -> list[int]:
+    step = 10 if coarse else 5
+    low = config.mp5_start_level_min
+    high = config.mp5_start_level_max
+    values = list(range(low, high + 1, step))
+    if high not in values:
+        values.append(high)
+    return values
+
+
 def _search(config: OptimizeConfig, policy: PolicyName, *, coarse: bool) -> Iterable[CandidateResult]:
     int_step = 40 if coarse else config.target_base_int_step
     mp_step = 10 if coarse else 5
@@ -102,15 +116,23 @@ def _search(config: OptimizeConfig, policy: PolicyName, *, coarse: bool) -> Iter
         mp_values.append(mp_max)
 
     threshold = config.extra_mp_threshold
+    mp5_starts: list[Optional[int]]
+    if policy is PolicyName.DEFERRED_MP_SHORTFALL:
+        mp5_starts = list(_mp5_start_values(config, coarse=coarse))
+    else:
+        mp5_starts = [None]
+
     for target_base_int in int_values:
         for mp_wash_end in mp_values:
-            yield _run(
-                config,
-                policy,
-                target_base_int=target_base_int,
-                mp_wash_end=mp_wash_end,
-                extra_mp_threshold=threshold,
-            )
+            for mp5_start in mp5_starts:
+                yield _run(
+                    config,
+                    policy,
+                    target_base_int=target_base_int,
+                    mp_wash_end=mp_wash_end,
+                    extra_mp_threshold=threshold,
+                    mp5_start_level=mp5_start,
+                )
 
 
 def _refine_around(
@@ -128,15 +150,30 @@ def _refine_around(
     mp_center = min(max(seed.mp_wash_end, mp_min), mp_max)
     mp_candidates = _neighbors(mp_center, low=mp_min, high=mp_max, step=5, radius=2)
     threshold = config.extra_mp_threshold
+
+    if policy is PolicyName.DEFERRED_MP_SHORTFALL:
+        start_center = seed.mp5_start_level or config.mp5_start_level_min
+        mp5_candidates = _neighbors(
+            start_center,
+            low=config.mp5_start_level_min,
+            high=config.mp5_start_level_max,
+            step=5,
+            radius=2,
+        )
+    else:
+        mp5_candidates = [None]
+
     for target_base_int in int_candidates:
         for mp_wash_end in mp_candidates:
-            yield _run(
-                config,
-                policy,
-                target_base_int=target_base_int,
-                mp_wash_end=mp_wash_end,
-                extra_mp_threshold=threshold,
-            )
+            for mp5_start in mp5_candidates:
+                yield _run(
+                    config,
+                    policy,
+                    target_base_int=target_base_int,
+                    mp_wash_end=mp_wash_end,
+                    extra_mp_threshold=threshold,
+                    mp5_start_level=mp5_start,
+                )
 
 
 def _run(
@@ -146,6 +183,7 @@ def _run(
     target_base_int: int,
     mp_wash_end: int,
     extra_mp_threshold: int,
+    mp5_start_level: Optional[int],
 ) -> CandidateResult:
     sim = simulate(
         SimulateConfig(
@@ -163,6 +201,7 @@ def _run(
             mw_percent=config.mw_percent,
             mw_from_level=config.mw_from_level,
             int_gear_after_reset=config.int_gear_after_reset,
+            mp5_start_level=mp5_start_level if mp5_start_level is not None else 50,
         )
     )
     return CandidateResult.from_simulate(sim)
@@ -185,6 +224,7 @@ def _param_key(c: CandidateResult) -> tuple:
         c.target_base_int,
         c.mp_wash_end,
         c.extra_mp_threshold,
+        c.mp5_start_level,
     )
 
 
@@ -208,21 +248,23 @@ def _candidate_sort_key(c: CandidateResult) -> tuple:
         c.target_base_int,
         c.base_int_peak,
         c.mp_wash_end,
+        c.mp5_start_level if c.mp5_start_level is not None else 0,
         c.int_reached_level,
         c.policy.value,
     )
 
 
-def _compare_abcd(
+def _compare_policies(
     a: Optional[CandidateResult],
     b: Optional[CandidateResult],
     c: Optional[CandidateResult],
     d: Optional[CandidateResult],
+    e: Optional[CandidateResult],
 ) -> ComparisonResult:
-    """Rank A/B/C/D bests; delta is winner vs runner-up."""
-    available = [x for x in (a, b, c, d) if x is not None]
+    """Rank A–E bests; delta is winner vs runner-up."""
+    available = [x for x in (a, b, c, d, e) if x is not None]
     if not available:
-        return ComparisonResult(a, b, c, d, None, None, None)
+        return ComparisonResult(a, b, c, d, e, None, None, None)
 
     ranked = sorted(available, key=_candidate_sort_key)
     winner = ranked[0]
@@ -232,6 +274,7 @@ def _compare_abcd(
         policy_b=b,
         policy_c=c,
         policy_d=d,
+        policy_e=e,
         winner=winner,
         apr_delta=(winner.total_apr - runner_up.total_apr) if runner_up else None,
         hp_delta=(winner.final_display_hp - runner_up.final_display_hp) if runner_up else None,

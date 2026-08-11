@@ -95,6 +95,11 @@ def simulate(config: SimulateConfig) -> SimulateResult:
         reached_target=display_hp + 1e-9 >= config.target_hp,
         apr=apr,
         plan=state.plan,
+        mp5_start_level=(
+            config.mp5_start_level
+            if config.policy is PolicyName.DEFERRED_MP_SHORTFALL
+            else None
+        ),
     )
 
 
@@ -111,6 +116,9 @@ def _validate_config(config: SimulateConfig) -> None:
         raise ValueError("extra_mp_threshold must be >= 0")
     if config.int_gear_after_reset < 0:
         raise ValueError("int_gear_after_reset must be >= 0")
+    if config.policy is PolicyName.DEFERRED_MP_SHORTFALL:
+        if not (31 <= config.mp5_start_level <= config.max_level):
+            raise ValueError("mp5_start_level must be in [31, max_level] for Policy E")
 
 
 def _maybe_mark_int_reached(state: CharacterState, config: SimulateConfig) -> None:
@@ -197,6 +205,7 @@ def _decide_action(state: CharacterState, config: SimulateConfig) -> Action:
             base_int=state.base_int,
             base_mp=state.base_mp,
             hp_mode=config.hp_mode,
+            mp5_start_level=config.mp5_start_level,
         )
     if level <= config.mp_wash_end:
         return Action.MP5
