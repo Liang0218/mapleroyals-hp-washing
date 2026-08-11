@@ -39,6 +39,7 @@ class Action(str, Enum):
     LUK5 = "LUK5"
     M2 = "M2"
     RESET_INT = "RESET_INT"
+    RESUME = "RESUME"
 
 
 HP_ACTIONS = frozenset(
@@ -116,6 +117,64 @@ class IntGearSegment:
         return self.from_level <= level <= self.to_level
 
 
+@dataclass(frozen=True)
+class ResumeFrom:
+    """Mid-character snapshot for continuing a wash plan.
+
+    Semantics: character is **already at** ``level`` (natural + job HP/MP for
+    this level are already in ``base_hp`` / ``base_mp``). Fresh AP for this
+    level has **not** been spent yet. APR counters start at 0 so results report
+    **remaining** wash APR from this point forward.
+    """
+
+    level: int
+    base_hp: float
+    base_mp: float
+    base_int: int
+    base_luk: int = 4
+    base_dex: int = 25
+    base_str: int = 4
+    fresh_ap: Optional[int] = None  # default 5; use 10 at 70/120 if job AP unspent
+    int_reset_done: bool = False
+    base_int_peak: Optional[int] = None
+
+    @classmethod
+    def from_stats(
+        cls,
+        *,
+        level: int,
+        base_hp: float,
+        base_int: int,
+        base_mp: Optional[float] = None,
+        extra_mp: Optional[float] = None,
+        base_luk: int = 4,
+        base_dex: int = 25,
+        base_str: int = 4,
+        fresh_ap: Optional[int] = None,
+        int_reset_done: bool = False,
+        base_int_peak: Optional[int] = None,
+    ) -> "ResumeFrom":
+        """Build from base MP and/or Extra MP (Extra MP = base_mp − min_mp(level))."""
+        from hp_wash_thief.core.formulas import min_mp
+
+        if base_mp is None and extra_mp is None:
+            raise ValueError("resume requires base_mp or extra_mp")
+        if base_mp is None:
+            base_mp = float(min_mp(level)) + float(extra_mp)
+        return cls(
+            level=level,
+            base_hp=float(base_hp),
+            base_mp=float(base_mp),
+            base_int=int(base_int),
+            base_luk=int(base_luk),
+            base_dex=int(base_dex),
+            base_str=int(base_str),
+            fresh_ap=fresh_ap,
+            int_reset_done=bool(int_reset_done),
+            base_int_peak=base_int_peak,
+        )
+
+
 @dataclass
 class OptimizeConfig:
     target_hp: int
@@ -149,6 +208,8 @@ class OptimizeConfig:
     mp5_start_level_min: int = 31
     mp5_start_level_max: int = 90
     top_n: int = 5
+    # Optional: continue from an in-progress character instead of level 1.
+    resume_from: Optional[ResumeFrom] = None
 
 
 @dataclass
@@ -170,6 +231,7 @@ class SimulateConfig:
     int_gear_after_reset: int = 50
     # Policy E only: before this level, shortfall → INT5; from here → MP5.
     mp5_start_level: int = 50
+    resume_from: Optional[ResumeFrom] = None
 
 
 @dataclass
@@ -222,6 +284,7 @@ class SimulateResult:
     apr: AprBreakdown
     plan: list[LevelPlanRow] = field(default_factory=list)
     mp5_start_level: Optional[int] = None
+    resume_from: Optional[ResumeFrom] = None
 
 
 @dataclass
@@ -239,6 +302,7 @@ class CandidateResult:
     apr: AprBreakdown
     plan: list[LevelPlanRow] = field(default_factory=list)
     mp5_start_level: Optional[int] = None
+    resume_from: Optional[ResumeFrom] = None
 
     @property
     def total_apr(self) -> int:
@@ -260,6 +324,7 @@ class CandidateResult:
             apr=result.apr,
             plan=result.plan,
             mp5_start_level=result.mp5_start_level,
+            resume_from=result.resume_from,
         )
 
 
@@ -288,3 +353,4 @@ class OptimizeResult:
     comparison: ComparisonResult
     winner: Optional[CandidateResult]
     top_candidates: list[CandidateResult] = field(default_factory=list)
+    resume_from: Optional[ResumeFrom] = None

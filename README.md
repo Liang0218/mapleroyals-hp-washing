@@ -85,6 +85,30 @@ python -m hp_wash_thief simulate \
   --mp-wash-end 100
 ```
 
+### Mid-game resume（中途接續）
+
+已經洗到一半時，可提供目前等級與數值，從**本等剩餘 AP**起算後面最省 APR：
+
+```bash
+python -m hp_wash_thief optimize \
+  --target-hp 27000 \
+  --int-reset-level 155 \
+  --int-gear-file examples/int_gear.json \
+  --from-level 80 \
+  --base-hp 12000 \
+  --extra-mp 600 \
+  --base-int 280 \
+  --base-luk 40 \
+  --fresh-ap 5 \
+  --csv remaining.csv
+```
+
+- 語意：角色**已升到**該等（HP/MP 已含自然／職轉加成），本等 AP **尚未**分配。
+- 可填 `--base-mp` 或 `--extra-mp`（Extra MP = base MP − min MP）。
+- 70／120 剛轉職且職轉 AP 未花時，將 `--fresh-ap` 設為 `10`。
+- 報告中的 APR 為**接續後剩餘**（不含過去已花的 wash APR）。
+- GUI：Optimize／Simulate 分頁勾選「中途接續」即可。
+
 ## What it answers
 
 Given INT gear segments, `int_reset_level`, and `target_hp`:

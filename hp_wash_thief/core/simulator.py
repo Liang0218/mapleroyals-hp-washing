@@ -14,6 +14,7 @@ from hp_wash_thief.core.models import (
     LevelPlanRow,
     MP_ACTIONS,
     PolicyName,
+    ResumeFrom,
     SimulateConfig,
     SimulateResult,
     hp_action_for_wash_count,
@@ -56,12 +57,23 @@ class CharacterState:
 
 def simulate(config: SimulateConfig) -> SimulateResult:
     _validate_config(config)
-    state = CharacterState()
-    _apply_starting_ap(state, config)
-    _maybe_mark_int_reached(state, config)
+    if config.resume_from is None:
+        state = CharacterState()
+        _apply_starting_ap(state, config)
+        _maybe_mark_int_reached(state, config)
+        start_loop = 2
+    else:
+        state = _seed_from_resume(config.resume_from, config)
+        _append_resume_marker(state, config)
+        _maybe_mark_int_reached(state, config)
+        # Already at resume.level with HP/MP applied; spend this level's AP next.
+        action = _decide_action(state, config)
+        _execute_action(state, action, config)
+        _maybe_mark_int_reached(state, config)
+        _maybe_reset_int(state, config)
+        start_loop = state.level + 1
 
-    # Level from 1 → max_level. Job advance bonuses apply when reaching those levels.
-    for new_level in range(2, config.max_level + 1):
+    for new_level in range(start_loop, config.max_level + 1):
         _level_up(state, new_level, config)
         action = _decide_action(state, config)
         _execute_action(state, action, config)
@@ -100,6 +112,7 @@ def simulate(config: SimulateConfig) -> SimulateResult:
             if config.policy is PolicyName.DEFERRED_MP_SHORTFALL
             else None
         ),
+        resume_from=config.resume_from,
     )
 
 
@@ -119,6 +132,71 @@ def _validate_config(config: SimulateConfig) -> None:
     if config.policy is PolicyName.DEFERRED_MP_SHORTFALL:
         if not (31 <= config.mp5_start_level <= config.max_level):
             raise ValueError("mp5_start_level must be in [31, max_level] for Policy E")
+    if config.resume_from is not None:
+        _validate_resume(config.resume_from, config)
+
+
+def _validate_resume(resume: ResumeFrom, config: SimulateConfig) -> None:
+    if not (1 <= resume.level <= config.max_level):
+        raise ValueError("resume level out of range")
+    if resume.base_hp <= 0:
+        raise ValueError("resume base_hp must be positive")
+    if resume.base_mp < 0:
+        raise ValueError("resume base_mp must be >= 0")
+    if resume.base_int < F.BASE_STAT_FLOOR:
+        raise ValueError("resume base_int too low")
+    if resume.base_luk < F.BASE_STAT_FLOOR:
+        raise ValueError("resume base_luk too low")
+    if resume.base_dex < F.BASE_STAT_FLOOR:
+        raise ValueError("resume base_dex too low")
+    if resume.fresh_ap is not None and resume.fresh_ap < 0:
+        raise ValueError("resume fresh_ap must be >= 0")
+    if resume.int_reset_done and resume.base_int > F.BASE_STAT_FLOOR:
+        raise ValueError("int_reset_done but base_int > 4")
+    if resume.base_int_peak is not None and resume.base_int_peak < resume.base_int:
+        raise ValueError("resume base_int_peak must be >= base_int")
+
+
+def _seed_from_resume(resume: ResumeFrom, config: SimulateConfig) -> CharacterState:
+    fresh = (
+        resume.fresh_ap
+        if resume.fresh_ap is not None
+        else F.FRESH_AP_PER_LEVEL
+    )
+    peak = resume.base_int_peak if resume.base_int_peak is not None else resume.base_int
+    return CharacterState(
+        level=resume.level,
+        base_str=resume.base_str,
+        base_dex=resume.base_dex,
+        base_int=resume.base_int,
+        base_luk=resume.base_luk,
+        base_hp=float(resume.base_hp),
+        base_mp=float(resume.base_mp),
+        base_int_peak=max(peak, resume.base_int),
+        int_reached_level=resume.level if resume.base_int >= config.target_base_int else 0,
+        int_reset_done=resume.int_reset_done,
+        level_fresh_ap=fresh,
+    )
+
+
+def _append_resume_marker(state: CharacterState, config: SimulateConfig) -> None:
+    fresh = state.level_fresh_ap
+    state.plan.append(
+        LevelPlanRow(
+            level=state.level,
+            action=Action.RESUME,
+            base_int=state.base_int,
+            base_luk=state.base_luk,
+            base_hp=int(round(state.base_hp)),
+            base_mp=int(round(state.base_mp)),
+            extra_mp=int(round(state.extra_mp())),
+            notes=(
+                f"中途接續：Lv{state.level}｜INT {state.base_int}｜"
+                f"Extra MP {int(round(state.extra_mp()))}｜本等剩餘 AP {fresh}"
+                + ("｜INT 已洗回" if state.int_reset_done else "")
+            ),
+        )
+    )
 
 
 def _maybe_mark_int_reached(state: CharacterState, config: SimulateConfig) -> None:

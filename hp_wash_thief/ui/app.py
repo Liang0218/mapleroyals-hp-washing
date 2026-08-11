@@ -14,7 +14,7 @@ from typing import Optional
 import customtkinter as ctk
 
 from hp_wash_thief.core.api import optimize, simulate
-from hp_wash_thief.core.models import HpMode, OptimizeConfig, PolicyName, SimulateConfig
+from hp_wash_thief.core.models import HpMode, OptimizeConfig, PolicyName, ResumeFrom, SimulateConfig
 from hp_wash_thief.core.report import (
     PLAN_CSV_HINT,
     build_optimize_tables,
@@ -89,9 +89,9 @@ class HpWashApp(ctk.CTk):
         self.tab_guide.grid_columnconfigure(0, weight=1)
         self.tab_guide.grid_rowconfigure(1, weight=1)
         self.tab_opt.grid_columnconfigure(0, weight=1)
-        self.tab_opt.grid_rowconfigure(2, weight=1)
+        self.tab_opt.grid_rowconfigure(3, weight=1)
         self.tab_sim.grid_columnconfigure(0, weight=1)
-        self.tab_sim.grid_rowconfigure(2, weight=1)
+        self.tab_sim.grid_rowconfigure(3, weight=1)
         self.tab_equip.grid_columnconfigure(0, weight=1)
         self.tab_equip.grid_rowconfigure(0, weight=1)
         self.tab_help.grid_columnconfigure(0, weight=1)
@@ -112,6 +112,7 @@ class HpWashApp(ctk.CTk):
         self._build_help_tab(self.tab_help)
 
         self._build_optimize_extra(self.tab_opt)
+        self._build_resume_panel(self.tab_opt, prefix="opt")
         self._build_output_panel(self.tab_opt, prefix="opt")
         self._build_actions(
             self.tab_opt, prefix="opt", run_label="執行最佳化", command=self._run_optimize
@@ -119,6 +120,7 @@ class HpWashApp(ctk.CTk):
 
         self._build_shared_params(self.tab_sim, prefix="sim")
         self._build_simulate_extra(self.tab_sim)
+        self._build_resume_panel(self.tab_sim, prefix="sim")
         self._build_output_panel(self.tab_sim, prefix="sim")
         self._build_actions(
             self.tab_sim, prefix="sim", run_label="執行模擬", command=self._run_simulate
@@ -275,9 +277,79 @@ class HpWashApp(ctk.CTk):
         auto_m2.grid(row=1, column=4, sticky="w", padx=6, pady=(0, 8))
         self.sim_auto_method2 = auto_m2
 
+    def _build_resume_panel(self, parent: ctk.CTkFrame, *, prefix: str) -> None:
+        """Optional mid-game snapshot: continue from current level/stats."""
+        frame = ctk.CTkFrame(parent)
+        frame.grid(row=2, column=0, sticky="ew", padx=8, pady=(0, 8))
+        for col in range(6):
+            frame.grid_columnconfigure(col, weight=1)
+
+        enabled = ctk.CTkCheckBox(
+            frame,
+            text="中途接續（填目前等級／HP／MP／INT，從剩餘 AP 起算最省路徑）",
+            command=lambda p=prefix: self._toggle_resume(p),
+        )
+        enabled.grid(row=0, column=0, columnspan=6, sticky="w", padx=6, pady=(8, 4))
+        setattr(self, f"{prefix}_resume_enabled", enabled)
+
+        fields = [
+            ("from_level", "目前等級", ""),
+            ("base_hp", "base HP", ""),
+            ("base_mp", "base MP", ""),
+            ("extra_mp", "Extra MP（可代替 base MP）", ""),
+            ("base_int", "base INT", ""),
+            ("base_luk", "base LUK", "4"),
+        ]
+        for i, (key, label, default) in enumerate(fields):
+            ctk.CTkLabel(frame, text=label).grid(row=1, column=i, sticky="w", padx=6)
+            entry = ctk.CTkEntry(frame)
+            if default:
+                entry.insert(0, default)
+            entry.grid(row=2, column=i, sticky="ew", padx=6, pady=(0, 4))
+            setattr(self, f"{prefix}_resume_{key}", entry)
+
+        more = [
+            ("base_dex", "base DEX", "25"),
+            ("fresh_ap", "本等剩餘 AP（70/120 未花職轉 AP 填 10）", "5"),
+        ]
+        for i, (key, label, default) in enumerate(more):
+            ctk.CTkLabel(frame, text=label).grid(row=3, column=i, sticky="w", padx=6)
+            entry = ctk.CTkEntry(frame)
+            entry.insert(0, default)
+            entry.grid(row=4, column=i, sticky="ew", padx=6, pady=(0, 8))
+            setattr(self, f"{prefix}_resume_{key}", entry)
+
+        reset_done = ctk.CTkCheckBox(frame, text="INT 已洗回（base INT=4）")
+        reset_done.grid(row=4, column=2, sticky="w", padx=6, pady=(0, 8))
+        setattr(self, f"{prefix}_resume_int_reset_done", reset_done)
+
+        note = ctk.CTkLabel(
+            frame,
+            text="語意：已升到該等（HP/MP 含自然／職轉加成），本等 AP 尚未分配。報告 APR 為接續後剩餘。",
+            text_color=("gray30", "gray70"),
+        )
+        note.grid(row=5, column=0, columnspan=6, sticky="w", padx=6, pady=(0, 8))
+        self._toggle_resume(prefix)
+
+    def _toggle_resume(self, prefix: str) -> None:
+        enabled = bool(getattr(self, f"{prefix}_resume_enabled").get())
+        state = "normal" if enabled else "disabled"
+        for key in (
+            "from_level",
+            "base_hp",
+            "base_mp",
+            "extra_mp",
+            "base_int",
+            "base_luk",
+            "base_dex",
+            "fresh_ap",
+        ):
+            getattr(self, f"{prefix}_resume_{key}").configure(state=state)
+        getattr(self, f"{prefix}_resume_int_reset_done").configure(state=state)
+
     def _build_output_panel(self, parent: ctk.CTkFrame, *, prefix: str) -> None:
         frame = ctk.CTkFrame(parent)
-        frame.grid(row=2, column=0, sticky="nsew", padx=8, pady=(0, 8))
+        frame.grid(row=3, column=0, sticky="nsew", padx=8, pady=(0, 8))
         frame.grid_columnconfigure(0, weight=1)
 
         ctk.CTkLabel(frame, text="CSV 輸出路徑（可留空）").grid(
@@ -302,7 +374,7 @@ class HpWashApp(ctk.CTk):
 
     def _build_actions(self, parent: ctk.CTkFrame, *, prefix: str, run_label: str, command) -> None:
         bar = ctk.CTkFrame(parent)
-        bar.grid(row=3, column=0, sticky="ew", padx=8, pady=(0, 8))
+        bar.grid(row=4, column=0, sticky="ew", padx=8, pady=(0, 8))
         run_btn = ctk.CTkButton(bar, text=run_label, command=command, width=160)
         run_btn.pack(side="left", padx=6, pady=8)
         setattr(self, f"{prefix}_run_btn", run_btn)
@@ -419,6 +491,34 @@ class HpWashApp(ctk.CTk):
         self._worker = threading.Thread(target=worker, daemon=True)
         self._worker.start()
 
+    def _parse_resume(self, prefix: str) -> Optional[ResumeFrom]:
+        if not bool(getattr(self, f"{prefix}_resume_enabled").get()):
+            return None
+        level = self._int(getattr(self, f"{prefix}_resume_from_level"), "目前等級")
+        base_hp = self._float(getattr(self, f"{prefix}_resume_base_hp"), "base HP")
+        base_int = self._int(getattr(self, f"{prefix}_resume_base_int"), "base INT")
+        base_luk = self._int(getattr(self, f"{prefix}_resume_base_luk"), "base LUK")
+        base_dex = self._int(getattr(self, f"{prefix}_resume_base_dex"), "base DEX")
+        fresh_raw = getattr(self, f"{prefix}_resume_fresh_ap").get().strip()
+        fresh_ap = int(fresh_raw) if fresh_raw else None
+        mp_raw = getattr(self, f"{prefix}_resume_base_mp").get().strip()
+        emp_raw = getattr(self, f"{prefix}_resume_extra_mp").get().strip()
+        base_mp = float(mp_raw) if mp_raw else None
+        extra_mp = float(emp_raw) if emp_raw else None
+        if base_mp is None and extra_mp is None:
+            raise ValueError("中途接續請填 base MP 或 Extra MP（擇一即可）。")
+        return ResumeFrom.from_stats(
+            level=level,
+            base_hp=base_hp,
+            base_mp=base_mp,
+            extra_mp=extra_mp,
+            base_int=base_int,
+            base_luk=base_luk,
+            base_dex=base_dex,
+            fresh_ap=fresh_ap,
+            int_reset_done=bool(getattr(self, f"{prefix}_resume_int_reset_done").get()),
+        )
+
     def _run_optimize(self) -> None:
         def job():
             shared = self._shared_kwargs("opt")
@@ -458,6 +558,7 @@ class HpWashApp(ctk.CTk):
                 mw_percent=shared["mw_percent"],
                 mw_from_level=shared["mw_from_level"],
                 top_n=self._int(self.opt_top, "保留前 N 名"),
+                resume_from=self._parse_resume("opt"),
             )
             result = optimize(config)
             summary = format_optimize_summary_text(result)
@@ -494,6 +595,7 @@ class HpWashApp(ctk.CTk):
                 auto_method2=bool(self.sim_auto_method2.get()),
                 mw_percent=shared["mw_percent"],
                 mw_from_level=shared["mw_from_level"],
+                resume_from=self._parse_resume("sim"),
             )
             result = simulate(config)
             summary = format_simulate_summary_text(result)

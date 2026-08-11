@@ -12,6 +12,7 @@ from hp_wash_thief.core.models import (
     CandidateResult,
     OptimizeResult,
     PolicyName,
+    ResumeFrom,
     SimulateResult,
 )
 
@@ -75,6 +76,7 @@ def action_description(action: Action) -> str:
         Action.LUK5: "5 點 AP 全點 LUK（本等 0 wash APR）",
         Action.M2: "Method 2 補洗（APR MP → HP，-12 MP / +16~20 HP）",
         Action.RESET_INT: "INT 洗回 4，轉 LUK（消耗 INT 洗回 APR）",
+        Action.RESUME: "中途接續起點（本列為輸入快照，尚未花本等 AP）",
     }
     return descriptions.get(action, action.value)
 
@@ -109,6 +111,9 @@ def format_ui_guide() -> str:
             "裝備填完請「儲存 JSON…」，下次「載入 JSON…」即可還原。",
             "改完直接按最佳化／模擬，會自動帶入智裝 INT。",
             "INT 洗回等級、reset 後智裝 INT 在 Optimize 參數列設定。",
+            "",
+            "中途接續：勾選後填目前等級、base HP／MP（或 Extra MP）、INT 等，",
+            "會從該等剩餘 AP 起算，搜尋後面最省 APR 的做法（報告 APR 為剩餘）。",
         ]
     )
 
@@ -179,9 +184,32 @@ def policy_playbook(policy: PolicyName) -> str:
     return policy.value
 
 
+def _resume_block(resume: Optional[ResumeFrom]) -> list[str]:
+    if resume is None:
+        return []
+    from hp_wash_thief.core.formulas import extra_mp
+
+    emp = int(round(extra_mp(resume.base_mp, resume.level)))
+    fresh = resume.fresh_ap if resume.fresh_ap is not None else 5
+    lines = [
+        "【中途接續】",
+        (
+            f"  從 Lv{resume.level} 接續｜base HP {int(round(resume.base_hp))}｜"
+            f"base MP {int(round(resume.base_mp))}（Extra MP≈{emp}）｜"
+            f"INT {resume.base_int}｜LUK {resume.base_luk}｜DEX {resume.base_dex}"
+        ),
+        f"  本等剩餘 AP {fresh}"
+        + ("｜INT 已洗回" if resume.int_reset_done else "")
+        + "｜下列 APR 為接續後剩餘",
+        "",
+    ]
+    return lines
+
+
 def _lazy_summary_optimize(result: OptimizeResult) -> list[str]:
     w = result.winner
     lines = ["【懶人包 — 照這樣做】", ""]
+    lines.extend(_resume_block(result.resume_from))
     if w is None:
         lines.append("  無可行方案。請調高目標 HP 上限、檢查裝備，或放寬搜尋範圍。")
         return lines
@@ -197,8 +225,9 @@ def _lazy_summary_optimize(result: OptimizeResult) -> list[str]:
         key_bits.append(f"不足時 Lv{w.mp5_start_level} 起才 MP5")
     lines.append("  ★ 關鍵參數：" + "｜".join(key_bits))
     hit = "有" if w.reached_target else "無"
+    apr_label = "剩餘 APR" if result.resume_from else "總 APR"
     lines.append(
-        f"  ★ 結果：總 APR {w.total_apr}｜最終 HP {w.final_display_hp}｜達標={hit}"
+        f"  ★ 結果：{apr_label} {w.total_apr}｜最終 HP {w.final_display_hp}｜達標={hit}"
     )
 
     comp = result.comparison
@@ -216,6 +245,7 @@ def _lazy_summary_optimize(result: OptimizeResult) -> list[str]:
 
 def _lazy_summary_simulate(c: CandidateResult) -> list[str]:
     lines = ["【懶人包 — 本方案】", ""]
+    lines.extend(_resume_block(c.resume_from))
     lines.append(f"  ★ 政策：{policy_label(c.policy)}")
     lines.append(f"  ★ 怎麼洗：{policy_playbook(c.policy)}")
     param = f"base INT 目標 {c.target_base_int}｜MP wash 至 Lv{c.mp_wash_end}"
@@ -223,8 +253,9 @@ def _lazy_summary_simulate(c: CandidateResult) -> list[str]:
         param += f"｜MP5 起始 Lv{c.mp5_start_level}"
     lines.append(f"  ★ 參數：{param}")
     hit = "有" if c.reached_target else "無"
+    apr_label = "剩餘 APR" if c.resume_from else "總 APR"
     lines.append(
-        f"  ★ 結果：總 APR {c.total_apr}｜最終 HP {c.final_display_hp}｜達標={hit}"
+        f"  ★ 結果：{apr_label} {c.total_apr}｜最終 HP {c.final_display_hp}｜達標={hit}"
     )
     lines.append("")
     return lines

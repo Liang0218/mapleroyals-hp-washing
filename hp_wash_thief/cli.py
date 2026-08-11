@@ -9,7 +9,7 @@ from typing import Optional, Sequence
 from hp_wash_thief.core.api import optimize, simulate
 from hp_wash_thief.core.formulas import EXTRA_MP_THRESHOLD_DEFAULT
 from hp_wash_thief.core.gear import load_int_gear
-from hp_wash_thief.core.models import HpMode, OptimizeConfig, PolicyName, SimulateConfig
+from hp_wash_thief.core.models import HpMode, OptimizeConfig, PolicyName, ResumeFrom, SimulateConfig
 from hp_wash_thief.core.report import (
     format_optimize_report,
     format_simulate_report,
@@ -27,6 +27,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
     opt = sub.add_parser("optimize", help="Search policies for lowest APR")
     _add_shared_args(opt)
+    _add_resume_args(opt)
     opt.add_argument(
         "--policies",
         default="all",
@@ -47,6 +48,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
     sim = sub.add_parser("simulate", help="Simulate one parameterized plan")
     _add_shared_args(sim)
+    _add_resume_args(sim)
     sim.add_argument(
         "--policy",
         required=True,
@@ -119,6 +121,69 @@ def _add_shared_args(p: argparse.ArgumentParser) -> None:
     )
 
 
+def _add_resume_args(p: argparse.ArgumentParser) -> None:
+    g = p.add_argument_group(
+        "mid-game resume",
+        "Provide current character stats to continue from mid-game "
+        "(APR reported is remaining from this point).",
+    )
+    g.add_argument(
+        "--from-level",
+        type=int,
+        default=None,
+        help="Current level (already leveled into; fresh AP not yet spent)",
+    )
+    g.add_argument("--base-hp", type=float, default=None, help="Current base HP")
+    g.add_argument("--base-mp", type=float, default=None, help="Current base MP")
+    g.add_argument(
+        "--extra-mp",
+        type=float,
+        default=None,
+        help="Current Extra MP (alternative to --base-mp; base_mp = min_mp + extra_mp)",
+    )
+    g.add_argument("--base-int", type=int, default=None, help="Current base INT")
+    g.add_argument("--base-luk", type=int, default=4, help="Current base LUK (default: 4)")
+    g.add_argument("--base-dex", type=int, default=25, help="Current base DEX (default: 25)")
+    g.add_argument(
+        "--fresh-ap",
+        type=int,
+        default=None,
+        help="Unspent fresh AP this level (default: 5; use 10 at 70/120 if job AP unspent)",
+    )
+    g.add_argument(
+        "--int-reset-done",
+        action="store_true",
+        help="INT has already been reset to 4",
+    )
+    g.add_argument(
+        "--base-int-peak",
+        type=int,
+        default=None,
+        help="Historical peak base INT (default: current --base-int)",
+    )
+
+
+def _parse_resume(args: argparse.Namespace) -> Optional[ResumeFrom]:
+    if args.from_level is None:
+        return None
+    if args.base_hp is None or args.base_int is None:
+        raise SystemExit("mid-game resume requires --from-level, --base-hp, and --base-int")
+    if args.base_mp is None and args.extra_mp is None:
+        raise SystemExit("mid-game resume requires --base-mp or --extra-mp")
+    return ResumeFrom.from_stats(
+        level=args.from_level,
+        base_hp=args.base_hp,
+        base_mp=args.base_mp,
+        extra_mp=args.extra_mp,
+        base_int=args.base_int,
+        base_luk=args.base_luk,
+        base_dex=args.base_dex,
+        fresh_ap=args.fresh_ap,
+        int_reset_done=args.int_reset_done,
+        base_int_peak=args.base_int_peak,
+    )
+
+
 def _parse_policies(value: str) -> list[PolicyName]:
     if value == "all":
         return [
@@ -157,6 +222,7 @@ def _cmd_optimize(args: argparse.Namespace) -> int:
         extra_mp_threshold=args.extra_mp_threshold,
         int_gear_after_reset=args.int_gear_after_reset,
         top_n=args.top,
+        resume_from=_parse_resume(args),
     )
     result = optimize(config)
     print_report(format_optimize_report(result))
@@ -186,6 +252,7 @@ def _cmd_simulate(args: argparse.Namespace) -> int:
         mw_from_level=args.mw_from_level,
         int_gear_after_reset=args.int_gear_after_reset,
         mp5_start_level=args.mp5_start_level,
+        resume_from=_parse_resume(args),
     )
     result = simulate(config)
     print_report(format_simulate_report(result))

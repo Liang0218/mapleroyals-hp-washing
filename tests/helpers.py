@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from hp_wash_thief.core.models import AprBreakdown, SimulateResult
+from hp_wash_thief.core.models import Action, AprBreakdown, SimulateResult
 
 
 def assert_apr_identity(apr: AprBreakdown) -> None:
@@ -20,7 +20,10 @@ def assert_apr_identity(apr: AprBreakdown) -> None:
 
 def assert_plan_invariants(result: SimulateResult) -> None:
     assert result.plan, "plan must not be empty"
-    assert result.plan[0].level == 1
+    expected_start = result.resume_from.level if result.resume_from is not None else 1
+    assert result.plan[0].level == expected_start
+    if result.resume_from is not None:
+        assert result.plan[0].action is Action.RESUME
     assert result.base_int_peak >= 4
     assert_apr_identity(result.apr)
     if result.apr.int_reset_apr:

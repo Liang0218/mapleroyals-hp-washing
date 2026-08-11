@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from hp_wash_thief.core.optimizer import optimize as _optimize
-from hp_wash_thief.core.models import OptimizeConfig, OptimizeResult, SimulateConfig, SimulateResult
+from hp_wash_thief.core.models import OptimizeConfig, OptimizeResult, ResumeFrom, SimulateConfig, SimulateResult
 from hp_wash_thief.core.simulator import simulate as _simulate
 
 
@@ -22,6 +22,7 @@ __all__ = [
     "simulate",
     "OptimizeConfig",
     "OptimizeResult",
+    "ResumeFrom",
     "SimulateConfig",
     "SimulateResult",
 ]

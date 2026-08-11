@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Iterable, Optional
 
+from hp_wash_thief.core import formulas as F
 from hp_wash_thief.core.models import (
     CandidateResult,
     ComparisonResult,
@@ -48,6 +49,7 @@ def optimize(config: OptimizeConfig) -> OptimizeResult:
         comparison=comparison,
         winner=winner,
         top_candidates=top_candidates,
+        resume_from=config.resume_from,
     )
 
 
@@ -86,10 +88,38 @@ def _optimize_policy(config: OptimizeConfig, policy: PolicyName) -> PolicyBest:
     return PolicyBest(policy=policy, best=best, top=top)
 
 
+def _int_search_bounds(config: OptimizeConfig) -> tuple[int, int]:
+    """Clamp INT search to values still meaningful from a mid-game snapshot."""
+    lo = config.target_base_int_min
+    hi = config.target_base_int_max
+    resume = config.resume_from
+    if resume is None:
+        return lo, hi
+    if resume.int_reset_done:
+        # Early INT target no longer affects actions; keep a single valid value.
+        fixed = max(lo, resume.base_int_peak or resume.base_int, F.BASE_STAT_FLOOR)
+        return fixed, fixed
+    lo = max(lo, resume.base_int)
+    if lo > hi:
+        hi = lo
+    return lo, hi
+
+
+def _mp5_start_bounds(config: OptimizeConfig) -> tuple[int, int]:
+    lo = config.mp5_start_level_min
+    hi = config.mp5_start_level_max
+    resume = config.resume_from
+    if resume is not None and not resume.int_reset_done:
+        # Values below current level are equivalent from here on; collapse them.
+        lo = max(lo, resume.level)
+    if lo > hi:
+        hi = lo
+    return lo, hi
+
+
 def _mp5_start_values(config: OptimizeConfig, *, coarse: bool) -> list[int]:
     step = 10 if coarse else 5
-    low = config.mp5_start_level_min
-    high = config.mp5_start_level_max
+    low, high = _mp5_start_bounds(config)
     values = list(range(low, high + 1, step))
     if high not in values:
         values.append(high)
@@ -100,11 +130,10 @@ def _search(config: OptimizeConfig, policy: PolicyName, *, coarse: bool) -> Iter
     int_step = 40 if coarse else config.target_base_int_step
     mp_step = 10 if coarse else 5
 
-    int_values = list(
-        range(config.target_base_int_min, config.target_base_int_max + 1, int_step)
-    )
-    if config.target_base_int_max not in int_values:
-        int_values.append(config.target_base_int_max)
+    int_lo, int_hi = _int_search_bounds(config)
+    int_values = list(range(int_lo, int_hi + 1, int_step))
+    if int_hi not in int_values:
+        int_values.append(int_hi)
 
     mp_min = max(config.mp_wash_end_min, 31)
     mp_max = config.int_reset_level
@@ -138,10 +167,11 @@ def _search(config: OptimizeConfig, policy: PolicyName, *, coarse: bool) -> Iter
 def _refine_around(
     config: OptimizeConfig, policy: PolicyName, seed: CandidateResult
 ) -> Iterable[CandidateResult]:
+    int_lo, int_hi = _int_search_bounds(config)
     int_candidates = _neighbors(
         seed.target_base_int,
-        low=config.target_base_int_min,
-        high=config.target_base_int_max,
+        low=int_lo,
+        high=int_hi,
         step=config.target_base_int_step,
         radius=2,
     )
@@ -152,11 +182,12 @@ def _refine_around(
     threshold = config.extra_mp_threshold
 
     if policy is PolicyName.DEFERRED_MP_SHORTFALL:
-        start_center = seed.mp5_start_level or config.mp5_start_level_min
+        mp5_lo, mp5_hi = _mp5_start_bounds(config)
+        start_center = seed.mp5_start_level or mp5_lo
         mp5_candidates = _neighbors(
             start_center,
-            low=config.mp5_start_level_min,
-            high=config.mp5_start_level_max,
+            low=mp5_lo,
+            high=mp5_hi,
             step=5,
             radius=2,
         )
@@ -202,6 +233,7 @@ def _run(
             mw_from_level=config.mw_from_level,
             int_gear_after_reset=config.int_gear_after_reset,
             mp5_start_level=mp5_start_level if mp5_start_level is not None else 50,
+            resume_from=config.resume_from,
         )
     )
     return CandidateResult.from_simulate(sim)
