@@ -89,8 +89,8 @@ python -m hp_wash_thief simulate \
 
 Given INT gear segments, `int_reset_level`, and `target_hp`:
 
-1. Best (lowest APR) `target_base_int` + phase params for **Policy A**, **B**, and **C**
-2. Cross-policy comparison (A vs B vs C): which total APR is lower, by how much, and final HP
+1. Best (lowest APR) `target_base_int` + phase params for **Policy A–E**
+2. Cross-policy comparison: which total APR is lower, by how much, and final HP
 3. Global winner with full per-level plan (CSV: `HP5` / `MP5` / `INT5` / `M2` / `RESET_INT`)
 
 ## Policies (early phase until `target_base_int`)
@@ -103,6 +103,17 @@ Early phase lasts **until `target_base_int` is reached** (not a fixed level).
 | --- | --- | --- |
 | `>= 60` | HP wash ×5 (Method 1) | HP wash ×5 (Method 1) |
 | `< 60` | MP wash ×5 (5 APR) | 5 fresh AP → INT (0 wash APR that level) |
+
+### E — deferred MP5 (`deferred_mp_shortfall`, hybrid A/B)
+
+Same ≥60 → HP×5 rule. On shortfall (`< 60`):
+
+| Level | Action |
+| --- | --- |
+| `< mp5_start_level` | 5 AP → INT (like B) |
+| `≥ mp5_start_level` | MP wash ×5 (like A) |
+
+Optimizer also searches `mp5_start_level` (default grid 31–90).
 
 ### C — hardcore A (`mp_wash_hardcore`, from level 10)
 
@@ -118,10 +129,7 @@ Levels 10–29 skip step 2 (MP wash not allowed). Levels 2–9 still use BUILD (
 
 After target INT: same as A/B (dense MP wash → late HP wash → Method 2 → INT reset).
 
-After target INT: dense MP wash until `mp_wash_end`, then late Method 1 HP wash, Method 2 top-up, INT→LUK at `int_reset_level`.
-
-Optimizer searches `target_base_int` + `mp_wash_end` only (threshold fixed at 60).
-
+Optimizer searches `target_base_int` + `mp_wash_end` (+ `mp5_start_level` for E); threshold fixed at 60 for A/B/E.
 ## APR cost
 
 ```
