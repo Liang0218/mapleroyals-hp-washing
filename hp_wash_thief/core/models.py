@@ -209,6 +209,8 @@ class OptimizeConfig:
     resume_from: Optional[ResumeFrom] = None
     # Override Improve MaxHP skill level (0–10); None = auto from SP schedule.
     improved_maxhp_level: Optional[int] = None
+    # Optional base MP floor at max level; None = wash Extra MP to near min_mp.
+    target_mp: Optional[int] = None
 
     def __post_init__(self) -> None:
         from hp_wash_thief.core.jobs import get_job_profile
@@ -240,6 +242,8 @@ class SimulateConfig:
     int_gear_after_reset: int = 50
     resume_from: Optional[ResumeFrom] = None
     improved_maxhp_level: Optional[int] = None
+    # Optional base MP floor at max level; None = wash Extra MP to near min_mp.
+    target_mp: Optional[int] = None
 
     def __post_init__(self) -> None:
         from hp_wash_thief.core.jobs import get_job_profile
@@ -294,6 +298,7 @@ class SimulateResult:
     int_gear_after_reset: int
     final_base_hp: int
     final_display_hp: int
+    final_base_mp: int
     base_int_peak: int
     reached_target: bool
     apr: AprBreakdown
@@ -301,6 +306,7 @@ class SimulateResult:
     resume_from: Optional[ResumeFrom] = None
     job: str = "thief"
     improved_maxhp_level: Optional[int] = None
+    target_mp: Optional[int] = None
 
 
 @dataclass
@@ -313,6 +319,7 @@ class CandidateResult:
     int_gear_after_reset: int
     final_base_hp: int
     final_display_hp: int
+    final_base_mp: int
     base_int_peak: int
     reached_target: bool
     apr: AprBreakdown
@@ -320,6 +327,7 @@ class CandidateResult:
     resume_from: Optional[ResumeFrom] = None
     job: str = "thief"
     improved_maxhp_level: Optional[int] = None
+    target_mp: Optional[int] = None
 
     @property
     def total_apr(self) -> int:
@@ -336,6 +344,7 @@ class CandidateResult:
             int_gear_after_reset=result.int_gear_after_reset,
             final_base_hp=result.final_base_hp,
             final_display_hp=result.final_display_hp,
+            final_base_mp=result.final_base_mp,
             base_int_peak=result.base_int_peak,
             reached_target=result.reached_target,
             apr=result.apr,
@@ -343,6 +352,7 @@ class CandidateResult:
             resume_from=result.resume_from,
             job=result.job,
             improved_maxhp_level=result.improved_maxhp_level,
+            target_mp=result.target_mp,
         )
 
 

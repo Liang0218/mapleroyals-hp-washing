@@ -129,6 +129,12 @@ def _add_shared_args(p: argparse.ArgumentParser) -> None:
             "Default: auto from SP schedule (prereq then MaxHP ASAP after unlock)"
         ),
     )
+    p.add_argument(
+        "--target-mp",
+        type=int,
+        default=None,
+        help="Min base MP at max level (default: wash Extra MP to near job min_mp)",
+    )
 
 
 def _add_resume_args(p: argparse.ArgumentParser) -> None:
@@ -233,6 +239,7 @@ def _cmd_optimize(args: argparse.Namespace) -> int:
         top_n=args.top,
         resume_from=_parse_resume(args),
         improved_maxhp_level=args.improved_maxhp_level,
+        target_mp=args.target_mp,
     )
     result = optimize(config)
     print_report(format_optimize_report(result))
@@ -270,6 +277,7 @@ def _cmd_simulate(args: argparse.Namespace) -> int:
         int_gear_after_reset=args.int_gear_after_reset,
         resume_from=_parse_resume(args),
         improved_maxhp_level=args.improved_maxhp_level,
+        target_mp=args.target_mp,
     )
     result = simulate(config)
     print_report(format_simulate_report(result))
