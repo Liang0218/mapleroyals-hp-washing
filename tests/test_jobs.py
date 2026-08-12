@@ -144,13 +144,14 @@ def test_non_thief_optimize_d_only():
 
 
 def test_fighter_maxhp_monotonic_method2():
+    # High target so plans keep washing; skill bonus should raise final HP.
     hps = []
-    for lv in range(0, 11, 2):
+    for lv in (0, 5, 10):
         r = simulate(
             SimulateConfig(
                 policy=PolicyName.INT_ONLY_PLAIN,
                 target_base_int=150,
-                target_hp=20000,
+                target_hp=999999,
                 int_reset_level=130,
                 int_gear=_gear(),
                 job=JobId.FIGHTER,
@@ -159,8 +160,7 @@ def test_fighter_maxhp_monotonic_method2():
             )
         )
         hps.append(r.final_base_hp)
-    assert hps == sorted(hps)
-    assert hps[-1] > hps[0]
+    assert hps[0] < hps[1] < hps[2]
 
 
 def test_brawler_maxhp_monotonic_method2():
@@ -168,7 +168,7 @@ def test_brawler_maxhp_monotonic_method2():
         SimulateConfig(
             policy=PolicyName.INT_ONLY_PLAIN,
             target_base_int=150,
-            target_hp=18000,
+            target_hp=999999,
             int_reset_level=130,
             int_gear=_gear(),
             job=JobId.BRAWLER,
@@ -180,7 +180,7 @@ def test_brawler_maxhp_monotonic_method2():
         SimulateConfig(
             policy=PolicyName.INT_ONLY_PLAIN,
             target_base_int=150,
-            target_hp=18000,
+            target_hp=999999,
             int_reset_level=130,
             int_gear=_gear(),
             job=JobId.BRAWLER,
