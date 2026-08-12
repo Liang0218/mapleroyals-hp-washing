@@ -64,6 +64,10 @@ _PATTERNS: list[tuple[re.Pattern[str], str]] = [
         lambda m: f"「{m.group(1)}」的穿戴等級必須 ≥ 1。",
     ),
     (
+        re.compile(r"^target_mp below job min_mp at max_level \(min=(\d+)\)$"),
+        lambda m: f"目標 MP 不可低於該職業滿等最低 MP（{m.group(1)}）。",
+    ),
+    (
         re.compile(r"^unknown job: (.+)$"),
         lambda m: f"未知或不支援的職業：{m.group(1)}",
     ),

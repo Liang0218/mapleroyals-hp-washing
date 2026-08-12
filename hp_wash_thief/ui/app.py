@@ -233,18 +233,29 @@ class HpWashApp(ctk.CTk):
 
         fields = [
             ("target_hp", "目標 HP", "27000", 2),
-            ("int_reset_level", "INT 洗回等級", "155", 3),
-            ("int_gear_after_reset", "INT reset 後 int_gear", "50", 4),
-            ("quest_equip_hp", "任務／裝備 HP", "0", 5),
+            ("target_mp", "目標 MP（可空＝最低）", "", 3),
+            ("int_reset_level", "INT 洗回等級", "155", 4),
+            ("int_gear_after_reset", "INT reset 後 int_gear", "50", 5),
         ]
         for key, label, default, col in fields:
             ctk.CTkLabel(frame, text=label).grid(
                 row=0, column=col, sticky="w", padx=6, pady=(8, 0)
             )
             entry = ctk.CTkEntry(frame)
-            entry.insert(0, default)
+            if key == "target_mp":
+                entry.configure(placeholder_text="留空＝洗到最低")
+            if default:
+                entry.insert(0, default)
             entry.grid(row=1, column=col, sticky="ew", padx=6, pady=(0, 8))
             setattr(self, f"{prefix}_{key}", entry)
+
+        ctk.CTkLabel(frame, text="任務／裝備 HP").grid(
+            row=2, column=3, sticky="w", padx=6
+        )
+        quest = ctk.CTkEntry(frame)
+        quest.insert(0, "0")
+        quest.grid(row=3, column=3, sticky="ew", padx=6, pady=(0, 8))
+        setattr(self, f"{prefix}_quest_equip_hp", quest)
 
         ctk.CTkLabel(frame, text="MW（base INT 比例）").grid(
             row=2, column=0, sticky="w", padx=6
@@ -268,10 +279,10 @@ class HpWashApp(ctk.CTk):
 
         gear_note = ctk.CTkLabel(
             frame,
-            text="INT 裝備由「裝備 Equipment」分頁自動帶入｜非盜賊固定方案 D（Method2）",
+            text="INT 裝備由「裝備 Equipment」分頁自動帶入｜非盜賊固定方案 D（Method2）｜目標 MP＝200 等 base MP 下限",
             text_color=("gray30", "gray70"),
         )
-        gear_note.grid(row=3, column=3, columnspan=3, sticky="w", padx=6, pady=(0, 8))
+        gear_note.grid(row=3, column=4, columnspan=2, sticky="w", padx=6, pady=(0, 8))
         self._on_job_changed(prefix)
 
     def _selected_job(self, prefix: str) -> str:
@@ -518,9 +529,18 @@ class HpWashApp(ctk.CTk):
             )
             if not (0 <= improved_maxhp_level <= 10):
                 raise ValueError("Improve MaxHP 等級須為 0–10。")
+        job = self._selected_job(prefix)
+        target_mp_raw = getattr(self, f"{prefix}_target_mp").get().strip()
+        target_mp = None
+        if target_mp_raw:
+            target_mp = self._int(getattr(self, f"{prefix}_target_mp"), "目標 MP")
+            floor = get_job_profile(job).min_mp(200)
+            if target_mp < floor:
+                raise ValueError(f"目標 MP 不可低於該職業 200 等最低 MP（{floor}）。")
         return {
-            "job": self._selected_job(prefix),
+            "job": job,
             "target_hp": self._int(getattr(self, f"{prefix}_target_hp"), "目標 HP"),
+            "target_mp": target_mp,
             "int_reset_level": int_reset_level,
             "int_gear_after_reset": int_gear_after_reset,
             "quest_equip_hp": self._int(
@@ -642,6 +662,7 @@ class HpWashApp(ctk.CTk):
                 top_n=self._int(self.opt_top, "保留前 N 名"),
                 resume_from=self._parse_resume("opt"),
                 improved_maxhp_level=shared["improved_maxhp_level"],
+                target_mp=shared["target_mp"],
             )
             result = optimize(config)
             summary = format_optimize_summary_text(result)
@@ -685,6 +706,7 @@ class HpWashApp(ctk.CTk):
                 mw_from_level=shared["mw_from_level"],
                 resume_from=self._parse_resume("sim"),
                 improved_maxhp_level=shared["improved_maxhp_level"],
+                target_mp=shared["target_mp"],
             )
             result = simulate(config)
             summary = format_simulate_summary_text(result)
