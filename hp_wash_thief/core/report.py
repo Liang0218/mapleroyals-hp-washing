@@ -112,10 +112,8 @@ def format_ui_guide() -> str:
             "裝備填完請「儲存 JSON…」，下次「載入 JSON…」即可還原。",
             "改完直接按最佳化／模擬，會自動帶入智裝 INT。",
             "INT 洗回等級、reset 後智裝 INT 在 Optimize 參數列設定。",
-            "",
-            "目標 MP 留空＝洗到接近職業最低 MP；有填則 200 等 base MP 須 ≥ 目標（不可低於 min MP）。",
-            "劍士／打手：Improve MaxHP 預設轉職後優先點滿（可覆寫技能等級）。",
-            "中途接續：勾選後填目前等級、base HP／MP、INT 等，從剩餘 AP 起算。",
+            "目標 MP 留空＝洗到最低；有填則 200 等 base MP ≥ 目標（≥職業 min MP）。",
+            "劍士／打手可覆寫 Improve MaxHP；中途接續填目前等級／HP／MP／INT。",
         ]
     )
 
