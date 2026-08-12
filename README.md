@@ -114,6 +114,8 @@ python -m hp_wash_thief simulate \
 
 **Magician** is not implemented yet.
 
+Optional `--target-mp`: minimum **base MP** at level 200. Omit to wash Extra MP down near job `min_mp` (legacy). Values below `min_mp(200)` for the job are rejected. Optimizer treats HP+MP as joint `reached_target`.
+
 Warrior / Brawler: leave `--improved-maxhp-level` unset to auto-max Improve MaxHP from the SP schedule (no SP-reset alternate wash). Override `0–10` when resuming mid-game.
 
 ### Mid-game resume（中途接續）

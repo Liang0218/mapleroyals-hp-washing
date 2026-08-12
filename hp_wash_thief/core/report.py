@@ -105,16 +105,15 @@ def format_ui_guide() -> str:
             "",
             "  1. 選擇職業（盜賊可比較 A–D；其他職業固定方案 D）",
             "  2. 裝備 Equipment — 設定裝備 INT（預設 0，請先做這步）",
-            "  3. 最佳化 Optimize — 搜尋最低 APR",
+            "  3. 最佳化 Optimize — 搜尋最低 APR（可設目標 HP／目標 MP）",
             "  4. 模擬 Simulate — 手動參數跑單一方案",
             "  5. 說明 Actions — 查動作代碼意思",
             "",
             "裝備填完請「儲存 JSON…」，下次「載入 JSON…」即可還原。",
             "改完直接按最佳化／模擬，會自動帶入智裝 INT。",
             "INT 洗回等級、reset 後智裝 INT 在 Optimize 參數列設定。",
-            "",
-            "劍士／打手：Improve MaxHP 預設轉職後優先點滿（可覆寫技能等級）。",
-            "中途接續：勾選後填目前等級、base HP／MP、INT 等，從剩餘 AP 起算。",
+            "目標 MP 留空＝洗到最低；有填則 200 等 base MP ≥ 目標（≥職業 min MP）。",
+            "劍士／打手可覆寫 Improve MaxHP；中途接續填目前等級／HP／MP／INT。",
         ]
     )
 
@@ -226,8 +225,11 @@ def _lazy_summary_optimize(result: OptimizeResult) -> list[str]:
     lines.append("  ★ 關鍵參數：" + "｜".join(key_bits))
     hit = "有" if w.reached_target else "無"
     apr_label = "剩餘 APR" if result.resume_from else "總 APR"
+    mp_bit = f"｜最終 MP {w.final_base_mp}"
+    if w.target_mp is not None:
+        mp_bit += f"（目標 ≥{w.target_mp}）"
     lines.append(
-        f"  ★ 結果：{apr_label} {w.total_apr}｜最終 HP {w.final_display_hp}｜達標={hit}"
+        f"  ★ 結果：{apr_label} {w.total_apr}｜最終 HP {w.final_display_hp}{mp_bit}｜達標={hit}"
     )
 
     comp = result.comparison
@@ -257,8 +259,11 @@ def _lazy_summary_simulate(c: CandidateResult) -> list[str]:
     lines.append(f"  ★ 參數：{param}")
     hit = "有" if c.reached_target else "無"
     apr_label = "剩餘 APR" if c.resume_from else "總 APR"
+    mp_bit = f"｜最終 MP {c.final_base_mp}"
+    if c.target_mp is not None:
+        mp_bit += f"（目標 ≥{c.target_mp}）"
     lines.append(
-        f"  ★ 結果：{apr_label} {c.total_apr}｜最終 HP {c.final_display_hp}｜達標={hit}"
+        f"  ★ 結果：{apr_label} {c.total_apr}｜最終 HP {c.final_display_hp}{mp_bit}｜達標={hit}"
     )
     lines.append("")
     return lines
@@ -481,6 +486,9 @@ def _winner_block(c: Optional[CandidateResult]) -> str:
     skill_line = ""
     if c.improved_maxhp_level is not None:
         skill_line = f"  Improve MaxHP 等級={c.improved_maxhp_level}\n"
+    mp_target_line = ""
+    if c.target_mp is not None:
+        mp_target_line = f"  目標 base MP={c.target_mp}\n"
     return (
         job_line
         + f"  政策={policy_label(c.policy)}\n"
@@ -491,8 +499,10 @@ def _winner_block(c: Optional[CandidateResult]) -> str:
         f"  {extra_mp_threshold_display(c.policy, c.extra_mp_threshold)}\n"
         f"  INT reset 後 int_gear={c.int_gear_after_reset}\n"
         + skill_line
+        + mp_target_line
         + f"  base INT 峰值={c.base_int_peak}\n"
         f"  最終 base HP={c.final_base_hp}  最終顯示 HP={c.final_display_hp}\n"
+        f"  最終 base MP={c.final_base_mp}\n"
         f"  是否達標={('是' if c.reached_target else '否')}\n"
         f"  總 APR={c.total_apr}\n"
         f"    MP wash={c.apr.mp_wash_count}\n"

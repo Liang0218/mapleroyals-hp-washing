@@ -62,9 +62,21 @@ class CharacterState:
         assert self.profile is not None
         return self.profile.extra_mp(self.base_mp, self.level)
 
-    def can_remove_mp(self, times: int = 1) -> bool:
+    def can_remove_mp(
+        self, times: int = 1, *, mp_floor: Optional[int] = None
+    ) -> bool:
+        """True if Extra MP allows removing MP for HP wash.
+
+        ``mp_floor`` (optional ``target_mp``) stops removes that would drop
+        ``base_mp`` below the floor. Not used for MP-wash net stacking.
+        """
         assert self.profile is not None
-        return self.extra_mp() >= (self.profile.mp_removed_per_apr * times)
+        removed = self.profile.mp_removed_per_apr * times
+        if self.extra_mp() < removed:
+            return False
+        if mp_floor is not None and self.base_mp - removed + 1e-9 < mp_floor:
+            return False
+        return True
 
 
 def simulate(config: SimulateConfig) -> SimulateResult:
@@ -108,6 +120,8 @@ def simulate(config: SimulateConfig) -> SimulateResult:
         int_reset_apr=state.int_reset_apr,
     )
     assert config.extra_mp_threshold is not None
+    hp_ok = display_hp + 1e-9 >= config.target_hp
+    mp_ok = config.target_mp is None or state.base_mp + 1e-9 >= config.target_mp
     return SimulateResult(
         policy=config.policy,
         target_base_int=config.target_base_int,
@@ -117,18 +131,20 @@ def simulate(config: SimulateConfig) -> SimulateResult:
         int_gear_after_reset=config.int_gear_after_reset,
         final_base_hp=int(round(state.base_hp)),
         final_display_hp=int(round(display_hp)),
+        final_base_mp=int(round(state.base_mp)),
         base_int_peak=state.base_int_peak,
-        reached_target=display_hp + 1e-9 >= config.target_hp,
+        reached_target=hp_ok and mp_ok,
         apr=apr,
         plan=state.plan,
         resume_from=config.resume_from,
         job=config.job,
         improved_maxhp_level=state.skill.effective_level if profile.maxhp_skill else None,
+        target_mp=config.target_mp,
     )
 
 
 def _validate_config(config: SimulateConfig) -> None:
-    get_job_profile(config.job)  # raises if unknown
+    profile = get_job_profile(config.job)
     if config.target_hp <= 0:
         raise ValueError("target_hp must be positive")
     if not (1 < config.int_reset_level <= config.max_level):
@@ -143,6 +159,12 @@ def _validate_config(config: SimulateConfig) -> None:
         raise ValueError("int_gear_after_reset must be >= 0")
     if config.improved_maxhp_level is not None and not (0 <= config.improved_maxhp_level <= 10):
         raise ValueError("improved_maxhp_level must be in [0, 10]")
+    if config.target_mp is not None:
+        floor = profile.min_mp(config.max_level)
+        if config.target_mp < floor:
+            raise ValueError(
+                f"target_mp below job min_mp at max_level (min={floor})"
+            )
     if config.resume_from is not None:
         _validate_resume(config.resume_from, config)
 
@@ -402,7 +424,7 @@ def _execute_action(state: CharacterState, action: Action, config: SimulateConfi
 
 def _try_one_hp_wash(state: CharacterState, config: SimulateConfig) -> float:
     assert state.profile is not None
-    if not state.can_remove_mp(1):
+    if not state.can_remove_mp(1, mp_floor=config.target_mp):
         return 0.0
     gain = state.profile.method1_hp(config.hp_mode, skill=state.skill)
     state.base_hp += gain
@@ -616,7 +638,7 @@ def _hp_wash_method1(
     hp_gain_total = 0.0
     removed = state.profile.mp_removed_per_apr
     for _ in range(hp_washes):
-        if not state.can_remove_mp(1):
+        if not state.can_remove_mp(1, mp_floor=config.target_mp):
             break
         gain = state.profile.method1_hp(config.hp_mode, skill=state.skill)
         state.base_hp += gain
@@ -819,7 +841,9 @@ def _method2_top_up(state: CharacterState, config: SimulateConfig) -> None:
     washes = 0
     hp_gained = 0.0
     removed = state.profile.mp_removed_per_apr
-    while state.base_hp + 1e-9 < target and state.can_remove_mp(1):
+    while state.base_hp + 1e-9 < target and state.can_remove_mp(
+        1, mp_floor=config.target_mp
+    ):
         gain = state.profile.method2_hp(config.hp_mode, skill=state.skill)
         state.base_hp += gain
         state.base_mp -= removed

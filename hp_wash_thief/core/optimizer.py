@@ -197,6 +197,7 @@ def _run(
             int_gear_after_reset=config.int_gear_after_reset,
             resume_from=config.resume_from,
             improved_maxhp_level=config.improved_maxhp_level,
+            target_mp=config.target_mp,
         )
     )
     return CandidateResult.from_simulate(sim)
