@@ -72,8 +72,10 @@ def action_description(action: Action) -> str:
         Action.HARDCORE_GREEDY: "硬核 C：逐 AP 貪婪（≥12 → HP1；30+ 不足 → MP1；剩餘 → INT）",
         Action.INT5: "5 點 AP 全點 INT（本等 0 wash APR）",
         Action.LUK5: "5 點 AP 全點 LUK（本等 0 wash APR）",
-        Action.M2: "Method 2 補洗（APR MP → HP，-12 MP / +16~20 HP）",
-        Action.RESET_INT: "INT 洗回 4，轉 LUK（消耗 INT 洗回 APR）",
+        Action.STR5: "5 點 AP 全點 STR（本等 0 wash APR）",
+        Action.DEX5: "5 點 AP 全點 DEX（本等 0 wash APR）",
+        Action.M2: "Method 2 補洗（APR MP → HP）",
+        Action.RESET_INT: "INT 洗回 4，轉主屬性（消耗 INT 洗回 APR）",
         Action.RESUME: "中途接續起點（本列為輸入快照，尚未花本等 AP）",
     }
     return descriptions.get(action, action.value)
@@ -101,17 +103,18 @@ def format_ui_guide() -> str:
         [
             "快速開始",
             "",
-            "  1. 裝備 Equipment — 設定裝備 INT（預設 0，請先做這步）",
-            "  2. 最佳化 Optimize — 自動搜尋最低 APR（A/B/C/D 比較）",
-            "  3. 模擬 Simulate — 手動參數跑單一方案",
-            "  4. 說明 Actions — 查動作代碼意思",
+            "  1. 選擇職業（盜賊可比較 A–D；其他職業固定方案 D）",
+            "  2. 裝備 Equipment — 設定裝備 INT（預設 0，請先做這步）",
+            "  3. 最佳化 Optimize — 搜尋最低 APR",
+            "  4. 模擬 Simulate — 手動參數跑單一方案",
+            "  5. 說明 Actions — 查動作代碼意思",
             "",
             "裝備填完請「儲存 JSON…」，下次「載入 JSON…」即可還原。",
             "改完直接按最佳化／模擬，會自動帶入智裝 INT。",
             "INT 洗回等級、reset 後智裝 INT 在 Optimize 參數列設定。",
             "",
-            "中途接續：勾選後填目前等級、base HP／MP（APR 顯示數值）、INT 等，",
-            "會從尚未點的 AP 起算，搜尋後面最省 APR 的做法（報告 APR 為剩餘）。",
+            "劍士／打手：Improve MaxHP 預設轉職後優先點滿（可覆寫技能等級）。",
+            "中途接續：勾選後填目前等級、base HP／MP、INT 等，從剩餘 AP 起算。",
         ]
     )
 
@@ -135,6 +138,7 @@ def format_action_legend() -> str:
         policy_label(PolicyName.INT_ONLY_PLAIN),
         "  達標 INT 前：30 等前 BUILD；31 等起 5 AP 全點 INT（不洗 HP/MP）。",
         "  達標 INT 後：與 A/B/C 相同（MP wash → HP wash → M2 → INT reset）。",
+        "  非盜賊職業固定使用本政策（指南 Method2／堆 INT）。",
         "",
         "【動作代碼】",
         "",
@@ -173,12 +177,12 @@ def policy_playbook(policy: PolicyName) -> str:
     return policy.value
 
 
-def _resume_block(resume: Optional[ResumeFrom]) -> list[str]:
+def _resume_block(resume: Optional[ResumeFrom], *, job: str = "thief") -> list[str]:
     if resume is None:
         return []
     from hp_wash_thief.core.formulas import extra_mp
 
-    emp = int(round(extra_mp(resume.base_mp, resume.level)))
+    emp = int(round(extra_mp(resume.base_mp, resume.level, job)))
     fresh = resume.fresh_ap if resume.fresh_ap is not None else 5
     lines = [
         "【中途接續】",
@@ -196,13 +200,20 @@ def _resume_block(resume: Optional[ResumeFrom]) -> list[str]:
 
 
 def _lazy_summary_optimize(result: OptimizeResult) -> list[str]:
+    from hp_wash_thief.core.jobs import get_job_profile
+
     w = result.winner
     lines = ["【懶人包 — 照這樣做】", ""]
-    lines.extend(_resume_block(result.resume_from))
+    job_for_resume = w.job if w is not None else (
+        next(iter(result.by_policy.values())).job if result.by_policy else "thief"
+    )
+    lines.extend(_resume_block(result.resume_from, job=job_for_resume))
     if w is None:
         lines.append("  無可行方案。請調高目標 HP 上限、檢查裝備，或放寬搜尋範圍。")
         return lines
 
+    job_name = get_job_profile(w.job).display_name_zh
+    lines.append(f"  ★ 職業：{job_name}")
     lines.append(f"  ★ 最優政策：{policy_label(w.policy)}")
     lines.append(f"  ★ 怎麼洗：{policy_playbook(w.policy)}")
     key_bits = [
@@ -210,6 +221,8 @@ def _lazy_summary_optimize(result: OptimizeResult) -> list[str]:
         f"MP wash 洗到 Lv{w.mp_wash_end}",
         f"約 Lv{w.int_reached_level} 前達標 INT",
     ]
+    if w.improved_maxhp_level is not None:
+        key_bits.append(f"ImproveMaxHP Lv{w.improved_maxhp_level}")
     lines.append("  ★ 關鍵參數：" + "｜".join(key_bits))
     hit = "有" if w.reached_target else "無"
     apr_label = "剩餘 APR" if result.resume_from else "總 APR"
@@ -218,7 +231,7 @@ def _lazy_summary_optimize(result: OptimizeResult) -> list[str]:
     )
 
     comp = result.comparison
-    if comp.winner and comp.apr_delta is not None:
+    if comp.winner and comp.apr_delta is not None and len(result.by_policy) > 1:
         saved = -comp.apr_delta
         if saved > 0:
             lines.append(f"  ★ 比次優省 {saved} APR")
@@ -231,11 +244,16 @@ def _lazy_summary_optimize(result: OptimizeResult) -> list[str]:
 
 
 def _lazy_summary_simulate(c: CandidateResult) -> list[str]:
+    from hp_wash_thief.core.jobs import get_job_profile
+
     lines = ["【懶人包 — 本方案】", ""]
-    lines.extend(_resume_block(c.resume_from))
+    lines.extend(_resume_block(c.resume_from, job=c.job))
+    lines.append(f"  ★ 職業：{get_job_profile(c.job).display_name_zh}")
     lines.append(f"  ★ 政策：{policy_label(c.policy)}")
     lines.append(f"  ★ 怎麼洗：{policy_playbook(c.policy)}")
     param = f"base INT 目標 {c.target_base_int}｜MP wash 至 Lv{c.mp_wash_end}"
+    if c.improved_maxhp_level is not None:
+        param += f"｜ImproveMaxHP Lv{c.improved_maxhp_level}"
     lines.append(f"  ★ 參數：{param}")
     hit = "有" if c.reached_target else "無"
     apr_label = "剩餘 APR" if c.resume_from else "總 APR"
@@ -343,7 +361,7 @@ def format_simulate_summary_text(result: SimulateResult) -> str:
 def format_optimize_report(result: OptimizeResult) -> str:
     lines: list[str] = []
     lines.append("=" * 60)
-    lines.append("MapleRoyals 盜賊洗血 — 最佳化結果")
+    lines.append("MapleRoyals 洗血 — 最佳化結果")
     lines.append("=" * 60)
     lines.extend(_lazy_summary_optimize(result))
 
@@ -381,7 +399,7 @@ def format_optimize_report(result: OptimizeResult) -> str:
 def format_simulate_report(result: SimulateResult) -> str:
     lines = [
         "=" * 60,
-        "MapleRoyals 盜賊洗血 — 模擬結果",
+        "MapleRoyals 洗血 — 模擬結果",
         "=" * 60,
         format_simulate_summary_text(result),
         "",
@@ -404,6 +422,7 @@ def write_plan_csv(plan_rows, path: Union[str, Path]) -> None:
         "fresh_ap_int",
         "fresh_ap_luk",
         "fresh_ap_dex",
+        "fresh_ap_str",
         "fresh_ap_hp",
         "fresh_ap_mp",
         "apr_spent",
@@ -426,6 +445,7 @@ def write_plan_csv(plan_rows, path: Union[str, Path]) -> None:
                     "fresh_ap_int": row.fresh_ap_int,
                     "fresh_ap_luk": row.fresh_ap_luk,
                     "fresh_ap_dex": row.fresh_ap_dex,
+                    "fresh_ap_str": row.fresh_ap_str,
                     "fresh_ap_hp": row.fresh_ap_hp,
                     "fresh_ap_mp": row.fresh_ap_mp,
                     "apr_spent": row.apr_spent,
@@ -455,15 +475,23 @@ def _policy_block(title: str, c: Optional[CandidateResult]) -> str:
 def _winner_block(c: Optional[CandidateResult]) -> str:
     if c is None:
         return "  （無優勝方案）"
+    from hp_wash_thief.core.jobs import get_job_profile
+
+    job_line = f"  職業={get_job_profile(c.job).display_name_zh}\n"
+    skill_line = ""
+    if c.improved_maxhp_level is not None:
+        skill_line = f"  Improve MaxHP 等級={c.improved_maxhp_level}\n"
     return (
-        f"  政策={policy_label(c.policy)}\n"
+        job_line
+        + f"  政策={policy_label(c.policy)}\n"
         f"  目標 base INT={c.target_base_int}\n"
         f"  達標等級={c.int_reached_level}  "
         f"（early 階段＝到目標 INT 為止，非固定等級）\n"
         f"  MP wash 結束等級={c.mp_wash_end}\n"
         f"  {extra_mp_threshold_display(c.policy, c.extra_mp_threshold)}\n"
         f"  INT reset 後 int_gear={c.int_gear_after_reset}\n"
-        f"  base INT 峰值={c.base_int_peak}\n"
+        + skill_line
+        + f"  base INT 峰值={c.base_int_peak}\n"
         f"  最終 base HP={c.final_base_hp}  最終顯示 HP={c.final_display_hp}\n"
         f"  是否達標={('是' if c.reached_target else '否')}\n"
         f"  總 APR={c.total_apr}\n"

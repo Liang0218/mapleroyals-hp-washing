@@ -1,4 +1,4 @@
-"""Terminal CLI for Phase 1."""
+"""Terminal CLI for MapleRoyals multi-job HP wash optimizer."""
 
 from __future__ import annotations
 
@@ -7,8 +7,8 @@ import sys
 from typing import Optional, Sequence
 
 from hp_wash_thief.core.api import optimize, simulate
-from hp_wash_thief.core.formulas import EXTRA_MP_THRESHOLD_DEFAULT
 from hp_wash_thief.core.gear import load_int_gear
+from hp_wash_thief.core.jobs import JobId, get_job_profile
 from hp_wash_thief.core.models import HpMode, OptimizeConfig, PolicyName, ResumeFrom, SimulateConfig
 from hp_wash_thief.core.report import (
     format_optimize_report,
@@ -17,11 +17,13 @@ from hp_wash_thief.core.report import (
     write_plan_csv,
 )
 
+_JOB_CHOICES = [j.value for j in JobId]
+
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
     parser = argparse.ArgumentParser(
         prog="hp_wash_thief",
-        description="MapleRoyals Thief HP Wash APR Optimizer (Phase 1 CLI)",
+        description="MapleRoyals HP Wash APR Optimizer (multi-job)",
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
@@ -30,8 +32,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     _add_resume_args(opt)
     opt.add_argument(
         "--policies",
-        default="all",
+        default="auto",
         choices=[
+            "auto",
             "all",
             "abd",
             "mp_wash_shortfall",
@@ -39,7 +42,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             "mp_wash_hardcore",
             "int_only_plain",
         ],
-        help="Which policies: all=ABCD (default), abd subset, or one policy",
+        help="Policies: auto=job default (Thief ABCD / others D only)",
     )
     opt.add_argument("--csv", dest="csv_path", default=None, help="Write winner plan CSV")
     opt.add_argument("--top", type=int, default=5, help="Top-N candidates to retain")
@@ -49,13 +52,14 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     _add_resume_args(sim)
     sim.add_argument(
         "--policy",
-        required=True,
+        default=None,
         choices=[
             "mp_wash_shortfall",
             "int_dump_shortfall",
             "mp_wash_hardcore",
             "int_only_plain",
         ],
+        help="Wash policy (default: job default; non-Thief → int_only_plain)",
     )
     sim.add_argument("--target-base-int", type=int, required=True)
     sim.add_argument("--mp-wash-end", type=int, default=135)
@@ -76,8 +80,14 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
 
 def _add_shared_args(p: argparse.ArgumentParser) -> None:
+    p.add_argument(
+        "--job",
+        default="thief",
+        choices=_JOB_CHOICES,
+        help="Job class (default: thief)",
+    )
     p.add_argument("--target-hp", type=int, required=True, help="Target base/display HP at 200")
-    p.add_argument("--int-reset-level", type=int, required=True, help="Level to reset INT→LUK")
+    p.add_argument("--int-reset-level", type=int, required=True, help="Level to reset INT→primary")
     p.add_argument("--int-gear-file", required=True, help="Path to INT gear JSON")
     p.add_argument("--quest-equip-hp", type=int, default=0, help="Flat HP from quests/equips")
     p.add_argument(
@@ -101,14 +111,20 @@ def _add_shared_args(p: argparse.ArgumentParser) -> None:
     p.add_argument(
         "--extra-mp-threshold",
         type=int,
-        default=EXTRA_MP_THRESHOLD_DEFAULT,
-        help=f"Extra MP needed for HP wash×5 (default: {EXTRA_MP_THRESHOLD_DEFAULT} = 12×5)",
+        default=None,
+        help="Extra MP for HP wash×5 (default: job mp_removed×5)",
     )
     p.add_argument(
         "--int-gear-after-reset",
         type=int,
         default=50,
         help="Equipment INT from int-reset level onward (default: 50)",
+    )
+    p.add_argument(
+        "--improved-maxhp-level",
+        type=int,
+        default=None,
+        help="Override Improve MaxHP skill level 0–10 (Warrior/Brawler; default: auto SP)",
     )
 
 
@@ -135,6 +151,7 @@ def _add_resume_args(p: argparse.ArgumentParser) -> None:
     g.add_argument("--base-int", type=int, default=None, help="Current base INT")
     g.add_argument("--base-luk", type=int, default=4, help="Current base LUK (default: 4)")
     g.add_argument("--base-dex", type=int, default=25, help="Current base DEX (default: 25)")
+    g.add_argument("--base-str", type=int, default=4, help="Current base STR (default: 4)")
     g.add_argument(
         "--fresh-ap",
         type=int,
@@ -169,13 +186,17 @@ def _parse_resume(args: argparse.Namespace) -> Optional[ResumeFrom]:
         base_int=args.base_int,
         base_luk=args.base_luk,
         base_dex=args.base_dex,
+        base_str=getattr(args, "base_str", 4),
         fresh_ap=args.fresh_ap,
         int_reset_done=args.int_reset_done,
         base_int_peak=args.base_int_peak,
+        job=args.job,
     )
 
 
-def _parse_policies(value: str) -> list[PolicyName]:
+def _parse_policies(value: str, job: str) -> list[PolicyName]:
+    if value == "auto":
+        return list(get_job_profile(job).policies)
     if value == "all":
         return [
             PolicyName.MP_WASH_SHORTFALL,
@@ -198,7 +219,8 @@ def _cmd_optimize(args: argparse.Namespace) -> int:
         target_hp=args.target_hp,
         int_reset_level=args.int_reset_level,
         int_gear=gear,
-        policies=_parse_policies(args.policies),
+        job=args.job,
+        policies=_parse_policies(args.policies, args.job),
         quest_equip_hp=args.quest_equip_hp,
         hp_mode=HpMode(args.hp_mode),
         mw_percent=args.mw_percent,
@@ -207,6 +229,7 @@ def _cmd_optimize(args: argparse.Namespace) -> int:
         int_gear_after_reset=args.int_gear_after_reset,
         top_n=args.top,
         resume_from=_parse_resume(args),
+        improved_maxhp_level=args.improved_maxhp_level,
     )
     result = optimize(config)
     print_report(format_optimize_report(result))
@@ -221,12 +244,19 @@ def _cmd_optimize(args: argparse.Namespace) -> int:
 
 def _cmd_simulate(args: argparse.Namespace) -> int:
     gear = load_int_gear(args.int_gear_file)
+    profile = get_job_profile(args.job)
+    policy = (
+        PolicyName(args.policy)
+        if args.policy
+        else profile.policies[0]
+    )
     config = SimulateConfig(
-        policy=PolicyName(args.policy),
+        policy=policy,
         target_base_int=args.target_base_int,
         target_hp=args.target_hp,
         int_reset_level=args.int_reset_level,
         int_gear=gear,
+        job=args.job,
         mp_wash_end=args.mp_wash_end,
         extra_mp_threshold=args.extra_mp_threshold,
         quest_equip_hp=args.quest_equip_hp,
@@ -236,6 +266,7 @@ def _cmd_simulate(args: argparse.Namespace) -> int:
         mw_from_level=args.mw_from_level,
         int_gear_after_reset=args.int_gear_after_reset,
         resume_from=_parse_resume(args),
+        improved_maxhp_level=args.improved_maxhp_level,
     )
     result = simulate(config)
     print_report(format_simulate_report(result))

@@ -1,9 +1,8 @@
-# MapleRoyals Thief HP Wash APR Optimizer
+# MapleRoyals HP Wash APR Optimizer
 
 Reusable Python calculation core + terminal CLI + CustomTkinter desktop GUI for
-MapleRoyals Thief (Night Lord / Shadower) HP washing APR optimization with dual
-shortfall-policy comparison. Windows users can build a shareable `.exe` folder
-with PyInstaller.
+MapleRoyals HP washing APR optimization (Thief A–D comparison; other jobs Policy D /
+Method2). Windows users can build a shareable `.exe` folder with PyInstaller.
 
 ## Requirements
 
@@ -28,10 +27,13 @@ hp-wash-thief-gui
 
 In the window you can:
 
-- Edit **all CLI parameters** (target HP, INT reset level, MW %, policies, …)
+- Choose **job** (Thief / Bowman / Gunslinger / Brawler / Fighter / Page / Spearman / Beginner)
+- Edit **all CLI parameters** (target HP, INT reset level, MW %, policies, Improve MaxHP override, …)
 - Edit / load / save **INT gear JSON** in a text box
 - Choose a **CSV output path**
 - Run **Optimize** or **Simulate** and read the report in-app
+
+Non-Thief jobs hide A–D comparison and search Policy D only (stack INT → MP wash → Method2).
 
 ### Build a Windows app folder (on a Windows PC)
 
@@ -67,16 +69,30 @@ Manual CI test without creating a Release: **Actions → Release Windows → Run
 ## CLI quick start
 
 ```bash
+# Thief (default): compare policies A–D
 python -m hp_wash_thief optimize \
+  --job thief \
   --target-hp 27000 \
   --int-reset-level 155 \
   --int-gear-file examples/int_gear.json \
-  --policies all \
+  --policies auto \
+  --csv plan.csv
+```
+
+```bash
+# Bowman / Warrior / Pirate: Policy D only
+python -m hp_wash_thief optimize \
+  --job fighter \
+  --target-hp 30000 \
+  --int-reset-level 155 \
+  --int-gear-file examples/int_gear.json \
+  --improved-maxhp-level 10 \
   --csv plan.csv
 ```
 
 ```bash
 python -m hp_wash_thief simulate \
+  --job thief \
   --policy mp_wash_shortfall \
   --target-base-int 350 \
   --target-hp 27000 \
@@ -84,6 +100,21 @@ python -m hp_wash_thief simulate \
   --int-gear-file examples/int_gear.json \
   --mp-wash-end 100
 ```
+
+### Supported jobs
+
+| `--job` | Notes |
+| --- | --- |
+| `thief` | Policies A–D (default) |
+| `bowman` | D only, Method2 |
+| `gunslinger` | D only, Method2; −16 MP/APR |
+| `brawler` | D only; Improve MaxHP (2nd job) auto SP |
+| `fighter` / `page` / `spearman` | D only; Improved MaxHP Increase (1st job) |
+| `beginner` | D only; no job-advance HP/MP/AP |
+
+**Magician** is not implemented yet.
+
+Warrior / Brawler: leave `--improved-maxhp-level` unset to auto-max Improve MaxHP from the SP schedule (no SP-reset alternate wash). Override `0–10` when resuming mid-game.
 
 ### Mid-game resume（中途接續）
 
@@ -113,13 +144,13 @@ python -m hp_wash_thief optimize \
 
 Given INT gear segments, `int_reset_level`, and `target_hp`:
 
-1. Best (lowest APR) `target_base_int` + phase params for **Policy A–D**
-2. Cross-policy comparison: which total APR is lower, by how much, and final HP
-3. Global winner with full per-level plan (CSV: `HP5` / `MP5` / `INT5` / `M2` / `RESET_INT`)
+1. Best (lowest APR) `target_base_int` + phase params — Thief: **Policy A–D**; other jobs: **D only**
+2. Cross-policy comparison (Thief): which total APR is lower, by how much, and final HP
+3. Global winner with full per-level plan (CSV: `HP5` / `MP5` / `INT5` / `M2` / `RESET_INT` / `STR5` / `DEX5`)
 
 ## Policies (early phase until `target_base_int`)
 
-### A / B (from level 31)
+### A / B (from level 31) — Thief
 
 Early phase lasts **until `target_base_int` is reached** (not a fixed level).
 
@@ -128,7 +159,7 @@ Early phase lasts **until `target_base_int` is reached** (not a fixed level).
 | `>= 60` | HP wash ×5 (Method 1) | HP wash ×5 (Method 1) |
 | `< 60` | MP wash ×5 (5 APR) | 5 fresh AP → INT (0 wash APR that level) |
 
-### C — hardcore A (`mp_wash_hardcore`, from level 10)
+### C — hardcore A (`mp_wash_hardcore`, from level 10) — Thief
 
 Until `target_base_int` is reached, **each fresh AP slot** (5 per level, +5 at job advance):
 
@@ -143,6 +174,11 @@ Levels 10–29 skip step 2 (MP wash not allowed). Levels 2–9 still use BUILD (
 After target INT: same as A/B (dense MP wash → late HP wash → Method 2 → INT reset).
 
 Optimizer searches `target_base_int` + `mp_wash_end`; threshold fixed at 60 for A/B.
+
+### D — plain INT (`int_only_plain`) — all jobs
+
+Stack INT until `target_base_int`, then MP wash / Method2. Non-Thief jobs use this path only (prefer Method2 + primary-stat dump after INT target).
+
 ## APR cost
 
 ```
@@ -159,18 +195,19 @@ Policy B’s INT dump does not spend wash APR on shortfall levels, but increases
 
 ```python
 from hp_wash_thief.core.api import optimize, simulate
+from hp_wash_thief.core.jobs import JobId
 ```
 
 - `optimize(OptimizeConfig) -> OptimizeResult`
 - `simulate(SimulateConfig) -> SimulateResult`
 
-All formulas / simulation / optimization live under `hp_wash_thief/core/`. CLI and GUI only call this API.
+Set `OptimizeConfig.job` / `SimulateConfig.job` (default `"thief"`). All formulas / simulation / optimization live under `hp_wash_thief/core/`. CLI and GUI only call this API.
 
 ## Layout
 
 ```
 hp_wash_thief/
-  core/          # formulas, simulator, optimizer, api
+  core/          # formulas, jobs, simulator, optimizer, api
   cli.py
   ui/            # CustomTkinter desktop app
 examples/
@@ -182,6 +219,8 @@ hp_wash_thief.spec
 
 - [Night Lord / Shadower HP Washing Above 20k HP (PerfectSin)](https://royals.ms/forum/threads/night-lord-shadower-hp-washing-above-20k-hp.146816/)
 - [HP Washing For New Players](https://royals.ms/forum/threads/hp-washing-for-new-players.41129/)
+- [Fully revised HP washing guide](https://royals.ms/forum/threads/fully-revised-hp-washing-guide.8286/)
+- [MapleRoyals Skill Library](https://royals.ms/forum/threads/mapleroyals-skill-library.209540/)
 
 ### Maple Warrior (important)
 
@@ -193,7 +232,7 @@ MP wash still uses **base INT only** (gear/MW do not apply). Maple Warrior is ap
 
 ### Job advancement AP
 
-Per [MapleRoyals forum #45500](https://royals.ms/forum/threads/2nd-3rd-4th-job-bonuses.45500/): 1st/2nd job grant **0** bonus AP; 3rd/4th job grant **+5** AP each (levels 70 and 120). The simulator adds these on top of the normal 5 AP per level.
+Per [MapleRoyals forum #45500](https://royals.ms/forum/threads/2nd-3rd-4th-job-bonuses.45500/): 1st/2nd job grant **0** bonus AP; 3rd/4th job grant **+5** AP each (levels 70 and 120). The simulator adds these on top of the normal 5 AP per level. Beginner has no job advances.
 
 ## Tests
 
@@ -204,5 +243,6 @@ pytest -q
 ## Out of scope
 
 - Web / Streamlit / Electron
-- Other classes, NX market prices, auto-search of `int_reset_level`
-- Additional hybrid shortfall variants beyond A/B
+- Magician wash (deferred)
+- NX market prices, auto-search of `int_reset_level`
+- SP-reset alternate Improve MaxHP washing
