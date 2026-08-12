@@ -1,4 +1,4 @@
-"""CustomTkinter desktop UI for the Thief HP wash optimizer (Traditional Chinese).
+"""CustomTkinter desktop UI for the multi-job HP wash optimizer (Traditional Chinese).
 
 All wash logic stays in ``hp_wash_thief.core.api``; this module only collects
 inputs and displays reports/CSV.
@@ -14,6 +14,7 @@ from typing import Optional
 import customtkinter as ctk
 
 from hp_wash_thief.core.api import optimize, simulate
+from hp_wash_thief.core.jobs import JobId, get_job_profile
 from hp_wash_thief.core.models import HpMode, OptimizeConfig, PolicyName, ResumeFrom, SimulateConfig
 from hp_wash_thief.core.report import (
     PLAN_CSV_HINT,
@@ -38,7 +39,19 @@ HP_MODE_LABELS = {
     "最小 (min)": "min",
     "最大 (max)": "max",
 }
+JOB_LABELS = {
+    "盜賊 Thief": "thief",
+    "弓箭手 Bowman": "bowman",
+    "槍手 Gunslinger": "gunslinger",
+    "打手 Brawler": "brawler",
+    "劍士 Fighter": "fighter",
+    "準騎士 Page": "page",
+    "槍戰士 Spearman": "spearman",
+    "初心者 Beginner": "beginner",
+}
+JOB_VALUE_TO_LABEL = {v: k for k, v in JOB_LABELS.items()}
 OPT_POLICY_LABELS = {
+    "依職業自動": "auto",
     "四種都跑 (ABCD)": "all",
     "三種都跑 (ABD)": "abd",
     "A：不足時 MP wash": "mp_wash_shortfall",
@@ -47,6 +60,7 @@ OPT_POLICY_LABELS = {
     "D：純樸（達標 INT 前只堆 INT）": "int_only_plain",
 }
 SIM_POLICY_LABELS = {
+    "依職業自動": "auto",
     "A：不足時 MP wash": "mp_wash_shortfall",
     "B：不足時全點 INT": "int_dump_shortfall",
     "C：硬核 A（≥12 逐 AP；30+ MP1）": "mp_wash_hardcore",
@@ -57,7 +71,7 @@ SIM_POLICY_LABELS = {
 class HpWashApp(ctk.CTk):
     def __init__(self) -> None:
         super().__init__()
-        self.title("MapleRoyals 盜賊洗血 APR 最佳化")
+        self.title("MapleRoyals 洗血 APR 最佳化")
         self.geometry("1100x780")
         self.minsize(920, 640)
 
@@ -70,7 +84,7 @@ class HpWashApp(ctk.CTk):
 
         header = ctk.CTkLabel(
             self,
-            text="MapleRoyals 盜賊洗血 APR 最佳化",
+            text="MapleRoyals 洗血 APR 最佳化（多職業）",
             font=ctk.CTkFont(size=22, weight="bold"),
         )
         header.grid(row=0, column=0, sticky="w", padx=16, pady=(14, 6))
@@ -200,33 +214,100 @@ class HpWashApp(ctk.CTk):
         for col in range(6):
             frame.grid_columnconfigure(col, weight=1)
 
+        ctk.CTkLabel(frame, text="職業").grid(row=0, column=0, sticky="w", padx=6, pady=(8, 0))
+        job_menu = ctk.CTkOptionMenu(
+            frame,
+            values=list(JOB_LABELS.keys()),
+            command=lambda _v, p=prefix: self._on_job_changed(p),
+        )
+        job_menu.set("盜賊 Thief")
+        job_menu.grid(row=1, column=0, sticky="ew", padx=6, pady=(0, 8))
+        setattr(self, f"{prefix}_job", job_menu)
+
+        ctk.CTkLabel(frame, text="Improve MaxHP（可空＝自動）").grid(
+            row=0, column=1, sticky="w", padx=6, pady=(8, 0)
+        )
+        skill = ctk.CTkEntry(frame, placeholder_text="0–10 或留空")
+        skill.grid(row=1, column=1, sticky="ew", padx=6, pady=(0, 8))
+        setattr(self, f"{prefix}_improved_maxhp_level", skill)
+
         fields = [
-            ("target_hp", "目標 HP", "27000"),
-            ("int_reset_level", "INT 洗回等級", "155"),
-            ("int_gear_after_reset", "INT reset 後 int_gear", "50"),
-            ("quest_equip_hp", "任務／裝備 HP", "0"),
-            ("mw_percent", "MW（base INT 比例）", "0.10"),
-            ("mw_from_level", "MW 起始等級", "10"),
+            ("target_hp", "目標 HP", "27000", 2),
+            ("int_reset_level", "INT 洗回等級", "155", 3),
+            ("int_gear_after_reset", "INT reset 後 int_gear", "50", 4),
+            ("quest_equip_hp", "任務／裝備 HP", "0", 5),
         ]
-        for i, (key, label, default) in enumerate(fields):
-            ctk.CTkLabel(frame, text=label).grid(row=0, column=i, sticky="w", padx=6, pady=(8, 0))
+        for key, label, default, col in fields:
+            ctk.CTkLabel(frame, text=label).grid(
+                row=0, column=col, sticky="w", padx=6, pady=(8, 0)
+            )
             entry = ctk.CTkEntry(frame)
             entry.insert(0, default)
-            entry.grid(row=1, column=i, sticky="ew", padx=6, pady=(0, 8))
+            entry.grid(row=1, column=col, sticky="ew", padx=6, pady=(0, 8))
             setattr(self, f"{prefix}_{key}", entry)
 
-        ctk.CTkLabel(frame, text="HP 模式").grid(row=2, column=0, sticky="w", padx=6)
+        ctk.CTkLabel(frame, text="MW（base INT 比例）").grid(
+            row=2, column=0, sticky="w", padx=6
+        )
+        mw = ctk.CTkEntry(frame)
+        mw.insert(0, "0.10")
+        mw.grid(row=3, column=0, sticky="ew", padx=6, pady=(0, 8))
+        setattr(self, f"{prefix}_mw_percent", mw)
+
+        ctk.CTkLabel(frame, text="MW 起始等級").grid(row=2, column=1, sticky="w", padx=6)
+        mw_from = ctk.CTkEntry(frame)
+        mw_from.insert(0, "10")
+        mw_from.grid(row=3, column=1, sticky="ew", padx=6, pady=(0, 8))
+        setattr(self, f"{prefix}_mw_from_level", mw_from)
+
+        ctk.CTkLabel(frame, text="HP 模式").grid(row=2, column=2, sticky="w", padx=6)
         mode = ctk.CTkOptionMenu(frame, values=list(HP_MODE_LABELS.keys()))
         mode.set("平均 (avg)")
-        mode.grid(row=3, column=0, sticky="ew", padx=6, pady=(0, 8))
+        mode.grid(row=3, column=2, sticky="ew", padx=6, pady=(0, 8))
         setattr(self, f"{prefix}_hp_mode", mode)
 
         gear_note = ctk.CTkLabel(
             frame,
-            text="INT 裝備由「裝備 Equipment」分頁自動帶入（無需 JSON）",
+            text="INT 裝備由「裝備 Equipment」分頁自動帶入｜非盜賊固定方案 D（Method2）",
             text_color=("gray30", "gray70"),
         )
-        gear_note.grid(row=3, column=1, columnspan=5, sticky="w", padx=6, pady=(0, 8))
+        gear_note.grid(row=3, column=3, columnspan=3, sticky="w", padx=6, pady=(0, 8))
+        self._on_job_changed(prefix)
+
+    def _selected_job(self, prefix: str) -> str:
+        label = getattr(self, f"{prefix}_job").get()
+        return JOB_LABELS.get(label, "thief")
+
+    def _on_job_changed(self, prefix: str) -> None:
+        job = self._selected_job(prefix)
+        profile = get_job_profile(job)
+        is_thief = job == JobId.THIEF.value
+        skill_entry = getattr(self, f"{prefix}_improved_maxhp_level", None)
+        if skill_entry is not None:
+            if profile.maxhp_skill is None:
+                skill_entry.delete(0, "end")
+                skill_entry.configure(state="disabled", placeholder_text="此職業無此技能")
+            else:
+                skill_entry.configure(state="normal", placeholder_text="0–10 或留空＝自動")
+
+        if prefix == "opt" and hasattr(self, "opt_policies"):
+            if is_thief:
+                self.opt_policies.configure(values=list(OPT_POLICY_LABELS.keys()))
+                self.opt_policies.set("依職業自動")
+                self.opt_policies.configure(state="normal")
+            else:
+                self.opt_policies.configure(values=["依職業自動（僅 D）"])
+                self.opt_policies.set("依職業自動（僅 D）")
+                self.opt_policies.configure(state="disabled")
+        if prefix == "sim" and hasattr(self, "sim_policy"):
+            if is_thief:
+                self.sim_policy.configure(values=list(SIM_POLICY_LABELS.keys()))
+                self.sim_policy.set("依職業自動")
+                self.sim_policy.configure(state="normal")
+            else:
+                self.sim_policy.configure(values=["依職業自動（僅 D）"])
+                self.sim_policy.set("依職業自動（僅 D）")
+                self.sim_policy.configure(state="disabled")
 
     def _build_optimize_extra(self, parent: ctk.CTkFrame) -> None:
         frame = ctk.CTkFrame(parent)
@@ -235,7 +316,7 @@ class HpWashApp(ctk.CTk):
 
         ctk.CTkLabel(frame, text="政策").grid(row=0, column=0, sticky="w", padx=6, pady=8)
         policies = ctk.CTkOptionMenu(frame, values=list(OPT_POLICY_LABELS.keys()))
-        policies.set("四種都跑 (ABCD)")
+        policies.set("依職業自動")
         policies.grid(row=0, column=1, sticky="w", padx=6, pady=8)
         self.opt_policies = policies
 
@@ -244,6 +325,7 @@ class HpWashApp(ctk.CTk):
         top.insert(0, "5")
         top.grid(row=0, column=3, sticky="w", padx=6, pady=8)
         self.opt_top = top
+        self._on_job_changed("opt")
 
     def _build_simulate_extra(self, parent: ctk.CTkFrame) -> None:
         frame = ctk.CTkFrame(parent)
@@ -253,7 +335,7 @@ class HpWashApp(ctk.CTk):
 
         ctk.CTkLabel(frame, text="政策").grid(row=0, column=0, sticky="w", padx=6)
         policy = ctk.CTkOptionMenu(frame, values=list(SIM_POLICY_LABELS.keys()))
-        policy.set("A：不足時 MP wash")
+        policy.set("依職業自動")
         policy.grid(row=1, column=0, sticky="ew", padx=6, pady=(0, 8))
         self.sim_policy = policy
 
@@ -272,6 +354,7 @@ class HpWashApp(ctk.CTk):
         auto_m2.select()
         auto_m2.grid(row=1, column=4, sticky="w", padx=6, pady=(0, 8))
         self.sim_auto_method2 = auto_m2
+        self._on_job_changed("sim")
 
     def _build_resume_panel(self, parent: ctk.CTkFrame, *, prefix: str) -> None:
         """Optional mid-game snapshot: continue from current level/stats."""
@@ -427,7 +510,16 @@ class HpWashApp(ctk.CTk):
         int_gear_after_reset = self._int(
             getattr(self, f"{prefix}_int_gear_after_reset"), "INT reset 後 int_gear"
         )
+        skill_raw = getattr(self, f"{prefix}_improved_maxhp_level").get().strip()
+        improved_maxhp_level = None
+        if skill_raw:
+            improved_maxhp_level = self._int(
+                getattr(self, f"{prefix}_improved_maxhp_level"), "Improve MaxHP 等級"
+            )
+            if not (0 <= improved_maxhp_level <= 10):
+                raise ValueError("Improve MaxHP 等級須為 0–10。")
         return {
+            "job": self._selected_job(prefix),
             "target_hp": self._int(getattr(self, f"{prefix}_target_hp"), "目標 HP"),
             "int_reset_level": int_reset_level,
             "int_gear_after_reset": int_gear_after_reset,
@@ -442,6 +534,7 @@ class HpWashApp(ctk.CTk):
             "int_gear": self._equipment_panel.current_int_gear_segments(
                 int_reset_level=int_reset_level
             ),
+            "improved_maxhp_level": improved_maxhp_level,
         }
 
     def _set_busy(self, prefix: str, busy: bool, message: str = "") -> None:
@@ -509,41 +602,46 @@ class HpWashApp(ctk.CTk):
             base_dex=base_dex,
             fresh_ap=fresh_ap,
             int_reset_done=bool(getattr(self, f"{prefix}_resume_int_reset_done").get()),
+            job=self._selected_job(prefix),
         )
+
+    def _parse_opt_policies(self, job: str) -> list[PolicyName]:
+        raw_label = self.opt_policies.get()
+        policies_raw = OPT_POLICY_LABELS.get(raw_label, raw_label)
+        if policies_raw in ("auto", "依職業自動（僅 D）") or "僅 D" in raw_label:
+            return list(get_job_profile(job).policies)
+        if policies_raw == "all":
+            return [
+                PolicyName.MP_WASH_SHORTFALL,
+                PolicyName.INT_DUMP_SHORTFALL,
+                PolicyName.MP_WASH_HARDCORE,
+                PolicyName.INT_ONLY_PLAIN,
+            ]
+        if policies_raw == "abd":
+            return [
+                PolicyName.MP_WASH_SHORTFALL,
+                PolicyName.INT_DUMP_SHORTFALL,
+                PolicyName.INT_ONLY_PLAIN,
+            ]
+        return [PolicyName(policies_raw)]
 
     def _run_optimize(self) -> None:
         def job():
             shared = self._shared_kwargs("opt")
-            policies_raw = OPT_POLICY_LABELS.get(
-                self.opt_policies.get(), self.opt_policies.get()
-            )
-            if policies_raw == "all":
-                policies = [
-                    PolicyName.MP_WASH_SHORTFALL,
-                    PolicyName.INT_DUMP_SHORTFALL,
-                    PolicyName.MP_WASH_HARDCORE,
-                    PolicyName.INT_ONLY_PLAIN,
-                ]
-            elif policies_raw == "abd":
-                policies = [
-                    PolicyName.MP_WASH_SHORTFALL,
-                    PolicyName.INT_DUMP_SHORTFALL,
-                    PolicyName.INT_ONLY_PLAIN,
-                ]
-            else:
-                policies = [PolicyName(policies_raw)]
             config = OptimizeConfig(
                 target_hp=shared["target_hp"],
                 int_reset_level=shared["int_reset_level"],
                 int_gear=shared["int_gear"],
+                job=shared["job"],
                 int_gear_after_reset=shared["int_gear_after_reset"],
-                policies=policies,
+                policies=self._parse_opt_policies(shared["job"]),
                 quest_equip_hp=shared["quest_equip_hp"],
                 hp_mode=shared["hp_mode"],
                 mw_percent=shared["mw_percent"],
                 mw_from_level=shared["mw_from_level"],
                 top_n=self._int(self.opt_top, "保留前 N 名"),
                 resume_from=self._parse_resume("opt"),
+                improved_maxhp_level=shared["improved_maxhp_level"],
             )
             result = optimize(config)
             summary = format_optimize_summary_text(result)
@@ -565,13 +663,19 @@ class HpWashApp(ctk.CTk):
     def _run_simulate(self) -> None:
         def job():
             shared = self._shared_kwargs("sim")
-            policy_raw = SIM_POLICY_LABELS.get(self.sim_policy.get(), self.sim_policy.get())
+            policy_label = self.sim_policy.get()
+            policy_raw = SIM_POLICY_LABELS.get(policy_label, policy_label)
+            if policy_raw in ("auto",) or "僅 D" in policy_label:
+                policy = get_job_profile(shared["job"]).policies[0]
+            else:
+                policy = PolicyName(policy_raw)
             config = SimulateConfig(
-                policy=PolicyName(policy_raw),
+                policy=policy,
                 target_base_int=self._int(self.sim_target_base_int, "目標 base INT"),
                 target_hp=shared["target_hp"],
                 int_reset_level=shared["int_reset_level"],
                 int_gear=shared["int_gear"],
+                job=shared["job"],
                 int_gear_after_reset=shared["int_gear_after_reset"],
                 mp_wash_end=self._int(self.sim_mp_wash_end, "MP wash 結束等級"),
                 quest_equip_hp=shared["quest_equip_hp"],
@@ -580,6 +684,7 @@ class HpWashApp(ctk.CTk):
                 mw_percent=shared["mw_percent"],
                 mw_from_level=shared["mw_from_level"],
                 resume_from=self._parse_resume("sim"),
+                improved_maxhp_level=shared["improved_maxhp_level"],
             )
             result = simulate(config)
             summary = format_simulate_summary_text(result)

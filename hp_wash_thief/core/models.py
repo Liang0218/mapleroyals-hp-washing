@@ -36,6 +36,8 @@ class Action(str, Enum):
     HARDCORE_GREEDY = "HARDCORE_GREEDY"
     INT5 = "INT5"
     LUK5 = "LUK5"
+    STR5 = "STR5"
+    DEX5 = "DEX5"
     M2 = "M2"
     RESET_INT = "RESET_INT"
     RESUME = "RESUME"
@@ -68,11 +70,15 @@ def mp_action_for_wash_count(count: int) -> Action:
     return Action(f"MP{count}")
 
 
-def planned_hp_washes(action: Action, *, extra_mp: float, fresh_ap: int) -> int:
+def planned_hp_washes(
+    action: Action, *, extra_mp: float, fresh_ap: int, mp_removed_per_apr: int = 12
+) -> int:
     """Resolve HP1…HP5 / HP5 into the wash count for this level."""
     from hp_wash_thief.core import formulas as F
 
-    affordable = F.method1_washes_affordable(extra_mp, fresh_ap)
+    affordable = F.method1_washes_affordable(
+        extra_mp, fresh_ap, mp_removed_per_apr=mp_removed_per_apr
+    )
     if affordable <= 0:
         return 0
     if action is Action.HP5:
@@ -90,12 +96,13 @@ def planned_mp_washes(
     level: int,
     fresh_ap: int,
     hp_mode: HpMode,
+    job: "JobId | str" = "thief",
 ) -> int:
     """Resolve MP1…MP5 / MP5 into the wash count for this level."""
     from hp_wash_thief.core import formulas as F
 
     affordable = F.mp_washes_affordable(
-        base_int, base_mp, level, fresh_ap, mode=hp_mode
+        base_int, base_mp, level, fresh_ap, mode=hp_mode, job=job
     )
     if affordable <= 0:
         return 0
@@ -152,14 +159,15 @@ class ResumeFrom:
         fresh_ap: Optional[int] = None,
         int_reset_done: bool = False,
         base_int_peak: Optional[int] = None,
+        job: str = "thief",
     ) -> "ResumeFrom":
         """Build from base MP and/or Extra MP (Extra MP = base_mp − min_mp(level))."""
-        from hp_wash_thief.core.formulas import min_mp
+        from hp_wash_thief.core.jobs import get_job_profile
 
         if base_mp is None and extra_mp is None:
             raise ValueError("resume requires base_mp or extra_mp")
         if base_mp is None:
-            base_mp = float(min_mp(level)) + float(extra_mp)
+            base_mp = float(get_job_profile(job).min_mp(level)) + float(extra_mp)
         return cls(
             level=level,
             base_hp=float(base_hp),
@@ -179,24 +187,18 @@ class OptimizeConfig:
     target_hp: int
     int_reset_level: int
     int_gear: list[IntGearSegment]
-    policies: list[PolicyName] = field(
-        default_factory=lambda: [
-            PolicyName.MP_WASH_SHORTFALL,
-            PolicyName.INT_DUMP_SHORTFALL,
-            PolicyName.MP_WASH_HARDCORE,
-            PolicyName.INT_ONLY_PLAIN,
-        ]
-    )
+    job: str = "thief"
+    policies: list[PolicyName] = field(default_factory=list)
     quest_equip_hp: int = 0
     hp_mode: HpMode = HpMode.AVG
     max_level: int = 200
     # Maple Warrior: % of base INT added to total INT for level-up MP (not MP wash).
     mw_percent: float = 0.10
     mw_from_level: int = 10
-    # Fixed equipment INT from int_reset_level onward (post INT→LUK reset).
+    # Fixed equipment INT from int_reset_level onward (post INT→primary reset).
     int_gear_after_reset: int = 50
-    # Extra MP threshold for early HP wash×5. Fixed at 60 (= 12 MP × 5 APR).
-    extra_mp_threshold: int = 60
+    # Extra MP threshold for early HP wash×5. None → job default (mp_removed × 5).
+    extra_mp_threshold: Optional[int] = None
     # Search bounds (overridable for tests)
     target_base_int_min: int = 100
     target_base_int_max: int = 500
@@ -205,6 +207,17 @@ class OptimizeConfig:
     top_n: int = 5
     # Optional: continue from an in-progress character instead of level 1.
     resume_from: Optional[ResumeFrom] = None
+    # Override Improve MaxHP skill level (0–10); None = auto from SP schedule.
+    improved_maxhp_level: Optional[int] = None
+
+    def __post_init__(self) -> None:
+        from hp_wash_thief.core.jobs import get_job_profile
+
+        profile = get_job_profile(self.job)
+        if not self.policies:
+            self.policies = list(profile.policies)
+        if self.extra_mp_threshold is None:
+            self.extra_mp_threshold = profile.default_extra_mp_threshold()
 
 
 @dataclass
@@ -214,9 +227,10 @@ class SimulateConfig:
     target_hp: int
     int_reset_level: int
     int_gear: list[IntGearSegment]
+    job: str = "thief"
     mp_wash_end: int = 135
-    # 60 = 12 MP removed per APR × 5 fresh AP (one full HP5/MP5 level).
-    extra_mp_threshold: int = 60
+    # None → job default (mp_removed × 5).
+    extra_mp_threshold: Optional[int] = None
     quest_equip_hp: int = 0
     hp_mode: HpMode = HpMode.AVG
     max_level: int = 200
@@ -225,6 +239,13 @@ class SimulateConfig:
     mw_from_level: int = 10
     int_gear_after_reset: int = 50
     resume_from: Optional[ResumeFrom] = None
+    improved_maxhp_level: Optional[int] = None
+
+    def __post_init__(self) -> None:
+        from hp_wash_thief.core.jobs import get_job_profile
+
+        if self.extra_mp_threshold is None:
+            self.extra_mp_threshold = get_job_profile(self.job).default_extra_mp_threshold()
 
 
 @dataclass
@@ -256,6 +277,7 @@ class LevelPlanRow:
     fresh_ap_int: int = 0
     fresh_ap_luk: int = 0
     fresh_ap_dex: int = 0
+    fresh_ap_str: int = 0
     fresh_ap_hp: int = 0
     fresh_ap_mp: int = 0
     apr_spent: int = 0
@@ -277,6 +299,8 @@ class SimulateResult:
     apr: AprBreakdown
     plan: list[LevelPlanRow] = field(default_factory=list)
     resume_from: Optional[ResumeFrom] = None
+    job: str = "thief"
+    improved_maxhp_level: Optional[int] = None
 
 
 @dataclass
@@ -294,6 +318,8 @@ class CandidateResult:
     apr: AprBreakdown
     plan: list[LevelPlanRow] = field(default_factory=list)
     resume_from: Optional[ResumeFrom] = None
+    job: str = "thief"
+    improved_maxhp_level: Optional[int] = None
 
     @property
     def total_apr(self) -> int:
@@ -315,6 +341,8 @@ class CandidateResult:
             apr=result.apr,
             plan=result.plan,
             resume_from=result.resume_from,
+            job=result.job,
+            improved_maxhp_level=result.improved_maxhp_level,
         )
 
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Iterable, Optional
 
 from hp_wash_thief.core import formulas as F
+from hp_wash_thief.core.jobs import get_job_profile
 from hp_wash_thief.core.models import (
     CandidateResult,
     ComparisonResult,
@@ -18,10 +19,12 @@ from hp_wash_thief.core.simulator import simulate
 
 
 def optimize(config: OptimizeConfig) -> OptimizeResult:
+    profile = get_job_profile(config.job)
+    policies = config.policies or list(profile.policies)
     by_policy: dict[PolicyName, PolicyBest] = {}
     all_feasible: list[CandidateResult] = []
 
-    for policy in config.policies:
+    for policy in policies:
         bests = _optimize_policy(config, policy)
         by_policy[policy] = bests
         all_feasible.extend(c for c in bests.top if c.reached_target)
@@ -123,6 +126,8 @@ def _search(config: OptimizeConfig, policy: PolicyName, *, coarse: bool) -> Iter
         mp_values.append(mp_max)
 
     threshold = config.extra_mp_threshold
+    if threshold is None:
+        threshold = get_job_profile(config.job).default_extra_mp_threshold()
 
     for target_base_int in int_values:
         for mp_wash_end in mp_values:
@@ -151,6 +156,8 @@ def _refine_around(
     mp_center = min(max(seed.mp_wash_end, mp_min), mp_max)
     mp_candidates = _neighbors(mp_center, low=mp_min, high=mp_max, step=5, radius=2)
     threshold = config.extra_mp_threshold
+    if threshold is None:
+        threshold = get_job_profile(config.job).default_extra_mp_threshold()
 
     for target_base_int in int_candidates:
         for mp_wash_end in mp_candidates:
@@ -178,6 +185,7 @@ def _run(
             target_hp=config.target_hp,
             int_reset_level=config.int_reset_level,
             int_gear=config.int_gear,
+            job=config.job,
             mp_wash_end=mp_wash_end,
             extra_mp_threshold=extra_mp_threshold,
             quest_equip_hp=config.quest_equip_hp,
@@ -188,6 +196,7 @@ def _run(
             mw_from_level=config.mw_from_level,
             int_gear_after_reset=config.int_gear_after_reset,
             resume_from=config.resume_from,
+            improved_maxhp_level=config.improved_maxhp_level,
         )
     )
     return CandidateResult.from_simulate(sim)

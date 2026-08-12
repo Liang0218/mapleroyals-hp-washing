@@ -33,6 +33,8 @@ _EXACT: dict[str, str] = {
     "int_reset_done but base_int > 4": "已勾選 INT 洗回時，base INT 應為 4。",
     "resume base_int_peak must be >= base_int": "INT 峰值不可小於目前 base INT。",
     "resume requires base_mp or extra_mp": "中途接續請填 base MP（APR 顯示的數值）。",
+    "improved_maxhp_level must be in [0, 10]": "Improve MaxHP 等級須為 0–10。",
+    "unknown job: magician": "尚不支援法師職業。",
 }
 
 # Substring patterns (regex) → 繁中
@@ -60,6 +62,10 @@ _PATTERNS: list[tuple[re.Pattern[str], str]] = [
     (
         re.compile(r"^equip_level must be >= 1 for (.+)$"),
         lambda m: f"「{m.group(1)}」的穿戴等級必須 ≥ 1。",
+    ),
+    (
+        re.compile(r"^unknown job: (.+)$"),
+        lambda m: f"未知或不支援的職業：{m.group(1)}",
     ),
     (
         re.compile(r"^overlapping INT gear segments:"),

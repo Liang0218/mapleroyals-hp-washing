@@ -49,7 +49,7 @@ def test_integration_simulate_all_policies_with_example_gear(example_gear):
         assert result.final_display_hp > 10000
         assert result.int_reached_level >= 30
         text = format_simulate_report(result)
-        assert "盜賊洗血" in text
+        assert "洗血" in text
         assert "總 APR" in text
 
 
