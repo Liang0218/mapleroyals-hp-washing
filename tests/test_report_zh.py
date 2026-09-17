@@ -20,6 +20,9 @@ GEAR = parse_int_gear([{"from_level": 1, "to_level": 200, "int_gear": 100}])
 def test_ui_guide_mentions_equipment_first():
     text = format_ui_guide()
     assert "裝備 Equipment" in text
+    assert "Improve MaxHP 依 SP 自動" in text
+    assert "Method1" in text
+    assert "Method2" in text
     assert len(text.splitlines()) <= 14
 
 
@@ -59,6 +62,7 @@ def test_optimize_report_is_chinese():
     assert "政策比較" in text
     assert "A：" in text or "A " in text
     assert "優勝方案" in text
+    assert "使用 APR" in text
     assert "總 APR" in text
     assert PLAN_CSV_HINT in text
     assert "Lv   Action" not in text
@@ -77,6 +81,7 @@ def test_simulate_report_and_notes_chinese():
     )
     text = format_simulate_report(result)
     assert "懶人包" in text
+    assert "使用 APR" in text
     assert "模擬結果" in text
     assert PLAN_CSV_HINT in text
     assert "Lv   Action" not in text
@@ -108,3 +113,47 @@ def test_action_descriptions_cover_all_actions():
             continue
         desc = action_description(action)
         assert desc and desc != action.value
+
+
+def test_action_legend_explains_method1_and_method2():
+    from hp_wash_thief.core.report import format_action_legend
+
+    text = format_action_legend()
+    assert "【洗血方法】" in text
+    assert "Method1" in text
+    assert "Method2" in text
+    assert "升等" in text
+    assert "Extra MP" in text
+
+
+def test_plan_csv_ends_with_method_legend(tmp_path):
+    import csv
+
+    from hp_wash_thief.core.models import Action, LevelPlanRow
+    from hp_wash_thief.core.report import CSV_LEGEND_LEVEL, write_plan_csv
+
+    path = tmp_path / "plan.csv"
+    write_plan_csv(
+        [
+            LevelPlanRow(
+                level=200,
+                action=Action.M2,
+                base_int=4,
+                base_luk=4,
+                base_hp=27000,
+                base_mp=15000,
+                extra_mp=1000,
+                apr_spent=10,
+                notes="Method2×10",
+            )
+        ],
+        path,
+    )
+    rows = list(csv.DictReader(path.open(encoding="utf-8-sig")))
+    assert rows[0]["level"] == "200"
+    assert rows[0]["action"] == "M2"
+    legend = [row for row in rows if row["level"] == CSV_LEGEND_LEVEL]
+    assert legend[0]["action"] == "METHOD1"
+    assert "升等" in legend[0]["action_desc"]
+    assert legend[1]["action"] == "METHOD2"
+    assert "Extra MP" in legend[1]["action_desc"]

@@ -30,6 +30,27 @@ def _gear() -> list[IntGearSegment]:
     return [IntGearSegment(from_level=1, to_level=200, int_gear=30)]
 
 
+def test_display_names_use_fourth_job():
+    assert get_job_profile(JobId.FIGHTER).display_name_zh == "英雄 Hero"
+    assert get_job_profile(JobId.PAGE).display_name_zh == "聖騎士 Paladin"
+    assert get_job_profile(JobId.SPEARMAN).display_name_zh == "黑騎士 Dark Knight"
+    assert get_job_profile(JobId.BRAWLER).display_name_zh == "拳霸 Buccaneer"
+    assert get_job_profile(JobId.GUNSLINGER).display_name_zh == "槍神 Corsair"
+
+
+def test_job_id_order_warrior_then_bowman_thief_pirate():
+    assert [job.value for job in JobId] == [
+        "fighter",
+        "page",
+        "spearman",
+        "bowman",
+        "thief",
+        "brawler",
+        "gunslinger",
+        "beginner",
+    ]
+
+
 @pytest.mark.parametrize(
     "job,level,expected",
     [

@@ -112,11 +112,28 @@ class EquipmentPanel(ctk.CTkFrame):
         self.grid_columnconfigure(1, weight=2)
         self.grid_rowconfigure(3, weight=1)
 
-        ctk.CTkLabel(
+        title = ctk.CTkLabel(
             self,
             text="裝備管理：每個 Type 僅穿戴一件（Ring 最多 4 件），依等級自動計算 INT 區間",
             font=ctk.CTkFont(weight="bold"),
-        ).grid(row=0, column=0, columnspan=2, sticky="w", padx=8, pady=(8, 2))
+            anchor="w",
+            justify="left",
+            wraplength=640,
+        )
+        title.grid(row=0, column=0, columnspan=2, sticky="ew", padx=8, pady=(8, 2))
+
+        def _sync_title(event, lbl=title) -> None:
+            if event.widget is not self:
+                return
+            wrap = max(48, int(event.width) - 16)
+            try:
+                current = int(float(lbl.cget("wraplength") or 0))
+            except (TypeError, ValueError):
+                current = 0
+            if current != wrap:
+                lbl.configure(wraplength=wrap)
+
+        self.bind("<Configure>", _sync_title, add="+")
 
         ctk.CTkLabel(
             self,

@@ -101,9 +101,10 @@ class ResultPanel(ctk.CTkScrollableFrame):
                 text=footer,
                 font=self._font,
                 text_color=("gray25", "gray75"),
-                wraplength=900,
+                wraplength=480,
                 justify="left",
-            ).grid(row=row, column=0, sticky="w", padx=4, pady=(8, 4))
+                anchor="w",
+            ).grid(row=row, column=0, sticky="ew", padx=4, pady=(8, 4))
 
     def _grid_table(self, row: int, table: ReportTable) -> None:
         frame = ctk.CTkFrame(self, fg_color="transparent")

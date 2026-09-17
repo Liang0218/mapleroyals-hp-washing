@@ -40,13 +40,13 @@ HP_MODE_LABELS = {
     "最大 (max)": "max",
 }
 JOB_LABELS = {
-    "盜賊 Thief": "thief",
+    "英雄 Hero": "fighter",
+    "聖騎士 Paladin": "page",
+    "黑騎士 Dark Knight": "spearman",
     "弓箭手 Bowman": "bowman",
-    "槍手 Gunslinger": "gunslinger",
-    "打手 Brawler": "brawler",
-    "劍士 Fighter": "fighter",
-    "準騎士 Page": "page",
-    "槍戰士 Spearman": "spearman",
+    "盜賊 Thief": "thief",
+    "拳霸 Buccaneer": "brawler",
+    "槍神 Corsair": "gunslinger",
     "初心者 Beginner": "beginner",
 }
 JOB_VALUE_TO_LABEL = {v: k for k, v in JOB_LABELS.items()}
@@ -68,12 +68,34 @@ SIM_POLICY_LABELS = {
 }
 
 
+def _wraplength_of(label: ctk.CTkLabel) -> int:
+    try:
+        return int(float(label.cget("wraplength") or 0))
+    except (TypeError, ValueError):
+        return 0
+
+
+def _set_wraplength(label: ctk.CTkLabel, width: int, *, pad: int = 8) -> None:
+    wrap = max(48, int(width) - pad)
+    if _wraplength_of(label) != wrap:
+        label.configure(wraplength=wrap)
+
+
+def _bind_wrap(label: ctk.CTkLabel, host, *, pad: int = 8) -> None:
+    """Keep label text wrapping to ``host`` width instead of clipping."""
+
+    def _sync(event) -> None:
+        _set_wraplength(label, event.width, pad=pad)
+
+    host.bind("<Configure>", _sync, add="+")
+
+
 class HpWashApp(ctk.CTk):
     def __init__(self) -> None:
         super().__init__()
         self.title("MapleRoyals 洗血 APR 最佳化")
         self.geometry("1100x780")
-        self.minsize(920, 640)
+        self.minsize(880, 640)
 
         self._worker: Optional[threading.Thread] = None
         self._build()
@@ -100,9 +122,9 @@ class HpWashApp(ctk.CTk):
         self.tab_guide.grid_columnconfigure(0, weight=1)
         self.tab_guide.grid_rowconfigure(1, weight=1)
         self.tab_opt.grid_columnconfigure(0, weight=1)
-        self.tab_opt.grid_rowconfigure(3, weight=1)
+        self.tab_opt.grid_rowconfigure(2, weight=1)
         self.tab_sim.grid_columnconfigure(0, weight=1)
-        self.tab_sim.grid_rowconfigure(3, weight=1)
+        self.tab_sim.grid_rowconfigure(2, weight=1)
         self.tab_equip.grid_columnconfigure(0, weight=1)
         self.tab_equip.grid_rowconfigure(0, weight=1)
         self.tab_help.grid_columnconfigure(0, weight=1)
@@ -122,18 +144,14 @@ class HpWashApp(ctk.CTk):
 
         self._build_help_tab(self.tab_help)
 
-        self._build_optimize_extra(self.tab_opt)
         self._build_resume_panel(self.tab_opt, prefix="opt")
-        self._build_output_panel(self.tab_opt, prefix="opt")
-        self._build_actions(
+        self._build_output_panel(
             self.tab_opt, prefix="opt", run_label="執行最佳化", command=self._run_optimize
         )
 
         self._build_shared_params(self.tab_sim, prefix="sim")
-        self._build_simulate_extra(self.tab_sim)
         self._build_resume_panel(self.tab_sim, prefix="sim")
-        self._build_output_panel(self.tab_sim, prefix="sim")
-        self._build_actions(
+        self._build_output_panel(
             self.tab_sim, prefix="sim", run_label="執行模擬", command=self._run_simulate
         )
 
@@ -198,91 +216,149 @@ class HpWashApp(ctk.CTk):
         box.configure(state="disabled")
 
     def _build_help_tab(self, parent: ctk.CTkFrame) -> None:
-        ctk.CTkLabel(
+        help_title = ctk.CTkLabel(
             parent,
-            text="政策與動作代碼說明（逐等計畫請匯出 CSV，欄位含 action_desc）",
+            text="政策、洗血方法與動作代碼（CSV 末段「說明」列／action_desc 也可對照）",
             font=ctk.CTkFont(weight="bold"),
-        ).grid(row=0, column=0, sticky="w", padx=12, pady=(12, 6))
+            anchor="w",
+            justify="left",
+            wraplength=640,
+        )
+        help_title.grid(row=0, column=0, sticky="ew", padx=12, pady=(12, 6))
+        _bind_wrap(help_title, parent, pad=24)
         box = ctk.CTkTextbox(parent, font=ctk.CTkFont(family="Microsoft JhengHei UI", size=13))
         box.grid(row=1, column=0, sticky="nsew", padx=12, pady=(0, 12))
         box.insert("1.0", format_action_legend())
         box.configure(state="disabled")
 
-    def _build_shared_params(self, parent: ctk.CTkFrame, *, prefix: str) -> None:
-        frame = ctk.CTkFrame(parent)
-        frame.grid(row=0, column=0, sticky="ew", padx=8, pady=8)
-        for col in range(6):
+    def _pack_fields(self, frame, items: list, *, start_row: int = 0, cols: int = 6) -> int:
+        """Label row + widget row, no extra boxes. Labels wrap to column width."""
+        labels: list[ctk.CTkLabel] = []
+        n = min(cols, max(len(items), 1))
+        for col in range(n):
             frame.grid_columnconfigure(col, weight=1)
-
-        ctk.CTkLabel(frame, text="職業").grid(row=0, column=0, sticky="w", padx=6, pady=(8, 0))
-        job_menu = ctk.CTkOptionMenu(
-            frame,
-            values=list(JOB_LABELS.keys()),
-            command=lambda _v, p=prefix: self._on_job_changed(p),
-        )
-        job_menu.set("盜賊 Thief")
-        job_menu.grid(row=1, column=0, sticky="ew", padx=6, pady=(0, 8))
-        setattr(self, f"{prefix}_job", job_menu)
-
-        ctk.CTkLabel(frame, text="Improve MaxHP（可空＝自動）").grid(
-            row=0, column=1, sticky="w", padx=6, pady=(8, 0)
-        )
-        skill = ctk.CTkEntry(frame, placeholder_text="0–10 或留空")
-        skill.grid(row=1, column=1, sticky="ew", padx=6, pady=(0, 8))
-        setattr(self, f"{prefix}_improved_maxhp_level", skill)
-
-        fields = [
-            ("target_hp", "目標 HP", "27000", 2),
-            ("target_mp", "目標 MP（可空＝最低）", "", 3),
-            ("int_reset_level", "INT 洗回等級", "155", 4),
-            ("int_gear_after_reset", "INT reset 後 int_gear", "50", 5),
-        ]
-        for key, label, default, col in fields:
-            ctk.CTkLabel(frame, text=label).grid(
-                row=0, column=col, sticky="w", padx=6, pady=(8, 0)
+        for i, (key, text, factory, default) in enumerate(items):
+            r = start_row + (i // cols) * 2
+            c = i % cols
+            lbl = ctk.CTkLabel(
+                frame, text=text, anchor="w", justify="left", wraplength=88
             )
-            entry = ctk.CTkEntry(frame)
-            if key == "target_mp":
-                entry.configure(placeholder_text="留空＝洗到最低")
+            lbl.grid(row=r, column=c, sticky="ew", padx=5, pady=(4, 0))
+            labels.append(lbl)
+            widget = factory(frame)
             if default:
-                entry.insert(0, default)
-            entry.grid(row=1, column=col, sticky="ew", padx=6, pady=(0, 8))
-            setattr(self, f"{prefix}_{key}", entry)
+                if isinstance(widget, ctk.CTkEntry):
+                    widget.insert(0, default)
+                elif isinstance(widget, ctk.CTkOptionMenu):
+                    widget.set(default)
+                elif isinstance(widget, ctk.CTkCheckBox) and default == "1":
+                    widget.select()
+            widget.grid(row=r + 1, column=c, sticky="ew", padx=5, pady=(0, 4))
+            setattr(self, key, widget)
 
-        ctk.CTkLabel(frame, text="任務／裝備 HP").grid(
-            row=2, column=3, sticky="w", padx=6
-        )
-        quest = ctk.CTkEntry(frame)
-        quest.insert(0, "0")
-        quest.grid(row=3, column=3, sticky="ew", padx=6, pady=(0, 8))
-        setattr(self, f"{prefix}_quest_equip_hp", quest)
+        def _sync(event, labs=labels, ncols=n) -> None:
+            col_w = max(56, int(event.width) // ncols - 10)
+            for lbl in labs:
+                _set_wraplength(lbl, col_w, pad=0)
 
-        ctk.CTkLabel(frame, text="MW（base INT 比例）").grid(
-            row=2, column=0, sticky="w", padx=6
-        )
-        mw = ctk.CTkEntry(frame)
-        mw.insert(0, "0.10")
-        mw.grid(row=3, column=0, sticky="ew", padx=6, pady=(0, 8))
-        setattr(self, f"{prefix}_mw_percent", mw)
+        frame.bind("<Configure>", _sync, add="+")
+        return start_row + ((len(items) - 1) // cols + 1) * 2
 
-        ctk.CTkLabel(frame, text="MW 起始等級").grid(row=2, column=1, sticky="w", padx=6)
-        mw_from = ctk.CTkEntry(frame)
-        mw_from.insert(0, "10")
-        mw_from.grid(row=3, column=1, sticky="ew", padx=6, pady=(0, 8))
-        setattr(self, f"{prefix}_mw_from_level", mw_from)
-
-        ctk.CTkLabel(frame, text="HP 模式").grid(row=2, column=2, sticky="w", padx=6)
-        mode = ctk.CTkOptionMenu(frame, values=list(HP_MODE_LABELS.keys()))
-        mode.set("平均 (avg)")
-        mode.grid(row=3, column=2, sticky="ew", padx=6, pady=(0, 8))
-        setattr(self, f"{prefix}_hp_mode", mode)
-
-        gear_note = ctk.CTkLabel(
-            frame,
-            text="INT 裝備由「裝備 Equipment」分頁自動帶入｜非盜賊固定方案 D（Method2）｜目標 MP＝200 等 base MP 下限",
+    def _add_note(self, parent, row: int, text: str, *, columnspan: int = 6) -> ctk.CTkLabel:
+        note = ctk.CTkLabel(
+            parent,
+            text=text,
+            anchor="w",
+            justify="left",
+            wraplength=720,
             text_color=("gray30", "gray70"),
         )
-        gear_note.grid(row=3, column=4, columnspan=2, sticky="w", padx=6, pady=(0, 8))
+        note.grid(
+            row=row, column=0, columnspan=columnspan, sticky="ew", padx=6, pady=(0, 6)
+        )
+        _bind_wrap(note, note, pad=8)
+        return note
+
+    def _build_shared_params(self, parent: ctk.CTkFrame, *, prefix: str) -> None:
+        frame = ctk.CTkFrame(parent)
+        frame.grid(row=0, column=0, sticky="ew", padx=8, pady=(6, 4))
+
+        items = [
+            (
+                f"{prefix}_job",
+                "職業",
+                lambda p: ctk.CTkOptionMenu(
+                    p,
+                    values=list(JOB_LABELS.keys()),
+                    command=lambda _v, pref=prefix: self._on_job_changed(pref),
+                ),
+                JOB_VALUE_TO_LABEL["thief"],
+            ),
+            (f"{prefix}_target_hp", "目標 HP", ctk.CTkEntry, "27000"),
+            (f"{prefix}_target_mp", "目標 MP（可空）", ctk.CTkEntry, ""),
+            (f"{prefix}_int_reset_level", "INT 洗回等級", ctk.CTkEntry, "155"),
+            (f"{prefix}_int_gear_after_reset", "洗回後裝備 INT", ctk.CTkEntry, "50"),
+            (f"{prefix}_quest_equip_hp", "任務／裝備 HP", ctk.CTkEntry, "0"),
+            (f"{prefix}_mw_percent", "MW 比例", ctk.CTkEntry, "0.10"),
+            (f"{prefix}_mw_from_level", "MW 起始等級", ctk.CTkEntry, "10"),
+            (
+                f"{prefix}_hp_mode",
+                "HP 模式",
+                lambda p: ctk.CTkOptionMenu(p, values=list(HP_MODE_LABELS.keys())),
+                "平均 (avg)",
+            ),
+        ]
+        if prefix == "opt":
+            items.extend(
+                [
+                    (
+                        "opt_policies",
+                        "政策",
+                        lambda p: ctk.CTkOptionMenu(
+                            p, values=list(OPT_POLICY_LABELS.keys())
+                        ),
+                        "依職業自動",
+                    ),
+                    ("opt_top", "保留前 N 名", ctk.CTkEntry, "5"),
+                ]
+            )
+        else:
+            items.extend(
+                [
+                    (
+                        "sim_policy",
+                        "政策",
+                        lambda p: ctk.CTkOptionMenu(
+                            p, values=list(SIM_POLICY_LABELS.keys())
+                        ),
+                        "依職業自動",
+                    ),
+                    ("sim_target_base_int", "目標 base INT", ctk.CTkEntry, "350"),
+                    ("sim_mp_wash_end", "MP wash 結束等級", ctk.CTkEntry, "100"),
+                ]
+            )
+
+        next_row = self._pack_fields(frame, items, start_row=0, cols=6)
+        mp_entry = getattr(self, f"{prefix}_target_mp")
+        mp_entry.configure(placeholder_text="留空＝洗到最低")
+
+        if prefix == "sim":
+            auto_m2 = ctk.CTkCheckBox(
+                frame, text="自動 Method2 補洗（APR 把 Extra MP 洗成 HP，不必升等）"
+            )
+            auto_m2.select()
+            auto_m2.grid(
+                row=next_row, column=0, columnspan=6, sticky="w", padx=6, pady=(0, 2)
+            )
+            self.sim_auto_method2 = auto_m2
+            next_row += 1
+
+        self._add_note(
+            frame,
+            next_row,
+            "裝備 INT 由「裝備」分頁帶入。盜賊可用 Method1（升等洗 HP）；"
+            "其他職業固定方案 D，主要用 Method2（APR 洗 Extra MP→HP）。詳見「說明 Actions」。",
+        )
         self._on_job_changed(prefix)
 
     def _selected_job(self, prefix: str) -> str:
@@ -291,15 +367,7 @@ class HpWashApp(ctk.CTk):
 
     def _on_job_changed(self, prefix: str) -> None:
         job = self._selected_job(prefix)
-        profile = get_job_profile(job)
         is_thief = job == JobId.THIEF.value
-        skill_entry = getattr(self, f"{prefix}_improved_maxhp_level", None)
-        if skill_entry is not None:
-            if profile.maxhp_skill is None:
-                skill_entry.delete(0, "end")
-                skill_entry.configure(state="disabled", placeholder_text="此職業無此技能")
-            else:
-                skill_entry.configure(state="normal", placeholder_text="0–10 或留空＝自動")
 
         if prefix == "opt" and hasattr(self, "opt_policies"):
             if is_thief:
@@ -320,110 +388,62 @@ class HpWashApp(ctk.CTk):
                 self.sim_policy.set("依職業自動（僅 D）")
                 self.sim_policy.configure(state="disabled")
 
-    def _build_optimize_extra(self, parent: ctk.CTkFrame) -> None:
-        frame = ctk.CTkFrame(parent)
-        frame.grid(row=1, column=0, sticky="ew", padx=8, pady=(0, 8))
-        frame.grid_columnconfigure(1, weight=1)
-
-        ctk.CTkLabel(frame, text="政策").grid(row=0, column=0, sticky="w", padx=6, pady=8)
-        policies = ctk.CTkOptionMenu(frame, values=list(OPT_POLICY_LABELS.keys()))
-        policies.set("依職業自動")
-        policies.grid(row=0, column=1, sticky="w", padx=6, pady=8)
-        self.opt_policies = policies
-
-        ctk.CTkLabel(frame, text="保留前 N 名").grid(row=0, column=2, sticky="w", padx=6, pady=8)
-        top = ctk.CTkEntry(frame, width=80)
-        top.insert(0, "5")
-        top.grid(row=0, column=3, sticky="w", padx=6, pady=8)
-        self.opt_top = top
-        self._on_job_changed("opt")
-
-    def _build_simulate_extra(self, parent: ctk.CTkFrame) -> None:
-        frame = ctk.CTkFrame(parent)
-        frame.grid(row=1, column=0, sticky="ew", padx=8, pady=(0, 8))
-        for col in range(6):
-            frame.grid_columnconfigure(col, weight=1)
-
-        ctk.CTkLabel(frame, text="政策").grid(row=0, column=0, sticky="w", padx=6)
-        policy = ctk.CTkOptionMenu(frame, values=list(SIM_POLICY_LABELS.keys()))
-        policy.set("依職業自動")
-        policy.grid(row=1, column=0, sticky="ew", padx=6, pady=(0, 8))
-        self.sim_policy = policy
-
-        specs = [
-            ("target_base_int", "目標 base INT", "350"),
-            ("mp_wash_end", "MP wash 結束等級", "100"),
-        ]
-        for i, (key, label, default) in enumerate(specs, start=1):
-            ctk.CTkLabel(frame, text=label).grid(row=0, column=i, sticky="w", padx=6)
-            entry = ctk.CTkEntry(frame)
-            entry.insert(0, default)
-            entry.grid(row=1, column=i, sticky="ew", padx=6, pady=(0, 8))
-            setattr(self, f"sim_{key}", entry)
-
-        auto_m2 = ctk.CTkCheckBox(frame, text="自動 Method 2 補洗")
-        auto_m2.select()
-        auto_m2.grid(row=1, column=4, sticky="w", padx=6, pady=(0, 8))
-        self.sim_auto_method2 = auto_m2
-        self._on_job_changed("sim")
-
     def _build_resume_panel(self, parent: ctk.CTkFrame, *, prefix: str) -> None:
         """Optional mid-game snapshot: continue from current level/stats."""
         frame = ctk.CTkFrame(parent)
-        frame.grid(row=2, column=0, sticky="ew", padx=8, pady=(0, 8))
-        for col in range(6):
-            frame.grid_columnconfigure(col, weight=1)
+        frame.grid(row=1, column=0, sticky="ew", padx=8, pady=(0, 4))
+        frame.grid_columnconfigure(1, weight=1)
 
         enabled = ctk.CTkCheckBox(
             frame,
-            text="中途接續（填目前等級／HP／MP／INT，從尚未點的 AP 起算最省路徑）",
+            text="中途接續",
             command=lambda p=prefix: self._toggle_resume(p),
         )
-        enabled.grid(row=0, column=0, columnspan=6, sticky="w", padx=6, pady=(8, 4))
+        enabled.grid(row=0, column=0, sticky="w", padx=6, pady=4)
         setattr(self, f"{prefix}_resume_enabled", enabled)
-
-        fields = [
-            ("from_level", "目前等級", ""),
-            ("base_hp", "base HP（APR 顯示的數值）", ""),
-            ("base_mp", "base MP（APR 顯示的數值）", ""),
-            ("base_int", "base INT", ""),
-            ("base_str", "base STR", "4"),
-            ("base_dex", "base DEX", "25"),
-        ]
-        for i, (key, label, default) in enumerate(fields):
-            ctk.CTkLabel(frame, text=label).grid(row=1, column=i, sticky="w", padx=6)
-            entry = ctk.CTkEntry(frame)
-            if default:
-                entry.insert(0, default)
-            entry.grid(row=2, column=i, sticky="ew", padx=6, pady=(0, 4))
-            setattr(self, f"{prefix}_resume_{key}", entry)
-
-        more = [
-            ("base_luk", "base LUK", "4"),
-            ("fresh_ap", "尚未點的 AP", "5"),
-        ]
-        for i, (key, label, default) in enumerate(more):
-            ctk.CTkLabel(frame, text=label).grid(row=3, column=i, sticky="w", padx=6)
-            entry = ctk.CTkEntry(frame)
-            entry.insert(0, default)
-            entry.grid(row=4, column=i, sticky="ew", padx=6, pady=(0, 8))
-            setattr(self, f"{prefix}_resume_{key}", entry)
-
-        reset_done = ctk.CTkCheckBox(frame, text="INT 已洗回（base INT=4）")
-        reset_done.grid(row=4, column=2, sticky="w", padx=6, pady=(0, 8))
-        setattr(self, f"{prefix}_resume_int_reset_done", reset_done)
-
-        note = ctk.CTkLabel(
+        hint = ctk.CTkLabel(
             frame,
-            text="語意：已升到該等；base HP／MP 請填 APR 視窗數值（須 ≥ 該職業 min MP）。"
-            "劍士／打手 Improve MaxHP 預設依等級自動推 SP（先前置再盡早點滿）；僅偏離時才覆寫。",
+            text="勾選後填 APR 上的等級／HP／MP／INT，從尚未點的 AP 續算",
+            anchor="w",
             text_color=("gray30", "gray70"),
         )
-        note.grid(row=5, column=0, columnspan=6, sticky="w", padx=6, pady=(0, 8))
+        hint.grid(row=0, column=1, columnspan=5, sticky="ew", padx=6)
+
+        body = ctk.CTkFrame(frame, fg_color="transparent")
+        body.grid(row=1, column=0, columnspan=6, sticky="ew")
+        setattr(self, f"{prefix}_resume_body", body)
+
+        items = [
+            (f"{prefix}_resume_from_level", "目前等級", ctk.CTkEntry, ""),
+            (f"{prefix}_resume_base_hp", "base HP", ctk.CTkEntry, ""),
+            (f"{prefix}_resume_base_mp", "base MP", ctk.CTkEntry, ""),
+            (f"{prefix}_resume_base_int", "base INT", ctk.CTkEntry, ""),
+            (f"{prefix}_resume_base_str", "base STR", ctk.CTkEntry, "4"),
+            (f"{prefix}_resume_base_dex", "base DEX", ctk.CTkEntry, "25"),
+            (f"{prefix}_resume_base_luk", "base LUK", ctk.CTkEntry, "4"),
+            (f"{prefix}_resume_fresh_ap", "尚未點的 AP", ctk.CTkEntry, "5"),
+            (
+                f"{prefix}_resume_int_reset_done",
+                "INT 洗回",
+                lambda p: ctk.CTkCheckBox(p, text="已洗回（INT=4）"),
+                "",
+            ),
+        ]
+        next_row = self._pack_fields(body, items, start_row=0, cols=6)
+        self._add_note(
+            body,
+            next_row,
+            "已升到該等。HP／MP 填 APR 視窗數值（須 ≥ 該職業 min MP）。Improve MaxHP 依等級自動。",
+        )
         self._toggle_resume(prefix)
 
     def _toggle_resume(self, prefix: str) -> None:
         enabled = bool(getattr(self, f"{prefix}_resume_enabled").get())
+        body = getattr(self, f"{prefix}_resume_body")
+        if enabled:
+            body.grid(row=1, column=0, columnspan=6, sticky="ew")
+        else:
+            body.grid_remove()
         state = "normal" if enabled else "disabled"
         for key in (
             "from_level",
@@ -438,40 +458,38 @@ class HpWashApp(ctk.CTk):
             getattr(self, f"{prefix}_resume_{key}").configure(state=state)
         getattr(self, f"{prefix}_resume_int_reset_done").configure(state=state)
 
-    def _build_output_panel(self, parent: ctk.CTkFrame, *, prefix: str) -> None:
+    def _build_output_panel(
+        self, parent: ctk.CTkFrame, *, prefix: str, run_label: str, command
+    ) -> None:
         frame = ctk.CTkFrame(parent)
-        frame.grid(row=3, column=0, sticky="nsew", padx=8, pady=(0, 8))
+        frame.grid(row=2, column=0, sticky="nsew", padx=8, pady=(0, 8))
         frame.grid_columnconfigure(0, weight=1)
+        frame.grid_rowconfigure(2, weight=1)
 
-        ctk.CTkLabel(frame, text="CSV 輸出路徑（可留空）").grid(
-            row=0, column=0, sticky="w", padx=8, pady=(8, 0)
-        )
         csv_row = ctk.CTkFrame(frame, fg_color="transparent")
-        csv_row.grid(row=1, column=0, sticky="ew", padx=8, pady=(0, 6))
-        csv_row.grid_columnconfigure(0, weight=1)
+        csv_row.grid(row=0, column=0, sticky="ew", padx=8, pady=(6, 4))
+        csv_row.grid_columnconfigure(1, weight=1)
+        ctk.CTkLabel(csv_row, text="CSV").grid(row=0, column=0, sticky="w", padx=(0, 6))
         csv_entry = ctk.CTkEntry(csv_row)
         csv_entry.insert(0, str(default_csv_path()))
-        csv_entry.grid(row=0, column=0, sticky="ew", padx=(0, 6))
+        csv_entry.grid(row=0, column=1, sticky="ew", padx=(0, 6))
         setattr(self, f"{prefix}_csv", csv_entry)
         ctk.CTkButton(
-            csv_row, text="瀏覽…", width=90, command=lambda: self._browse_csv(prefix)
-        ).grid(row=0, column=1)
-
-        ctk.CTkLabel(frame, text="結果").grid(row=2, column=0, sticky="w", padx=8, pady=(8, 0))
-        result = ResultPanel(frame)
-        result.grid(row=3, column=0, sticky="nsew", padx=8, pady=(4, 8))
-        frame.grid_rowconfigure(3, weight=1)
-        setattr(self, f"{prefix}_result", result)
-
-    def _build_actions(self, parent: ctk.CTkFrame, *, prefix: str, run_label: str, command) -> None:
-        bar = ctk.CTkFrame(parent)
-        bar.grid(row=4, column=0, sticky="ew", padx=8, pady=(0, 8))
-        run_btn = ctk.CTkButton(bar, text=run_label, command=command, width=160)
-        run_btn.pack(side="left", padx=6, pady=8)
+            csv_row, text="瀏覽…", width=80, command=lambda: self._browse_csv(prefix)
+        ).grid(row=0, column=2, padx=(0, 8))
+        run_btn = ctk.CTkButton(csv_row, text=run_label, command=command, width=140)
+        run_btn.grid(row=0, column=3, padx=(0, 8))
         setattr(self, f"{prefix}_run_btn", run_btn)
-        status = ctk.CTkLabel(bar, text="就緒")
-        status.pack(side="left", padx=10)
+        status = ctk.CTkLabel(csv_row, text="就緒")
+        status.grid(row=0, column=4, sticky="w")
         setattr(self, f"{prefix}_status", status)
+
+        ctk.CTkLabel(frame, text="結果（CSV 末段有 Method1／Method2 說明列）").grid(
+            row=1, column=0, sticky="w", padx=8, pady=(2, 0)
+        )
+        result = ResultPanel(frame)
+        result.grid(row=2, column=0, sticky="nsew", padx=8, pady=(4, 8))
+        setattr(self, f"{prefix}_result", result)
 
     def _equipment_int_reset_level(self) -> int:
         entry = getattr(self, "opt_int_reset_level", None)
@@ -522,16 +540,8 @@ class HpWashApp(ctk.CTk):
             getattr(self, f"{prefix}_int_reset_level"), "INT 洗回等級"
         )
         int_gear_after_reset = self._int(
-            getattr(self, f"{prefix}_int_gear_after_reset"), "INT reset 後 int_gear"
+            getattr(self, f"{prefix}_int_gear_after_reset"), "INT 洗回後裝備 INT"
         )
-        skill_raw = getattr(self, f"{prefix}_improved_maxhp_level").get().strip()
-        improved_maxhp_level = None
-        if skill_raw:
-            improved_maxhp_level = self._int(
-                getattr(self, f"{prefix}_improved_maxhp_level"), "Improve MaxHP 等級"
-            )
-            if not (0 <= improved_maxhp_level <= 10):
-                raise ValueError("Improve MaxHP 等級須為 0–10。")
         job = self._selected_job(prefix)
         target_mp_raw = getattr(self, f"{prefix}_target_mp").get().strip()
         target_mp = None
@@ -557,7 +567,7 @@ class HpWashApp(ctk.CTk):
             "int_gear": self._equipment_panel.current_int_gear_segments(
                 int_reset_level=int_reset_level
             ),
-            "improved_maxhp_level": improved_maxhp_level,
+            "improved_maxhp_level": None,
         }
 
     def _set_busy(self, prefix: str, busy: bool, message: str = "") -> None:

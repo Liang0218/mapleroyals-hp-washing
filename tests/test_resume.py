@@ -55,7 +55,7 @@ def test_resume_simulate_starts_at_snapshot_level(example_gear):
     assert result.apr.int_reset_apr == result.base_int_peak - 4
     assert result.base_int_peak >= 320
     assert "中途接續" in format_simulate_report(result)
-    assert "剩餘 APR" in format_simulate_report(result)
+    assert "使用 APR" in format_simulate_report(result)
 
 
 def test_resume_int_already_reset_no_second_reset_apr(example_gear):

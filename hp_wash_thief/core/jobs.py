@@ -16,13 +16,14 @@ from hp_wash_thief.core.formulas import pick_range
 
 
 class JobId(str, Enum):
-    THIEF = "thief"
+    # CLI/internal ids stay 2nd-job; UI/report display uses 4th-job names.
+    FIGHTER = "fighter"  # 英雄 Hero
+    PAGE = "page"  # 聖騎士 Paladin
+    SPEARMAN = "spearman"  # 黑騎士 Dark Knight
     BOWMAN = "bowman"
-    GUNSLINGER = "gunslinger"
-    BRAWLER = "brawler"
-    FIGHTER = "fighter"
-    PAGE = "page"
-    SPEARMAN = "spearman"
+    THIEF = "thief"
+    BRAWLER = "brawler"  # 拳霸 Buccaneer
+    GUNSLINGER = "gunslinger"  # 槍神 Corsair
     BEGINNER = "beginner"
 
 
@@ -317,7 +318,7 @@ def _build_profiles() -> dict[JobId, JobProfile]:
     profiles = {
         JobId.THIEF: JobProfile(
             job=JobId.THIEF,
-            display_name_zh="盜賊",
+            display_name_zh="盜賊 Thief",
             min_mp_fn=lambda lv: 14 * lv + 148,
             mp_removed_per_apr=12,
             method1_base=thief_m1,
@@ -336,7 +337,7 @@ def _build_profiles() -> dict[JobId, JobProfile]:
         ),
         JobId.BOWMAN: JobProfile(
             job=JobId.BOWMAN,
-            display_name_zh="弓箭手",
+            display_name_zh="弓箭手 Bowman",
             min_mp_fn=lambda lv: 14 * lv + 148,
             mp_removed_per_apr=12,
             method1_base=bowman_m,
@@ -355,7 +356,7 @@ def _build_profiles() -> dict[JobId, JobProfile]:
         ),
         JobId.GUNSLINGER: JobProfile(
             job=JobId.GUNSLINGER,
-            display_name_zh="槍手",
+            display_name_zh="槍神 Corsair",
             min_mp_fn=lambda lv: 18 * lv + 111,
             mp_removed_per_apr=16,
             method1_base=gun_m1,
@@ -374,7 +375,7 @@ def _build_profiles() -> dict[JobId, JobProfile]:
         ),
         JobId.BRAWLER: JobProfile(
             job=JobId.BRAWLER,
-            display_name_zh="打手／Bucc",
+            display_name_zh="拳霸 Buccaneer",
             min_mp_fn=lambda lv: 18 * lv + 111,
             mp_removed_per_apr=16,
             method1_base=brawler_m1,
@@ -394,7 +395,7 @@ def _build_profiles() -> dict[JobId, JobProfile]:
         ),
         JobId.FIGHTER: JobProfile(
             job=JobId.FIGHTER,
-            display_name_zh="戰士（Fighter）",
+            display_name_zh="英雄 Hero",
             min_mp_fn=lambda lv: 4 * lv + 56,
             mp_removed_per_apr=4,
             method1_base=warrior_m1,
@@ -414,7 +415,7 @@ def _build_profiles() -> dict[JobId, JobProfile]:
         ),
         JobId.PAGE: JobProfile(
             job=JobId.PAGE,
-            display_name_zh="戰士（Page）",
+            display_name_zh="聖騎士 Paladin",
             min_mp_fn=lambda lv: 4 * lv + 56,
             mp_removed_per_apr=4,
             method1_base=warrior_m1,
@@ -434,7 +435,7 @@ def _build_profiles() -> dict[JobId, JobProfile]:
         ),
         JobId.SPEARMAN: JobProfile(
             job=JobId.SPEARMAN,
-            display_name_zh="槍兵（Spearman）",
+            display_name_zh="黑騎士 Dark Knight",
             min_mp_fn=lambda lv: 4 * lv + 156,
             mp_removed_per_apr=4,
             method1_base=warrior_m1,
@@ -454,7 +455,7 @@ def _build_profiles() -> dict[JobId, JobProfile]:
         ),
         JobId.BEGINNER: JobProfile(
             job=JobId.BEGINNER,
-            display_name_zh="初心者",
+            display_name_zh="初心者 Beginner",
             min_mp_fn=lambda lv: 10 * lv + 2,
             mp_removed_per_apr=8,
             method1_base=beginner_wash,

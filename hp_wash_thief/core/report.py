@@ -17,7 +17,19 @@ from hp_wash_thief.core.models import (
 )
 
 
-PLAN_CSV_HINT = "完整逐等計畫（每等動作與說明）請匯出 CSV 查看。"
+PLAN_CSV_HINT = "完整逐等計畫請匯出 CSV。標題列下一列就是逐等資料；檔案末段「說明」列解釋 Method1／Method2。"
+
+CSV_LEGEND_LEVEL = "說明"
+
+WASH_METHOD1 = (
+    "Method1（HP1–HP5）：升等時把 AP 點進 HP，再用 AP Reset 把 MP 洗掉、多出的 AP 補回主屬。"
+    "必須在升等當下做；盜賊主要洗法。"
+)
+WASH_METHOD2 = (
+    "Method2（M2）：不必等升等。用 AP Reset 把 Extra MP 洗成 HP（身上要有可點的 HP AP）。"
+    "戰士／弓箭手／海賊主要洗法。"
+)
+WASH_METHOD_MP = "MP wash（MP1–MP5）：把 AP 點進 MP 來堆 Extra MP，之後再 Method1／Method2 洗成 HP。"
 
 
 @dataclass(frozen=True)
@@ -59,22 +71,22 @@ def action_description(action: Action) -> str:
     descriptions: dict[Action, str] = {
         Action.NONE: "（無）",
         Action.BUILD: "升等 AP 建 DEX／堆 INT（30 等前，0 wash APR）",
-        Action.HP1: "Method 1 洗血 ×1（-12 Extra MP，+20~24 HP，1 APR）",
-        Action.HP2: "Method 1 洗血 ×2（-24 Extra MP，2 APR）",
-        Action.HP3: "Method 1 洗血 ×3（-36 Extra MP，3 APR）",
-        Action.HP4: "Method 1 洗血 ×4（-48 Extra MP，4 APR）",
-        Action.HP5: "Method 1 洗血 ×5（需 Extra MP ≥60，5 APR）",
-        Action.MP1: "MP wash ×1（1 AP → MP，成功 -12 Extra MP，1 APR）",
-        Action.MP2: "MP wash ×2（2 APR）",
-        Action.MP3: "MP wash ×3（3 APR）",
-        Action.MP4: "MP wash ×4（4 APR）",
-        Action.MP5: "MP wash ×5（5 APR）",
-        Action.HARDCORE_GREEDY: "硬核 C：逐 AP 貪婪（≥12 → HP1；30+ 不足 → MP1；剩餘 → INT）",
+        Action.HP1: "Method1：升等 AP→HP，APR 洗掉 MP 補回主屬 ×1",
+        Action.HP2: "Method1：升等 AP→HP，APR 洗掉 MP 補回主屬 ×2",
+        Action.HP3: "Method1：升等 AP→HP，APR 洗掉 MP 補回主屬 ×3",
+        Action.HP4: "Method1：升等 AP→HP，APR 洗掉 MP 補回主屬 ×4",
+        Action.HP5: "Method1：升等 AP→HP，APR 洗掉 MP 補回主屬 ×5（需 Extra MP≥60）",
+        Action.MP1: "MP wash×1：AP 點 MP 堆 Extra MP（之後才能洗血）",
+        Action.MP2: "MP wash×2：AP 點 MP 堆 Extra MP",
+        Action.MP3: "MP wash×3：AP 點 MP 堆 Extra MP",
+        Action.MP4: "MP wash×4：AP 點 MP 堆 Extra MP",
+        Action.MP5: "MP wash×5：AP 點 MP 堆 Extra MP",
+        Action.HARDCORE_GREEDY: "硬核 C：逐 AP 貪婪（≥12 → Method1 HP1；30+ 不足 → MP1；剩餘 → INT）",
         Action.INT5: "5 點 AP 全點 INT（本等 0 wash APR）",
         Action.LUK5: "5 點 AP 全點 LUK（本等 0 wash APR）",
         Action.STR5: "5 點 AP 全點 STR（本等 0 wash APR）",
         Action.DEX5: "5 點 AP 全點 DEX（本等 0 wash APR）",
-        Action.M2: "Method 2 補洗（APR MP → HP）",
+        Action.M2: "Method2：APR 把 Extra MP 洗成 HP（不必升等）",
         Action.RESET_INT: "INT 洗回 4，轉主屬性（消耗 INT 洗回 APR）",
         Action.RESUME: "中途接續起點（本列為輸入快照，尚未花本等 AP）",
     }
@@ -113,7 +125,7 @@ def format_ui_guide() -> str:
             "改完直接按最佳化／模擬，會自動帶入智裝 INT。",
             "INT 洗回等級、reset 後智裝 INT 在 Optimize 參數列設定。",
             "目標 MP 留空＝洗到最低；有填則 200 等 base MP ≥ 目標（≥職業 min MP）。",
-            "劍士／打手可覆寫 Improve MaxHP；中途接續填目前等級／HP／MP／INT。",
+            "Improve MaxHP 依 SP 自動。Method1＝升等 AP→HP 再 APR 洗 MP（盜賊）；Method2＝APR 洗 Extra MP→HP。",
         ]
     )
 
@@ -139,6 +151,12 @@ def format_action_legend() -> str:
         "  達標 INT 後：MP wash →（盜賊 Method1 HP／其他職業主屬 + Method2）。",
         "  非盜賊職業固定使用本政策（指南 Method2／堆 INT）。",
         "",
+        "【洗血方法】",
+        "",
+        f"  {WASH_METHOD1}",
+        f"  {WASH_METHOD2}",
+        f"  {WASH_METHOD_MP}",
+        "",
         "【動作代碼】",
         "",
     ]
@@ -147,7 +165,8 @@ def format_action_legend() -> str:
             continue
         lines.append(f"  {action.value:<16}  {action_description(action)}")
     lines.append("")
-    lines.append("報告「逐等計畫」欄位：動作 = 代碼，說明 = 該等要做的事。")
+    lines.append("報告「逐等計畫」與 CSV：action = 代碼，action_desc = 該等要做的事。")
+    lines.append("CSV 末段三列「說明」會解釋 Method1／Method2／欄位。")
     return "\n".join(lines)
 
 
@@ -172,7 +191,7 @@ def policy_playbook(policy: PolicyName) -> str:
     if policy is PolicyName.MP_WASH_HARDCORE:
         return "10 等起：每 AP 檢查 Extra MP≥12 洗 HP1；30+ 不足洗 MP1"
     if policy is PolicyName.INT_ONLY_PLAIN:
-        return "達標 INT 前只堆 INT；達標後 MP wash→主屬／Method2 洗到目標 HP"
+        return "達標 INT 前只堆 INT；達標後 MP wash→主屬／Method2（APR 洗 Extra MP→HP）"
     return policy.value
 
 
@@ -241,6 +260,10 @@ def _lazy_summary_optimize(result: OptimizeResult) -> list[str]:
     lines.append(f"  ★ 職業：{job_name}")
     lines.append(f"  ★ 最優政策：{policy_label(w.policy)}")
     lines.append(f"  ★ 怎麼洗：{policy_playbook(w.policy)}")
+    lines.append(
+        "  ★ 洗法：Method1＝升等當下 AP 點 HP、APR 洗 MP（HP1–HP5）；"
+        "Method2＝APR 把 Extra MP 洗成 HP（M2）。"
+    )
     key_bits = [
         f"base INT 堆到 {w.target_base_int}",
         _mp_wash_end_label(w),
@@ -249,12 +272,11 @@ def _lazy_summary_optimize(result: OptimizeResult) -> list[str]:
     if w.improved_maxhp_level is not None:
         key_bits.append(f"ImproveMaxHP Lv{w.improved_maxhp_level}")
     lines.append("  ★ 關鍵參數：" + "｜".join(key_bits))
-    apr_label = "剩餘 APR" if result.resume_from else "總 APR"
     mp_bit = f"｜最終 MP {w.final_base_mp}"
     if w.target_mp is not None:
         mp_bit += f"（目標 ≥{w.target_mp}）"
     lines.append(
-        f"  ★ 結果：{apr_label} {w.total_apr}｜最終 HP {w.final_display_hp}{mp_bit}｜達標=有"
+        f"  ★ 結果：使用 APR {w.total_apr}｜最終 HP {w.final_display_hp}{mp_bit}｜達標=有"
     )
 
     comp = result.comparison
@@ -278,17 +300,20 @@ def _lazy_summary_simulate(c: CandidateResult) -> list[str]:
     lines.append(f"  ★ 職業：{get_job_profile(c.job).display_name_zh}")
     lines.append(f"  ★ 政策：{policy_label(c.policy)}")
     lines.append(f"  ★ 怎麼洗：{policy_playbook(c.policy)}")
+    lines.append(
+        "  ★ 洗法：Method1＝升等當下 AP 點 HP、APR 洗 MP（HP1–HP5）；"
+        "Method2＝APR 把 Extra MP 洗成 HP（M2）。"
+    )
     param = f"base INT 目標 {c.target_base_int}｜{_mp_wash_end_label(c)}"
     if c.improved_maxhp_level is not None:
         param += f"｜ImproveMaxHP Lv{c.improved_maxhp_level}"
     lines.append(f"  ★ 參數：{param}")
     hit = "有" if c.reached_target else "無"
-    apr_label = "剩餘 APR" if c.resume_from else "總 APR"
     mp_bit = f"｜最終 MP {c.final_base_mp}"
     if c.target_mp is not None:
         mp_bit += f"（目標 ≥{c.target_mp}）"
     lines.append(
-        f"  ★ 結果：{apr_label} {c.total_apr}｜最終 HP {c.final_display_hp}{mp_bit}｜達標={hit}"
+        f"  ★ 結果：使用 APR {c.total_apr}｜最終 HP {c.final_display_hp}{mp_bit}｜達標={hit}"
     )
     lines.append("")
     return lines
@@ -448,6 +473,33 @@ def format_simulate_report(result: SimulateResult) -> str:
     return "\n".join(lines)
 
 
+def _csv_legend_rows(fieldnames: list[str]) -> list[dict[str, str]]:
+    blanks = {name: "" for name in fieldnames}
+    return [
+        {
+            **blanks,
+            "level": CSV_LEGEND_LEVEL,
+            "action": "METHOD1",
+            "action_desc": WASH_METHOD1,
+            "notes": "對應動作 HP1–HP5",
+        },
+        {
+            **blanks,
+            "level": CSV_LEGEND_LEVEL,
+            "action": "METHOD2",
+            "action_desc": WASH_METHOD2,
+            "notes": "對應動作 M2",
+        },
+        {
+            **blanks,
+            "level": CSV_LEGEND_LEVEL,
+            "action": "欄位",
+            "action_desc": "action=本等動作代碼；action_desc=中文說明；notes=該等補充",
+            "notes": "apr_spent=本等花的 APR；fresh_ap_*＝該等 AP 點去哪",
+        },
+    ]
+
+
 def write_plan_csv(plan_rows, path: Union[str, Path]) -> None:
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -493,6 +545,9 @@ def write_plan_csv(plan_rows, path: Union[str, Path]) -> None:
                     "notes": row.notes,
                 }
             )
+        writer.writerow({name: "" for name in fieldnames})
+        for legend in _csv_legend_rows(fieldnames):
+            writer.writerow(legend)
 
 
 def print_report(text: str, file: Optional[TextIO] = None) -> None:
@@ -508,8 +563,10 @@ def _policy_block(title: str, c: Optional[CandidateResult]) -> str:
         f"    目標 base INT={c.target_base_int}  達標等級={c.int_reached_level}  "
         f"MP wash 結束={c.mp_wash_end}  {extra_mp_threshold_display(c.policy, c.extra_mp_threshold)}\n"
         f"    總 APR={c.total_apr}  最終 HP={c.final_display_hp}  達標={hit}\n"
-        f"    APR 拆解：MP wash={c.apr.mp_wash_count}  Method1={c.apr.method1_hp_wash_count}  "
-        f"Method2={c.apr.method2_hp_wash_count}  INT 洗回={c.apr.int_reset_apr}"
+        f"    APR 拆解：MP wash={c.apr.mp_wash_count}  "
+        f"Method1={c.apr.method1_hp_wash_count}（升等 AP→HP）  "
+        f"Method2={c.apr.method2_hp_wash_count}（APR 洗 Extra MP→HP）  "
+        f"INT 洗回={c.apr.int_reset_apr}"
     )
 
 
@@ -542,8 +599,8 @@ def _winner_block(c: Optional[CandidateResult]) -> str:
         f"  是否達標={('是' if c.reached_target else '否')}\n"
         f"  總 APR={c.total_apr}\n"
         f"    MP wash={c.apr.mp_wash_count}\n"
-        f"    Method1 HP wash={c.apr.method1_hp_wash_count}\n"
-        f"    Method2 HP wash={c.apr.method2_hp_wash_count}\n"
+        f"    Method1 HP wash={c.apr.method1_hp_wash_count}（升等 AP→HP，再 APR 洗 MP）\n"
+        f"    Method2 HP wash={c.apr.method2_hp_wash_count}（APR 把 Extra MP 洗成 HP）\n"
         f"    INT 洗回 APR={c.apr.int_reset_apr}"
     )
 
