@@ -322,8 +322,10 @@ def test_bowman_resume_infeasible_prefers_closest_hp():
     assert result.winner.apr.mp_wash_count > 0
     assert result.winner.final_display_hp >= 28000
     text = format_optimize_summary_text(result)
-    assert "無方案可達目標 HP" in text
-    assert "最接近" in text
+    assert "無法達成" in text
+    assert "INT 洗回等級" in text
+    assert "照這樣做" not in text
+    assert "優勝方案詳情" not in text
 
 
 def test_bowman_resume_reachable_still_hits_target():

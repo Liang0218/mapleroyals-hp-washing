@@ -211,22 +211,34 @@ def _lazy_summary_optimize(result: OptimizeResult) -> list[str]:
     from hp_wash_thief.core.jobs import get_job_profile
 
     w = result.winner
-    lines = ["【懶人包 — 照這樣做】", ""]
     job_for_resume = w.job if w is not None else (
         next(iter(result.by_policy.values())).job if result.by_policy else "thief"
     )
+
+    if w is not None and not w.reached_target:
+        lines = ["【懶人包 — 無法達成】", ""]
+        lines.extend(_resume_block(result.resume_from, job=job_for_resume))
+        job_name = get_job_profile(w.job).display_name_zh
+        lines.append(f"  ★ 職業：{job_name}")
+        lines.append(
+            f"  ★ 結論：以目前參數無法洗到目標 HP"
+            f"（最接近約 {w.final_display_hp}）。"
+        )
+        lines.append("  ★ 請先調高「INT 洗回等級」，讓後面還能繼續 MP wash 再 Method2。")
+        lines.append(
+            "  ★ 若洗回等級已接近 200：請降低目標 HP，或中途保留更多 Extra MP 再接續。"
+        )
+        lines.append("")
+        lines.append("  （未達標故不提供可照做的洗法；請調整參數後重新最佳化。）")
+        return lines
+
+    lines = ["【懶人包 — 照這樣做】", ""]
     lines.extend(_resume_block(result.resume_from, job=job_for_resume))
     if w is None:
-        lines.append("  無可行方案。請調高目標 HP 上限、檢查裝備，或放寬搜尋範圍。")
+        lines.append("  無可行方案。請調高 INT 洗回等級、檢查裝備，或放寬目標 HP。")
         return lines
 
     job_name = get_job_profile(w.job).display_name_zh
-    if not w.reached_target:
-        lines.append(
-            f"  ⚠ 無方案可達目標 HP；以下為最接近的計畫（最終 HP {w.final_display_hp}）。"
-        )
-        lines.append("  可試：提高目前 Extra MP、延後 INT 洗回、或降低目標 HP。")
-        lines.append("")
     lines.append(f"  ★ 職業：{job_name}")
     lines.append(f"  ★ 最優政策：{policy_label(w.policy)}")
     lines.append(f"  ★ 怎麼洗：{policy_playbook(w.policy)}")
@@ -238,10 +250,9 @@ def _lazy_summary_optimize(result: OptimizeResult) -> list[str]:
     if w.improved_maxhp_level is not None:
         key_bits.append(f"ImproveMaxHP Lv{w.improved_maxhp_level}")
     lines.append("  ★ 關鍵參數：" + "｜".join(key_bits))
-    hit = "有" if w.reached_target else "無"
     apr_label = "剩餘 APR" if result.resume_from else "總 APR"
     lines.append(
-        f"  ★ 結果：{apr_label} {w.total_apr}｜最終 HP {w.final_display_hp}｜達標={hit}"
+        f"  ★ 結果：{apr_label} {w.total_apr}｜最終 HP {w.final_display_hp}｜達標=有"
     )
 
     comp = result.comparison
@@ -352,6 +363,10 @@ def build_optimize_tables(result: OptimizeResult) -> list[ReportTable]:
 def format_optimize_summary_text(result: OptimizeResult) -> str:
     lines: list[str] = []
     lines.extend(_lazy_summary_optimize(result))
+    w = result.winner
+    if w is not None and not w.reached_target:
+        # Unreachable: lazy pack already tells user what to change; skip "follow this" details.
+        return "\n".join(lines)
     lines.extend(_comparison_notes(result))
     lines.append("")
     lines.append("【優勝方案詳情】")
@@ -378,6 +393,13 @@ def format_optimize_report(result: OptimizeResult) -> str:
     lines.append("MapleRoyals 洗血 — 最佳化結果")
     lines.append("=" * 60)
     lines.extend(_lazy_summary_optimize(result))
+
+    w = result.winner
+    if w is not None and not w.reached_target:
+        lines.append("")
+        lines.append("（目前設定下無法達標，請依懶人包調整 INT 洗回等級後再跑。）")
+        lines.append("")
+        return "\n".join(lines)
 
     letters = comparison_letters(result)
     lines.append("")
