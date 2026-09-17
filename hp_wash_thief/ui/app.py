@@ -657,16 +657,17 @@ class HpWashApp(ctk.CTk):
             )
             result = optimize(config)
             summary = format_optimize_summary_text(result)
-            tables = build_optimize_tables(result)
+            unreachable = result.winner is not None and not result.winner.reached_target
+            tables = [] if unreachable else build_optimize_tables(result)
             csv_path = self.opt_csv.get().strip()
             csv_msg = ""
             if csv_path:
-                if result.winner is None or not result.winner.plan:
-                    csv_msg = "無優勝方案，未寫入 CSV。"
+                if result.winner is None or not result.winner.reached_target or not result.winner.plan:
+                    csv_msg = "無法達標，未寫入 CSV。請先調高 INT 洗回等級後再試。"
                 else:
                     write_plan_csv(result.winner.plan, csv_path)
                     csv_msg = f"已寫入優勝計畫 CSV：{csv_path}"
-            elif result.winner and result.winner.plan:
+            elif result.winner and result.winner.reached_target and result.winner.plan:
                 csv_msg = PLAN_CSV_HINT
             return summary, tables, csv_msg
 

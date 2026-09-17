@@ -237,8 +237,8 @@ def _cmd_optimize(args: argparse.Namespace) -> int:
     result = optimize(config)
     print_report(format_optimize_report(result))
     if args.csv_path:
-        if result.winner is None:
-            print("沒有可匯出的優勝計畫。", file=sys.stderr)
+        if result.winner is None or not result.winner.reached_target:
+            print("沒有可達標的優勝計畫可匯出。", file=sys.stderr)
             return 1
         write_plan_csv(result.winner.plan, args.csv_path)
         print(f"已寫入優勝計畫 CSV：{args.csv_path}")
