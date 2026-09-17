@@ -295,6 +295,61 @@ def test_optimize_resume_labels_stop_mp_wash():
     assert result.winner.improved_maxhp_level == 10
 
 
+def test_bowman_resume_infeasible_prefers_closest_hp():
+    """When target HP is unreachable, do not pick stop-wash (lowest APR, worst HP)."""
+    resume = ResumeFrom.from_stats(
+        level=100,
+        base_hp=16000,
+        base_mp=get_job_profile(JobId.BOWMAN).min_mp(100) + 150,
+        base_int=250,
+        base_dex=100,
+        job="bowman",
+    )
+    result = optimize(
+        OptimizeConfig(
+            target_hp=35000,
+            int_reset_level=155,
+            int_gear=_gear(),
+            job="bowman",
+            resume_from=resume,
+            top_n=5,
+        )
+    )
+    assert result.winner is not None
+    assert result.winner.reached_target is False
+    # Must keep washing MP rather than stop-now at lv99
+    assert result.winner.mp_wash_end >= resume.level
+    assert result.winner.apr.mp_wash_count > 0
+    assert result.winner.final_display_hp >= 28000
+    text = format_optimize_summary_text(result)
+    assert "無方案可達目標 HP" in text
+    assert "最接近" in text
+
+
+def test_bowman_resume_reachable_still_hits_target():
+    resume = ResumeFrom.from_stats(
+        level=70,
+        base_hp=13500,
+        base_mp=get_job_profile(JobId.BOWMAN).min_mp(70) + 50,
+        base_int=180,
+        base_dex=80,
+        job="bowman",
+    )
+    result = optimize(
+        OptimizeConfig(
+            target_hp=30000,
+            int_reset_level=155,
+            int_gear=_gear(),
+            job="bowman",
+            resume_from=resume,
+        )
+    )
+    assert result.winner is not None
+    assert result.winner.reached_target
+    assert result.winner.final_display_hp >= 30000
+    assert result.winner.apr.mp_wash_count > 0
+
+
 def test_resume_maxhp_override_still_works():
     resume = ResumeFrom.from_stats(
         level=70,

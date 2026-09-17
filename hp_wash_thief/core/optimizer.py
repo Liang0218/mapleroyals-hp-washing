@@ -257,10 +257,27 @@ def _unique_params(cands: list[CandidateResult]) -> list[CandidateResult]:
 
 
 def _candidate_sort_key(c: CandidateResult) -> tuple:
+    """Feasible: lowest APR. Infeasible: closest HP to target, then lower APR.
+
+    Mid-game resume often has many infeasible ``mp_wash_end < level`` clones with
+    tiny APR; preferring APR first made the optimizer recommend ``stop wash now``
+    with far-below-target HP instead of the closest reachable HP plan.
+    """
+    if c.reached_target:
+        return (
+            0,
+            c.total_apr,
+            -c.final_display_hp,
+            c.target_base_int,
+            c.base_int_peak,
+            c.mp_wash_end,
+            c.int_reached_level,
+            c.policy.value,
+        )
     return (
-        0 if c.reached_target else 1,
-        c.total_apr,
+        1,
         -c.final_display_hp,
+        c.total_apr,
         c.target_base_int,
         c.base_int_peak,
         c.mp_wash_end,

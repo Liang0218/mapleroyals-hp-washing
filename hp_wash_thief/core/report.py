@@ -221,6 +221,12 @@ def _lazy_summary_optimize(result: OptimizeResult) -> list[str]:
         return lines
 
     job_name = get_job_profile(w.job).display_name_zh
+    if not w.reached_target:
+        lines.append(
+            f"  ⚠ 無方案可達目標 HP；以下為最接近的計畫（最終 HP {w.final_display_hp}）。"
+        )
+        lines.append("  可試：提高目前 Extra MP、延後 INT 洗回、或降低目標 HP。")
+        lines.append("")
     lines.append(f"  ★ 職業：{job_name}")
     lines.append(f"  ★ 最優政策：{policy_label(w.policy)}")
     lines.append(f"  ★ 怎麼洗：{policy_playbook(w.policy)}")
