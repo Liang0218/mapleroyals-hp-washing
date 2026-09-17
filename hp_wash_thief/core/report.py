@@ -137,7 +137,7 @@ def format_action_legend() -> str:
         "",
         policy_label(PolicyName.INT_ONLY_PLAIN),
         "  達標 INT 前：30 等前 BUILD；31 等起 5 AP 全點 INT（不洗 HP/MP）。",
-        "  達標 INT 後：與 A/B/C 相同（MP wash → HP wash → M2 → INT reset）。",
+        "  達標 INT 後：MP wash →（盜賊 Method1 HP／其他職業主屬 + Method2）。",
         "  非盜賊職業固定使用本政策（指南 Method2／堆 INT）。",
         "",
         "【動作代碼】",
@@ -173,8 +173,15 @@ def policy_playbook(policy: PolicyName) -> str:
     if policy is PolicyName.MP_WASH_HARDCORE:
         return "10 等起：每 AP 檢查 Extra MP≥12 洗 HP1；30+ 不足洗 MP1"
     if policy is PolicyName.INT_ONLY_PLAIN:
-        return "達標 INT 前只堆 INT；達標後 MP wash→HP wash 洗到目標 HP"
+        return "達標 INT 前只堆 INT；達標後 MP wash→主屬／Method2 洗到目標 HP"
     return policy.value
+
+
+def _mp_wash_end_label(c: CandidateResult) -> str:
+    """Human-readable MP wash end for reports (resume-aware)."""
+    if c.resume_from is not None and c.mp_wash_end < c.resume_from.level:
+        return f"不再 MP wash（接續 Lv{c.resume_from.level} 已超過結束等級 {c.mp_wash_end}）"
+    return f"MP wash 洗到 Lv{c.mp_wash_end}"
 
 
 def _resume_block(resume: Optional[ResumeFrom], *, job: str = "thief") -> list[str]:
@@ -189,7 +196,8 @@ def _resume_block(resume: Optional[ResumeFrom], *, job: str = "thief") -> list[s
         (
             f"  從 Lv{resume.level} 接續｜base HP {int(round(resume.base_hp))}｜"
             f"base MP {int(round(resume.base_mp))}（Extra MP≈{emp}）｜"
-            f"INT {resume.base_int}｜LUK {resume.base_luk}｜DEX {resume.base_dex}"
+            f"INT {resume.base_int}｜STR {resume.base_str}｜"
+            f"DEX {resume.base_dex}｜LUK {resume.base_luk}"
         ),
         f"  尚未點的 AP {fresh}"
         + ("｜INT 已洗回" if resume.int_reset_done else "")
@@ -218,7 +226,7 @@ def _lazy_summary_optimize(result: OptimizeResult) -> list[str]:
     lines.append(f"  ★ 怎麼洗：{policy_playbook(w.policy)}")
     key_bits = [
         f"base INT 堆到 {w.target_base_int}",
-        f"MP wash 洗到 Lv{w.mp_wash_end}",
+        _mp_wash_end_label(w),
         f"約 Lv{w.int_reached_level} 前達標 INT",
     ]
     if w.improved_maxhp_level is not None:
@@ -251,7 +259,7 @@ def _lazy_summary_simulate(c: CandidateResult) -> list[str]:
     lines.append(f"  ★ 職業：{get_job_profile(c.job).display_name_zh}")
     lines.append(f"  ★ 政策：{policy_label(c.policy)}")
     lines.append(f"  ★ 怎麼洗：{policy_playbook(c.policy)}")
-    param = f"base INT 目標 {c.target_base_int}｜MP wash 至 Lv{c.mp_wash_end}"
+    param = f"base INT 目標 {c.target_base_int}｜{_mp_wash_end_label(c)}"
     if c.improved_maxhp_level is not None:
         param += f"｜ImproveMaxHP Lv{c.improved_maxhp_level}"
     lines.append(f"  ★ 參數：{param}")
@@ -487,7 +495,7 @@ def _winner_block(c: Optional[CandidateResult]) -> str:
         f"  目標 base INT={c.target_base_int}\n"
         f"  達標等級={c.int_reached_level}  "
         f"（early 階段＝到目標 INT 為止，非固定等級）\n"
-        f"  MP wash 結束等級={c.mp_wash_end}\n"
+        f"  {_mp_wash_end_label(c)}\n"
         f"  {extra_mp_threshold_display(c.policy, c.extra_mp_threshold)}\n"
         f"  INT reset 後 int_gear={c.int_gear_after_reset}\n"
         + skill_line

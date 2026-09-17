@@ -376,7 +376,7 @@ class HpWashApp(ctk.CTk):
             ("base_hp", "base HP（APR 顯示的數值）", ""),
             ("base_mp", "base MP（APR 顯示的數值）", ""),
             ("base_int", "base INT", ""),
-            ("base_luk", "base LUK", "4"),
+            ("base_str", "base STR", "4"),
             ("base_dex", "base DEX", "25"),
         ]
         for i, (key, label, default) in enumerate(fields):
@@ -388,6 +388,7 @@ class HpWashApp(ctk.CTk):
             setattr(self, f"{prefix}_resume_{key}", entry)
 
         more = [
+            ("base_luk", "base LUK", "4"),
             ("fresh_ap", "尚未點的 AP", "5"),
         ]
         for i, (key, label, default) in enumerate(more):
@@ -398,12 +399,13 @@ class HpWashApp(ctk.CTk):
             setattr(self, f"{prefix}_resume_{key}", entry)
 
         reset_done = ctk.CTkCheckBox(frame, text="INT 已洗回（base INT=4）")
-        reset_done.grid(row=4, column=1, sticky="w", padx=6, pady=(0, 8))
+        reset_done.grid(row=4, column=2, sticky="w", padx=6, pady=(0, 8))
         setattr(self, f"{prefix}_resume_int_reset_done", reset_done)
 
         note = ctk.CTkLabel(
             frame,
-            text="語意：已升到該等；base HP／MP 請填 APR 視窗看到的數值。報告 APR 為接續後剩餘。",
+            text="語意：已升到該等；base HP／MP 請填 APR 視窗數值（須 ≥ 該職業 min MP）。"
+            "劍士／打手中途接續必須填 Improve MaxHP 目前等級。",
             text_color=("gray30", "gray70"),
         )
         note.grid(row=5, column=0, columnspan=6, sticky="w", padx=6, pady=(0, 8))
@@ -417,6 +419,7 @@ class HpWashApp(ctk.CTk):
             "base_hp",
             "base_mp",
             "base_int",
+            "base_str",
             "base_luk",
             "base_dex",
             "fresh_ap",
@@ -581,6 +584,15 @@ class HpWashApp(ctk.CTk):
     def _parse_resume(self, prefix: str) -> Optional[ResumeFrom]:
         if not bool(getattr(self, f"{prefix}_resume_enabled").get()):
             return None
+        job = self._selected_job(prefix)
+        profile = get_job_profile(job)
+        if profile.maxhp_skill is not None:
+            skill_raw = getattr(self, f"{prefix}_improved_maxhp_level").get().strip()
+            if not skill_raw:
+                raise ValueError(
+                    "中途接續此職業時必須填 Improve MaxHP 目前等級（0–10），"
+                    "不可留空自動推估。"
+                )
         level = self._int(getattr(self, f"{prefix}_resume_from_level"), "目前等級")
         base_hp = self._float(
             getattr(self, f"{prefix}_resume_base_hp"), "base HP（APR 顯示的數值）"
@@ -588,7 +600,13 @@ class HpWashApp(ctk.CTk):
         base_mp = self._float(
             getattr(self, f"{prefix}_resume_base_mp"), "base MP（APR 顯示的數值）"
         )
+        floor = profile.min_mp(level)
+        if base_mp + 1e-9 < floor:
+            raise ValueError(
+                f"base MP 不可低於該職業 Lv{level} 最低 MP（{floor}）。"
+            )
         base_int = self._int(getattr(self, f"{prefix}_resume_base_int"), "base INT")
+        base_str = self._int(getattr(self, f"{prefix}_resume_base_str"), "base STR")
         base_luk = self._int(getattr(self, f"{prefix}_resume_base_luk"), "base LUK")
         base_dex = self._int(getattr(self, f"{prefix}_resume_base_dex"), "base DEX")
         fresh_raw = getattr(self, f"{prefix}_resume_fresh_ap").get().strip()
@@ -598,11 +616,12 @@ class HpWashApp(ctk.CTk):
             base_hp=base_hp,
             base_mp=base_mp,
             base_int=base_int,
+            base_str=base_str,
             base_luk=base_luk,
             base_dex=base_dex,
             fresh_ap=fresh_ap,
             int_reset_done=bool(getattr(self, f"{prefix}_resume_int_reset_done").get()),
-            job=self._selected_job(prefix),
+            job=job,
         )
 
     def _parse_opt_policies(self, job: str) -> list[PolicyName]:

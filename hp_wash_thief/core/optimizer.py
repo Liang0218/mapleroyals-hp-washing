@@ -107,6 +107,34 @@ def _int_search_bounds(config: OptimizeConfig) -> tuple[int, int]:
     return lo, hi
 
 
+def _mp_wash_end_candidates(
+    config: OptimizeConfig, *, step: int, center: Optional[int] = None, radius: int = 0
+) -> list[int]:
+    """mp_wash_end grid; on resume, collapse all ends below current level to one sentinel."""
+    mp_min = max(config.mp_wash_end_min, 31)
+    mp_max = config.int_reset_level
+    if mp_min > mp_max:
+        return []
+    if center is None:
+        values = list(range(mp_min, mp_max + 1, step))
+        if mp_max not in values:
+            values.append(mp_max)
+    else:
+        values = _neighbors(
+            min(max(center, mp_min), mp_max),
+            low=mp_min,
+            high=mp_max,
+            step=step,
+            radius=radius,
+        )
+    resume = config.resume_from
+    if resume is not None and resume.level > mp_min:
+        stop_now = max(mp_min, resume.level - 1)
+        continued = [v for v in values if v >= resume.level]
+        values = sorted(set([stop_now] + continued))
+    return values
+
+
 def _search(config: OptimizeConfig, policy: PolicyName, *, coarse: bool) -> Iterable[CandidateResult]:
     int_step = 40 if coarse else config.target_base_int_step
     mp_step = 10 if coarse else 5
@@ -116,14 +144,9 @@ def _search(config: OptimizeConfig, policy: PolicyName, *, coarse: bool) -> Iter
     if int_hi not in int_values:
         int_values.append(int_hi)
 
-    mp_min = max(config.mp_wash_end_min, 31)
-    mp_max = config.int_reset_level
-    if mp_min > mp_max:
+    mp_values = _mp_wash_end_candidates(config, step=mp_step)
+    if not mp_values:
         return
-
-    mp_values = list(range(mp_min, mp_max + 1, mp_step))
-    if mp_max not in mp_values:
-        mp_values.append(mp_max)
 
     threshold = config.extra_mp_threshold
     if threshold is None:
@@ -151,10 +174,9 @@ def _refine_around(
         step=config.target_base_int_step,
         radius=2,
     )
-    mp_min = max(config.mp_wash_end_min, 31)
-    mp_max = config.int_reset_level
-    mp_center = min(max(seed.mp_wash_end, mp_min), mp_max)
-    mp_candidates = _neighbors(mp_center, low=mp_min, high=mp_max, step=5, radius=2)
+    mp_candidates = _mp_wash_end_candidates(
+        config, step=5, center=seed.mp_wash_end, radius=2
+    )
     threshold = config.extra_mp_threshold
     if threshold is None:
         threshold = get_job_profile(config.job).default_extra_mp_threshold()

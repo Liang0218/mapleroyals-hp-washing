@@ -29,11 +29,15 @@ _EXACT: dict[str, str] = {
     "resume base_int too low": "中途接續的 base INT 過低（至少需 4）。",
     "resume base_luk too low": "中途接續的 base LUK 過低（至少需 4）。",
     "resume base_dex too low": "中途接續的 base DEX 過低（至少需 4）。",
+    "resume base_str too low": "中途接續的 base STR 過低（至少需 4）。",
     "resume fresh_ap must be >= 0": "尚未點的 AP 不可為負數。",
     "int_reset_done but base_int > 4": "已勾選 INT 洗回時，base INT 應為 4。",
     "resume base_int_peak must be >= base_int": "INT 峰值不可小於目前 base INT。",
     "resume requires base_mp or extra_mp": "中途接續請填 base MP（APR 顯示的數值）。",
     "improved_maxhp_level must be in [0, 10]": "Improve MaxHP 等級須為 0–10。",
+    "improved_maxhp_level required when resuming a job with Improve MaxHP": (
+        "中途接續劍士／打手時必須指定 Improve MaxHP 目前等級（0–10）。"
+    ),
     "unknown job: magician": "尚不支援法師職業。",
 }
 
@@ -62,6 +66,10 @@ _PATTERNS: list[tuple[re.Pattern[str], str]] = [
     (
         re.compile(r"^equip_level must be >= 1 for (.+)$"),
         lambda m: f"「{m.group(1)}」的穿戴等級必須 ≥ 1。",
+    ),
+    (
+        re.compile(r"^resume base_mp below job min_mp at level \(min=(\d+)\)$"),
+        lambda m: f"base MP 不可低於該職業目前等級最低 MP（{m.group(1)}）。",
     ),
     (
         re.compile(r"^unknown job: (.+)$"),

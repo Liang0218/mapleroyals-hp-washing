@@ -148,24 +148,37 @@ def _validate_config(config: SimulateConfig) -> None:
 
 
 def _validate_resume(resume: ResumeFrom, config: SimulateConfig) -> None:
+    profile = get_job_profile(config.job)
     if not (1 <= resume.level <= config.max_level):
         raise ValueError("resume level out of range")
     if resume.base_hp <= 0:
         raise ValueError("resume base_hp must be positive")
     if resume.base_mp < 0:
         raise ValueError("resume base_mp must be >= 0")
+    min_at_level = profile.min_mp(resume.level)
+    if resume.base_mp + 1e-9 < min_at_level:
+        raise ValueError(
+            f"resume base_mp below job min_mp at level (min={min_at_level})"
+        )
     if resume.base_int < F.BASE_STAT_FLOOR:
         raise ValueError("resume base_int too low")
     if resume.base_luk < F.BASE_STAT_FLOOR:
         raise ValueError("resume base_luk too low")
     if resume.base_dex < F.BASE_STAT_FLOOR:
         raise ValueError("resume base_dex too low")
+    if resume.base_str < F.BASE_STAT_FLOOR:
+        raise ValueError("resume base_str too low")
     if resume.fresh_ap is not None and resume.fresh_ap < 0:
         raise ValueError("resume fresh_ap must be >= 0")
     if resume.int_reset_done and resume.base_int > F.BASE_STAT_FLOOR:
         raise ValueError("int_reset_done but base_int > 4")
     if resume.base_int_peak is not None and resume.base_int_peak < resume.base_int:
         raise ValueError("resume base_int_peak must be >= base_int")
+    # Mid-game: do not silently assume MaxHP was auto-maxed from SP schedule.
+    if profile.maxhp_skill is not None and config.improved_maxhp_level is None:
+        raise ValueError(
+            "improved_maxhp_level required when resuming a job with Improve MaxHP"
+        )
 
 
 def _seed_from_resume(
@@ -176,13 +189,16 @@ def _seed_from_resume(
 ) -> CharacterState:
     fresh = resume.fresh_ap if resume.fresh_ap is not None else F.FRESH_AP_PER_LEVEL
     peak = resume.base_int_peak if resume.base_int_peak is not None else resume.base_int
-    # Replay SP schedule up to current level unless overridden.
-    if skill.override_level is None:
-        adv_map = {lv: adv for lv, (adv, _) in profile.job_advances.items()}
-        skill.seed_for_resume(resume.level, adv_map)
-    else:
+    # Resume always uses an explicit MaxHP override when the job has the skill
+    # (validated above). Fresh runs may still auto-accumulate via on_level.
+    if skill.override_level is not None:
         skill.skill_level = skill.effective_level
         skill.unlocked = True
+    elif profile.maxhp_skill is not None:
+        # Should not reach here when resume_from is set (validated), but keep
+        # defensive seed for any non-resume callers that pass a pre-built state.
+        adv_map = {lv: adv for lv, (adv, _) in profile.job_advances.items()}
+        skill.seed_for_resume(resume.level, adv_map)
     return CharacterState(
         level=resume.level,
         base_str=resume.base_str,
@@ -192,7 +208,11 @@ def _seed_from_resume(
         base_hp=float(resume.base_hp),
         base_mp=float(resume.base_mp),
         base_int_peak=max(peak, resume.base_int),
-        int_reached_level=resume.level if resume.base_int >= config.target_base_int else 0,
+        int_reached_level=(
+            resume.level
+            if (resume.base_int >= config.target_base_int or resume.int_reset_done)
+            else 0
+        ),
         int_reset_done=resume.int_reset_done,
         level_fresh_ap=fresh,
         profile=profile,
