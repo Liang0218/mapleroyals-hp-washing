@@ -174,11 +174,6 @@ def _validate_resume(resume: ResumeFrom, config: SimulateConfig) -> None:
         raise ValueError("int_reset_done but base_int > 4")
     if resume.base_int_peak is not None and resume.base_int_peak < resume.base_int:
         raise ValueError("resume base_int_peak must be >= base_int")
-    # Mid-game: do not silently assume MaxHP was auto-maxed from SP schedule.
-    if profile.maxhp_skill is not None and config.improved_maxhp_level is None:
-        raise ValueError(
-            "improved_maxhp_level required when resuming a job with Improve MaxHP"
-        )
 
 
 def _seed_from_resume(
@@ -189,14 +184,12 @@ def _seed_from_resume(
 ) -> CharacterState:
     fresh = resume.fresh_ap if resume.fresh_ap is not None else F.FRESH_AP_PER_LEVEL
     peak = resume.base_int_peak if resume.base_int_peak is not None else resume.base_int
-    # Resume always uses an explicit MaxHP override when the job has the skill
-    # (validated above). Fresh runs may still auto-accumulate via on_level.
+    # Default: replay SP schedule (prereq → Improve MaxHP as early as possible).
+    # Optional improved_maxhp_level overrides when the character did not follow that path.
     if skill.override_level is not None:
         skill.skill_level = skill.effective_level
         skill.unlocked = True
     elif profile.maxhp_skill is not None:
-        # Should not reach here when resume_from is set (validated), but keep
-        # defensive seed for any non-resume callers that pass a pre-built state.
         adv_map = {lv: adv for lv, (adv, _) in profile.job_advances.items()}
         skill.seed_for_resume(resume.level, adv_map)
     return CharacterState(
@@ -224,7 +217,8 @@ def _append_resume_marker(state: CharacterState, config: SimulateConfig) -> None
     fresh = state.level_fresh_ap
     skill_note = ""
     if state.profile and state.profile.maxhp_skill:
-        skill_note = f"｜ImproveMaxHP Lv{state.skill.effective_level}"
+        src = "覆寫" if config.improved_maxhp_level is not None else "依SP自動"
+        skill_note = f"｜ImproveMaxHP Lv{state.skill.effective_level}（{src}）"
     state.plan.append(
         LevelPlanRow(
             level=state.level,

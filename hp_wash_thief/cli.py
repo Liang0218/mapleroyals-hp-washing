@@ -125,8 +125,8 @@ def _add_shared_args(p: argparse.ArgumentParser) -> None:
         type=int,
         default=None,
         help=(
-            "Improve MaxHP skill level 0–10 (Warrior/Brawler). "
-            "Required with mid-game resume; optional otherwise (auto SP)"
+            "Override Improve MaxHP 0–10 (Warrior/Brawler). "
+            "Default: auto from SP schedule (prereq then MaxHP ASAP after unlock)"
         ),
     )
 

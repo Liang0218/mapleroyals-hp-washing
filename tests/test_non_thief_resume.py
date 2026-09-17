@@ -27,7 +27,6 @@ from hp_wash_thief.core.simulator import (
 )
 from hp_wash_thief.core import formulas as F
 from hp_wash_thief.core.report import format_optimize_summary_text
-from hp_wash_thief.ui.user_errors import format_user_error
 
 
 def _gear() -> list[IntGearSegment]:
@@ -131,7 +130,8 @@ def test_non_thief_resume_matches_continued_sim(job, level):
     assert result.plan[0].action is Action.RESUME
 
 
-def test_fighter_resume_requires_maxhp_level():
+def test_fighter_resume_auto_maxhp_from_sp_schedule():
+    """Leave improved_maxhp_level unset → seed from unlock with prereq-first SP."""
     resume = ResumeFrom.from_stats(
         level=70,
         base_hp=12000,
@@ -140,19 +140,59 @@ def test_fighter_resume_requires_maxhp_level():
         base_str=50,
         job="fighter",
     )
-    with pytest.raises(ValueError, match="improved_maxhp_level required"):
-        simulate(
-            SimulateConfig(
-                policy=PolicyName.INT_ONLY_PLAIN,
-                target_base_int=220,
-                target_hp=25000,
-                int_reset_level=155,
-                int_gear=_gear(),
-                job="fighter",
-                mp_wash_end=120,
-                resume_from=resume,
-            )
+    result = simulate(
+        SimulateConfig(
+            policy=PolicyName.INT_ONLY_PLAIN,
+            target_base_int=220,
+            target_hp=25000,
+            int_reset_level=155,
+            int_gear=_gear(),
+            job="fighter",
+            mp_wash_end=120,
+            resume_from=resume,
+            # no improved_maxhp_level → auto
         )
+    )
+    # Warrior unlocks at lv10; 5 prereq + 10 skill = 15 SP → 5 levels × 3 SP → full by lv14
+    assert result.improved_maxhp_level == 10
+    assert "依SP自動" in result.plan[0].notes
+
+
+def test_fighter_resume_maxhp_partial_before_full():
+    """At level 12, auto schedule should not yet be MaxHP 10."""
+    profile = get_job_profile(JobId.FIGHTER)
+    skill = make_skill_tracker(profile)
+    advances = {lv: adv for lv, (adv, _) in profile.job_advances.items()}
+    skill.seed_for_resume(12, advances)
+    # lv10–12 = 3 levels × 3 SP = 9 → prereq 5 + skill 4
+    assert skill.prereq_spent == 5
+    assert skill.effective_level == 4
+
+
+def test_brawler_resume_auto_maxhp_unlocks_at_second_job():
+    resume = ResumeFrom.from_stats(
+        level=35,
+        base_hp=8000,
+        base_mp=get_job_profile(JobId.BRAWLER).min_mp(35) + 100,
+        base_int=120,
+        base_str=40,
+        base_dex=20,
+        job="brawler",
+    )
+    result = simulate(
+        SimulateConfig(
+            policy=PolicyName.INT_ONLY_PLAIN,
+            target_base_int=150,
+            target_hp=18000,
+            int_reset_level=130,
+            int_gear=_gear(),
+            job="brawler",
+            mp_wash_end=100,
+            resume_from=resume,
+        )
+    )
+    # 2nd job at 30; no prereq; 10 SP → full by lv33; at 35 → 10
+    assert result.improved_maxhp_level == 10
 
 
 def test_fighter_resume_rejects_base_mp_below_min():
@@ -176,7 +216,6 @@ def test_fighter_resume_rejects_base_mp_below_min():
                 job="fighter",
                 mp_wash_end=120,
                 resume_from=resume,
-                improved_maxhp_level=10,
             )
         )
 
@@ -238,7 +277,7 @@ def test_optimize_resume_labels_stop_mp_wash():
             int_gear=_gear(),
             job="fighter",
             resume_from=resume,
-            improved_maxhp_level=10,
+            # auto MaxHP from SP
             target_base_int_min=180,
             target_base_int_max=260,
             target_base_int_step=40,
@@ -253,10 +292,30 @@ def test_optimize_resume_labels_stop_mp_wash():
     assert "Extra MP≈350" in text or "Extra MP≈" in text
     # Must not show thief-scale negative Extra MP for fighter base_mp
     assert "Extra MP≈-" not in text
+    assert result.winner.improved_maxhp_level == 10
 
 
-def test_maxhp_level_required_error_localized():
-    msg = format_user_error(
-        ValueError("improved_maxhp_level required when resuming a job with Improve MaxHP")
+def test_resume_maxhp_override_still_works():
+    resume = ResumeFrom.from_stats(
+        level=70,
+        base_hp=12000,
+        base_mp=get_job_profile(JobId.FIGHTER).min_mp(70) + 200,
+        base_int=180,
+        base_str=50,
+        job="fighter",
     )
-    assert "Improve MaxHP" in msg
+    result = simulate(
+        SimulateConfig(
+            policy=PolicyName.INT_ONLY_PLAIN,
+            target_base_int=220,
+            target_hp=25000,
+            int_reset_level=155,
+            int_gear=_gear(),
+            job="fighter",
+            mp_wash_end=120,
+            resume_from=resume,
+            improved_maxhp_level=3,
+        )
+    )
+    assert result.improved_maxhp_level == 3
+    assert "覆寫" in result.plan[0].notes

@@ -35,9 +35,6 @@ _EXACT: dict[str, str] = {
     "resume base_int_peak must be >= base_int": "INT 峰值不可小於目前 base INT。",
     "resume requires base_mp or extra_mp": "中途接續請填 base MP（APR 顯示的數值）。",
     "improved_maxhp_level must be in [0, 10]": "Improve MaxHP 等級須為 0–10。",
-    "improved_maxhp_level required when resuming a job with Improve MaxHP": (
-        "中途接續劍士／打手時必須指定 Improve MaxHP 目前等級（0–10）。"
-    ),
     "unknown job: magician": "尚不支援法師職業。",
 }
 

@@ -405,7 +405,7 @@ class HpWashApp(ctk.CTk):
         note = ctk.CTkLabel(
             frame,
             text="語意：已升到該等；base HP／MP 請填 APR 視窗數值（須 ≥ 該職業 min MP）。"
-            "劍士／打手中途接續必須填 Improve MaxHP 目前等級。",
+            "劍士／打手 Improve MaxHP 預設依等級自動推 SP（先前置再盡早點滿）；僅偏離時才覆寫。",
             text_color=("gray30", "gray70"),
         )
         note.grid(row=5, column=0, columnspan=6, sticky="w", padx=6, pady=(0, 8))
@@ -586,13 +586,6 @@ class HpWashApp(ctk.CTk):
             return None
         job = self._selected_job(prefix)
         profile = get_job_profile(job)
-        if profile.maxhp_skill is not None:
-            skill_raw = getattr(self, f"{prefix}_improved_maxhp_level").get().strip()
-            if not skill_raw:
-                raise ValueError(
-                    "中途接續此職業時必須填 Improve MaxHP 目前等級（0–10），"
-                    "不可留空自動推估。"
-                )
         level = self._int(getattr(self, f"{prefix}_resume_from_level"), "目前等級")
         base_hp = self._float(
             getattr(self, f"{prefix}_resume_base_hp"), "base HP（APR 顯示的數值）"
