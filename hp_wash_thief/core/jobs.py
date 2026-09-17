@@ -3,6 +3,8 @@
 Sources:
 - https://royals.ms/forum/threads/hp-washing-for-new-players.41129/
 - https://royals.ms/forum/threads/mapleroyals-skill-library.209540/
+- https://royals.ms/forum/threads/update-54-05-07-2018.123721/
+- https://royals.ms/forum/threads/gossamers-hp-washing-notes-please-turn-into-a-guide-3.60048/
 """
 
 from __future__ import annotations
@@ -50,20 +52,29 @@ class GainRange:
 
 @dataclass(frozen=True)
 class JobAdvanceSpec:
-    """HP/MP granted when reaching this advancement (midpoint ±50 historically)."""
+    """HP/MP granted on job advancement.
+
+    Official / leaked rolls are 50-wide (e.g. 300–350, 600–650), so the default
+    spread is ±25 around the midpoint. A midpoint of 0 means that pool is not
+    granted (min/max stay 0 instead of going negative or inventing a gain).
+    """
 
     hp_mid: float
     mp_mid: float
     ap_bonus: int = 0
+    spread: float = 25.0
 
     def bonus(self, mode: HpMode) -> tuple[float, float]:
-        # Guides list midpoints; apply ±50 when min/max requested.
-        spread = 50.0
+        return self._pick(self.hp_mid, mode), self._pick(self.mp_mid, mode)
+
+    def _pick(self, mid: float, mode: HpMode) -> float:
+        if mid == 0.0:
+            return 0.0
         if mode is HpMode.MIN:
-            return self.hp_mid - spread, max(0.0, self.mp_mid - spread)
+            return max(0.0, mid - self.spread)
         if mode is HpMode.MAX:
-            return self.hp_mid + spread, self.mp_mid + spread
-        return self.hp_mid, self.mp_mid
+            return mid + self.spread
+        return mid
 
 
 @dataclass(frozen=True)
@@ -217,12 +228,20 @@ class JobProfile:
         return self.job_advances.get(level)
 
 
+# Update 54 replaced 3rd/4th job 300–350 HP with class-specific ranges.
+# MP on those advances was not changed. 1st/2nd job HP/MP stay pre-patch.
+_U54_BOW_THIEF_PIRATE_3RD = JobAdvanceSpec(625.0, 175.0, 5)  # 600–650 HP
+_U54_BOW_THIEF_PIRATE_4TH = JobAdvanceSpec(925.0, 175.0, 5)  # 900–950 HP
+_U54_WARRIOR_3RD = JobAdvanceSpec(1025.0, 0.0, 5)  # 1000–1050 HP
+_U54_WARRIOR_4TH = JobAdvanceSpec(1825.0, 0.0, 5)  # 1800–1850 HP
+
+
 def _thief_advances() -> dict[int, tuple[int, JobAdvanceSpec]]:
     return {
         10: (1, JobAdvanceSpec(162.5, 0.0, 0)),
         30: (2, JobAdvanceSpec(325.0, 175.0, 0)),
-        70: (3, JobAdvanceSpec(325.0, 175.0, 5)),
-        120: (4, JobAdvanceSpec(325.0, 175.0, 5)),
+        70: (3, _U54_BOW_THIEF_PIRATE_3RD),
+        120: (4, _U54_BOW_THIEF_PIRATE_4TH),
     }
 
 
@@ -238,28 +257,23 @@ def _fighter_advances() -> dict[int, tuple[int, JobAdvanceSpec]]:
     return {
         10: (1, JobAdvanceSpec(225.0, 0.0, 0)),
         30: (2, JobAdvanceSpec(325.0, 0.0, 0)),
-        70: (3, JobAdvanceSpec(325.0, 0.0, 5)),
-        120: (4, JobAdvanceSpec(325.0, 0.0, 5)),
+        70: (3, _U54_WARRIOR_3RD),
+        120: (4, _U54_WARRIOR_4TH),
     }
 
 
 def _page_advances() -> dict[int, tuple[int, JobAdvanceSpec]]:
+    # 2nd job is 0 HP / 125 MP (field-tested); 3rd/4th use warrior Update 54 HP.
     return {
         10: (1, JobAdvanceSpec(225.0, 0.0, 0)),
         30: (2, JobAdvanceSpec(0.0, 125.0, 0)),
-        70: (3, JobAdvanceSpec(0.0, 125.0, 5)),
-        120: (4, JobAdvanceSpec(0.0, 125.0, 5)),
+        70: (3, _U54_WARRIOR_3RD),
+        120: (4, _U54_WARRIOR_4TH),
     }
 
 
 def _spearman_advances() -> dict[int, tuple[int, JobAdvanceSpec]]:
-    # 2nd–4th: 0 HP / 125 MP (guide); 1st same as warrior 225/0
-    return {
-        10: (1, JobAdvanceSpec(225.0, 0.0, 0)),
-        30: (2, JobAdvanceSpec(0.0, 125.0, 0)),
-        70: (3, JobAdvanceSpec(0.0, 125.0, 5)),
-        120: (4, JobAdvanceSpec(0.0, 125.0, 5)),
-    }
+    return _page_advances()
 
 
 _WARRIOR_MAXHP = MaxHpSkillSpec(
@@ -318,7 +332,7 @@ def _build_profiles() -> dict[JobId, JobProfile]:
     profiles = {
         JobId.THIEF: JobProfile(
             job=JobId.THIEF,
-            display_name_zh="盜賊 Thief",
+            display_name_zh="夜使者／暗影神偷 Night Lord／Shadower",
             min_mp_fn=lambda lv: 14 * lv + 148,
             mp_removed_per_apr=12,
             method1_base=thief_m1,
@@ -337,7 +351,7 @@ def _build_profiles() -> dict[JobId, JobProfile]:
         ),
         JobId.BOWMAN: JobProfile(
             job=JobId.BOWMAN,
-            display_name_zh="弓箭手 Bowman",
+            display_name_zh="箭神／神射手 Bowmaster／Marksman",
             min_mp_fn=lambda lv: 14 * lv + 148,
             mp_removed_per_apr=12,
             method1_base=bowman_m,
@@ -479,12 +493,55 @@ def _build_profiles() -> dict[JobId, JobProfile]:
 
 JOB_PROFILES: dict[JobId, JobProfile] = _build_profiles()
 
+# Display / CLI aliases → canonical JobId.value (2nd-job ids kept for configs).
+JOB_ALIASES: dict[str, str] = {
+    "fighter": "fighter",
+    "hero": "fighter",
+    "page": "page",
+    "paladin": "page",
+    "pally": "page",
+    "spearman": "spearman",
+    "darkknight": "spearman",
+    "dark_knight": "spearman",
+    "dk": "spearman",
+    "bowman": "bowman",
+    "bowmaster": "bowman",
+    "bm": "bowman",
+    "marksman": "bowman",
+    "mm": "bowman",
+    "thief": "thief",
+    "nightlord": "thief",
+    "night_lord": "thief",
+    "nl": "thief",
+    "shadower": "thief",
+    "shad": "thief",
+    "brawler": "brawler",
+    "buccaneer": "brawler",
+    "bucc": "brawler",
+    "gunslinger": "gunslinger",
+    "corsair": "gunslinger",
+    "sair": "gunslinger",
+    "beginner": "beginner",
+}
+
+
+def resolve_job(job: JobId | str) -> str:
+    """Map 4th-job / shorthand names onto canonical job ids."""
+    if isinstance(job, JobId):
+        return job.value
+    raw = str(job).strip().lower().replace("-", "_").replace(" ", "_")
+    if raw in JOB_ALIASES:
+        return JOB_ALIASES[raw]
+    compact = raw.replace("_", "")
+    if compact in JOB_ALIASES:
+        return JOB_ALIASES[compact]
+    raise ValueError(f"unknown job: {job}")
+
 
 def get_job_profile(job: JobId | str) -> JobProfile:
-    if isinstance(job, str):
-        job = JobId(job)
+    canonical = JobId(resolve_job(job))
     try:
-        return JOB_PROFILES[job]
+        return JOB_PROFILES[canonical]
     except KeyError as exc:
         raise ValueError(f"unknown job: {job}") from exc
 

@@ -118,19 +118,13 @@ def mp_washes_affordable(
 
 
 def job_advance_bonus(job_adv_number: int, mode: HpMode) -> tuple[float, float]:
-    """Thief-line job advance bonuses (legacy helper)."""
-    if job_adv_number == 1:
-        if mode is HpMode.MIN:
-            return 112.5, 0.0
-        if mode is HpMode.MAX:
-            return 212.5, 0.0
-        return 162.5, 0.0
-    if job_adv_number in (2, 3, 4):
-        if mode is HpMode.MIN:
-            return 275.0, 125.0
-        if mode is HpMode.MAX:
-            return 375.0, 225.0
-        return 325.0, 175.0
+    """Thief-line job advance bonuses (legacy helper; prefer JobProfile)."""
+    from hp_wash_thief.core.jobs import get_job_profile
+
+    profile = get_job_profile("thief")
+    for _level, (adv, spec) in profile.job_advances.items():
+        if adv == job_adv_number:
+            return spec.bonus(mode)
     raise ValueError(f"unsupported job advancement: {job_adv_number}")
 
 

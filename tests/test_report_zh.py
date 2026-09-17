@@ -150,10 +150,10 @@ def test_plan_csv_ends_with_method_legend(tmp_path):
         path,
     )
     rows = list(csv.DictReader(path.open(encoding="utf-8-sig")))
-    assert rows[0]["level"] == "200"
-    assert rows[0]["action"] == "M2"
-    legend = [row for row in rows if row["level"] == CSV_LEGEND_LEVEL]
-    assert legend[0]["action"] == "METHOD1"
-    assert "升等" in legend[0]["action_desc"]
-    assert legend[1]["action"] == "METHOD2"
-    assert "Extra MP" in legend[1]["action_desc"]
+    assert rows[0]["等級"] == "200"
+    assert rows[0]["動作"] == "M2"
+    legend = [row for row in rows if row["等級"] == CSV_LEGEND_LEVEL]
+    assert legend[0]["動作"] == "METHOD1"
+    assert "升等" in legend[0]["動作說明"]
+    assert legend[1]["動作"] == "METHOD2"
+    assert "Extra MP" in legend[1]["動作說明"]

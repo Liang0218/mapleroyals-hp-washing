@@ -97,7 +97,10 @@ def test_beginner_and_thief_levelup_ranges():
 def test_job_advance_bonuses():
     assert job_advance_bonus(1, HpMode.AVG) == (162.5, 0.0)
     assert job_advance_bonus(2, HpMode.AVG) == (325.0, 175.0)
-    assert job_advance_bonus(4, HpMode.AVG) == (325.0, 175.0)
+    assert job_advance_bonus(3, HpMode.AVG) == (625.0, 175.0)
+    assert job_advance_bonus(4, HpMode.AVG) == (925.0, 175.0)
+    assert job_advance_bonus(3, HpMode.MIN) == (600.0, 150.0)
+    assert job_advance_bonus(4, HpMode.MAX) == (950.0, 200.0)
 
 
 def test_job_advance_ap():

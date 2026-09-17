@@ -17,6 +17,25 @@ from hp_wash_thief.core.models import (
 )
 
 
+CSV_FIELDS = [
+    "等級",
+    "動作",
+    "動作說明",
+    "base INT",
+    "base LUK",
+    "base HP",
+    "base MP",
+    "Extra MP",
+    "本等AP_INT",
+    "本等AP_LUK",
+    "本等AP_DEX",
+    "本等AP_STR",
+    "本等AP_HP",
+    "本等AP_MP",
+    "本等APR",
+    "備註",
+]
+
 PLAN_CSV_HINT = "完整逐等計畫請匯出 CSV。標題列下一列就是逐等資料；檔案末段「說明」列解釋 Method1／Method2。"
 
 CSV_LEGEND_LEVEL = "說明"
@@ -165,7 +184,7 @@ def format_action_legend() -> str:
             continue
         lines.append(f"  {action.value:<16}  {action_description(action)}")
     lines.append("")
-    lines.append("報告「逐等計畫」與 CSV：action = 代碼，action_desc = 該等要做的事。")
+    lines.append("報告「逐等計畫」與 CSV：動作 = 代碼，動作說明 = 該等要做的事。")
     lines.append("CSV 末段三列「說明」會解釋 Method1／Method2／欄位。")
     return "\n".join(lines)
 
@@ -219,7 +238,7 @@ def _resume_block(resume: Optional[ResumeFrom], *, job: str = "thief") -> list[s
         ),
         f"  尚未點的 AP {fresh}"
         + ("｜INT 已洗回" if resume.int_reset_done else "")
-        + "｜下列 APR 為接續後剩餘",
+        + "｜下列為接續後使用的 APR",
         "",
     ]
     return lines
@@ -478,24 +497,24 @@ def _csv_legend_rows(fieldnames: list[str]) -> list[dict[str, str]]:
     return [
         {
             **blanks,
-            "level": CSV_LEGEND_LEVEL,
-            "action": "METHOD1",
-            "action_desc": WASH_METHOD1,
-            "notes": "對應動作 HP1–HP5",
+            "等級": CSV_LEGEND_LEVEL,
+            "動作": "METHOD1",
+            "動作說明": WASH_METHOD1,
+            "備註": "對應動作 HP1–HP5",
         },
         {
             **blanks,
-            "level": CSV_LEGEND_LEVEL,
-            "action": "METHOD2",
-            "action_desc": WASH_METHOD2,
-            "notes": "對應動作 M2",
+            "等級": CSV_LEGEND_LEVEL,
+            "動作": "METHOD2",
+            "動作說明": WASH_METHOD2,
+            "備註": "對應動作 M2",
         },
         {
             **blanks,
-            "level": CSV_LEGEND_LEVEL,
-            "action": "欄位",
-            "action_desc": "action=本等動作代碼；action_desc=中文說明；notes=該等補充",
-            "notes": "apr_spent=本等花的 APR；fresh_ap_*＝該等 AP 點去哪",
+            "等級": CSV_LEGEND_LEVEL,
+            "動作": "欄位",
+            "動作說明": "動作=本等代碼；動作說明=中文說明；備註=該等補充",
+            "備註": "本等APR=本等花的 APR；本等AP_*=該等 AP 點去哪",
         },
     ]
 
@@ -503,46 +522,29 @@ def _csv_legend_rows(fieldnames: list[str]) -> list[dict[str, str]]:
 def write_plan_csv(plan_rows, path: Union[str, Path]) -> None:
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    fieldnames = [
-        "level",
-        "action",
-        "action_desc",
-        "base_int",
-        "base_luk",
-        "base_hp",
-        "base_mp",
-        "extra_mp",
-        "fresh_ap_int",
-        "fresh_ap_luk",
-        "fresh_ap_dex",
-        "fresh_ap_str",
-        "fresh_ap_hp",
-        "fresh_ap_mp",
-        "apr_spent",
-        "notes",
-    ]
+    fieldnames = list(CSV_FIELDS)
     with path.open("w", encoding="utf-8-sig", newline="") as fh:
         writer = csv.DictWriter(fh, fieldnames=fieldnames)
         writer.writeheader()
         for row in plan_rows:
             writer.writerow(
                 {
-                    "level": row.level,
-                    "action": row.action.value,
-                    "action_desc": action_description(row.action),
-                    "base_int": row.base_int,
-                    "base_luk": row.base_luk,
-                    "base_hp": row.base_hp,
-                    "base_mp": row.base_mp,
-                    "extra_mp": row.extra_mp,
-                    "fresh_ap_int": row.fresh_ap_int,
-                    "fresh_ap_luk": row.fresh_ap_luk,
-                    "fresh_ap_dex": row.fresh_ap_dex,
-                    "fresh_ap_str": row.fresh_ap_str,
-                    "fresh_ap_hp": row.fresh_ap_hp,
-                    "fresh_ap_mp": row.fresh_ap_mp,
-                    "apr_spent": row.apr_spent,
-                    "notes": row.notes,
+                    "等級": row.level,
+                    "動作": row.action.value,
+                    "動作說明": action_description(row.action),
+                    "base INT": row.base_int,
+                    "base LUK": row.base_luk,
+                    "base HP": row.base_hp,
+                    "base MP": row.base_mp,
+                    "Extra MP": row.extra_mp,
+                    "本等AP_INT": row.fresh_ap_int,
+                    "本等AP_LUK": row.fresh_ap_luk,
+                    "本等AP_DEX": row.fresh_ap_dex,
+                    "本等AP_STR": row.fresh_ap_str,
+                    "本等AP_HP": row.fresh_ap_hp,
+                    "本等AP_MP": row.fresh_ap_mp,
+                    "本等APR": row.apr_spent,
+                    "備註": row.notes,
                 }
             )
         writer.writerow({name: "" for name in fieldnames})

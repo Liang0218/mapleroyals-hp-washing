@@ -8,7 +8,7 @@ from typing import Optional, Sequence
 
 from hp_wash_thief.core.api import optimize, simulate
 from hp_wash_thief.core.gear import load_int_gear
-from hp_wash_thief.core.jobs import JobId, get_job_profile
+from hp_wash_thief.core.jobs import JOB_ALIASES, get_job_profile, resolve_job
 from hp_wash_thief.core.models import HpMode, OptimizeConfig, PolicyName, ResumeFrom, SimulateConfig
 from hp_wash_thief.core.report import (
     format_optimize_report,
@@ -17,7 +17,7 @@ from hp_wash_thief.core.report import (
     write_plan_csv,
 )
 
-_JOB_CHOICES = [j.value for j in JobId]
+_JOB_CHOICES = sorted(JOB_ALIASES)
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
@@ -71,6 +71,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     )
 
     args = parser.parse_args(argv)
+    args.job = resolve_job(args.job)
     if args.command == "optimize":
         return _cmd_optimize(args)
     if args.command == "simulate":
@@ -84,7 +85,10 @@ def _add_shared_args(p: argparse.ArgumentParser) -> None:
         "--job",
         default="thief",
         choices=_JOB_CHOICES,
-        help="Job class (default: thief)",
+        help=(
+            "職業（預設 thief）。可用四轉英文：hero／paladin／dk、"
+            "bowmaster／marksman、nl／shadower、buccaneer／corsair"
+        ),
     )
     p.add_argument("--target-hp", type=int, required=True, help="Target base/display HP at 200")
     p.add_argument("--int-reset-level", type=int, required=True, help="Level to reset INT→primary")
@@ -125,8 +129,8 @@ def _add_shared_args(p: argparse.ArgumentParser) -> None:
         type=int,
         default=None,
         help=(
-            "Override Improve MaxHP 0–10 (Warrior/Brawler). "
-            "Default: auto from SP schedule (prereq then MaxHP ASAP after unlock)"
+            "CLI 覆寫 Improve MaxHP 0–10（英雄／聖騎士／黑騎士／拳霸）。"
+            "GUI 一律依 SP 自動；預設同樣自動（先前置再盡早點滿）"
         ),
     )
     p.add_argument(

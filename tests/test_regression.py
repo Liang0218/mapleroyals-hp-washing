@@ -125,20 +125,20 @@ def test_regression_optimize_ab_winner_golden(example_gear):
     )
     assert result.winner is not None
     assert result.winner.reached_target
-    # Golden: B wins at 1560 APR with INT 360 / mpEnd 105.
-    assert result.winner.total_apr == 1560
-    assert result.winner.target_base_int == 360
-    assert result.winner.mp_wash_end == 105
+    # Golden after Update 54 3rd/4th HP: B wins (tie on APR) at 1487 with INT 320 / mpEnd 100.
+    assert result.winner.total_apr == 1487
+    assert result.winner.target_base_int == 320
+    assert result.winner.mp_wash_end == 100
     assert result.comparison.policy_a is not None
-    assert result.comparison.policy_a.total_apr == 1568
+    assert result.comparison.policy_a.total_apr == 1487
     assert result.comparison.policy_b is not None
-    assert result.comparison.policy_b.total_apr == 1560
-    assert result.comparison.apr_delta == 1560 - 1568
+    assert result.comparison.policy_b.total_apr == 1487
+    assert result.comparison.apr_delta == 0
     assert result.comparison.winner is result.winner
 
     report = format_optimize_report(result)
     assert policy_short(result.winner.policy) == "B"
-    assert "1560" in report
+    assert "1487" in report
 
 
 @pytest.mark.regression

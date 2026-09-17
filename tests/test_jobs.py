@@ -16,6 +16,7 @@ from hp_wash_thief.core.jobs import (
     SkillTracker,
     get_job_profile,
     make_skill_tracker,
+    resolve_job,
 )
 from hp_wash_thief.core.models import (
     HpMode,
@@ -36,6 +37,8 @@ def test_display_names_use_fourth_job():
     assert get_job_profile(JobId.SPEARMAN).display_name_zh == "黑騎士 Dark Knight"
     assert get_job_profile(JobId.BRAWLER).display_name_zh == "拳霸 Buccaneer"
     assert get_job_profile(JobId.GUNSLINGER).display_name_zh == "槍神 Corsair"
+    assert get_job_profile(JobId.BOWMAN).display_name_zh == "箭神／神射手 Bowmaster／Marksman"
+    assert get_job_profile(JobId.THIEF).display_name_zh == "夜使者／暗影神偷 Night Lord／Shadower"
 
 
 def test_job_id_order_warrior_then_bowman_thief_pirate():
@@ -49,6 +52,53 @@ def test_job_id_order_warrior_then_bowman_thief_pirate():
         "gunslinger",
         "beginner",
     ]
+
+
+def test_job_aliases_resolve_to_canonical_ids():
+    assert resolve_job("hero") == "fighter"
+    assert resolve_job("Paladin") == "page"
+    assert resolve_job("dark-knight") == "spearman"
+    assert resolve_job("bowmaster") == "bowman"
+    assert resolve_job("NL") == "thief"
+    assert resolve_job("shadower") == "thief"
+    assert resolve_job("bucc") == "brawler"
+    assert resolve_job("corsair") == "gunslinger"
+    assert get_job_profile("hero").job is JobId.FIGHTER
+
+
+def test_job_advance_bonus_uses_update_54_ranges():
+    thief = get_job_profile(JobId.THIEF).job_advances
+    assert thief[30][1].bonus(HpMode.AVG) == (325.0, 175.0)
+    assert thief[30][1].bonus(HpMode.MIN) == (300.0, 150.0)
+    assert thief[30][1].bonus(HpMode.MAX) == (350.0, 200.0)
+    assert thief[70][1].bonus(HpMode.AVG) == (625.0, 175.0)
+    assert thief[70][1].bonus(HpMode.MIN) == (600.0, 150.0)
+    assert thief[70][1].bonus(HpMode.MAX) == (650.0, 200.0)
+    assert thief[120][1].bonus(HpMode.AVG) == (925.0, 175.0)
+    assert thief[120][1].bonus(HpMode.MIN) == (900.0, 150.0)
+    assert thief[120][1].bonus(HpMode.MAX) == (950.0, 200.0)
+
+    fighter = get_job_profile(JobId.FIGHTER).job_advances
+    assert fighter[30][1].bonus(HpMode.AVG) == (325.0, 0.0)
+    assert fighter[30][1].bonus(HpMode.MIN) == (300.0, 0.0)
+    assert fighter[30][1].bonus(HpMode.MAX) == (350.0, 0.0)
+    assert fighter[70][1].bonus(HpMode.AVG) == (1025.0, 0.0)
+    assert fighter[120][1].bonus(HpMode.AVG) == (1825.0, 0.0)
+    assert fighter[70][1].bonus(HpMode.MIN) == (1000.0, 0.0)
+    assert fighter[70][1].bonus(HpMode.MAX) == (1050.0, 0.0)
+    assert fighter[120][1].bonus(HpMode.MIN) == (1800.0, 0.0)
+    assert fighter[120][1].bonus(HpMode.MAX) == (1850.0, 0.0)
+
+    page = get_job_profile(JobId.PAGE).job_advances
+    spearman = get_job_profile(JobId.SPEARMAN).job_advances
+    assert page[30][1].bonus(HpMode.AVG) == (0.0, 125.0)
+    assert page[30][1].bonus(HpMode.MIN) == (0.0, 100.0)
+    assert page[30][1].bonus(HpMode.MAX) == (0.0, 150.0)
+    assert page[70][1].bonus(HpMode.AVG) == (1025.0, 0.0)
+    assert page[120][1].bonus(HpMode.AVG) == (1825.0, 0.0)
+    assert spearman[30][1].bonus(HpMode.AVG) == (0.0, 125.0)
+    assert spearman[70][1].bonus(HpMode.AVG) == (1025.0, 0.0)
+    assert spearman[120][1].bonus(HpMode.AVG) == (1825.0, 0.0)
 
 
 @pytest.mark.parametrize(

@@ -27,8 +27,8 @@ hp-wash-thief-gui
 
 In the window you can:
 
-- Choose **job** (Thief / Bowman / Gunslinger / Brawler / Fighter / Page / Spearman / Beginner)
-- Edit **all CLI parameters** (target HP, INT reset level, MW %, policies, Improve MaxHP override, …)
+- Choose **job** (Hero / Paladin / Dark Knight / Bowmaster·Marksman / Night Lord·Shadower / Buccaneer / Corsair / Beginner)
+- Edit parameters (target HP/MP, INT reset level, MW %, policies, …). Improve MaxHP is automatic from the SP schedule (CLI can still override).
 - Edit / load / save **INT gear JSON** in a text box
 - Choose a **CSV output path**
 - Run **Optimize** or **Simulate** and read the report in-app
@@ -103,20 +103,22 @@ python -m hp_wash_thief simulate \
 
 ### Supported jobs
 
-| `--job` | Notes |
-| --- | --- |
-| `thief` | Policies A–D (default) |
-| `bowman` | D only, Method2 |
-| `gunslinger` | D only, Method2; −16 MP/APR |
-| `brawler` | D only; Improve MaxHP (2nd job) auto SP |
-| `fighter` / `page` / `spearman` | D only; Improved MaxHP Increase (1st job) |
-| `beginner` | D only; no job-advance HP/MP/AP |
+| `--job` | 顯示名（與 GUI 同一欄） | Notes |
+| --- | --- | --- |
+| `thief`（`nl` / `shadower`） | 夜使者／暗影神偷 Night Lord／Shadower | Policies A–D |
+| `bowman`（`bm` / `mm`） | 箭神／神射手 Bowmaster／Marksman | D only, Method2 |
+| `gunslinger`（`corsair`） | 槍神 Corsair | D only, Method2；−16 MP/APR |
+| `brawler`（`buccaneer`） | 拳霸 Buccaneer | D only；Improve MaxHP（2nd job）auto SP |
+| `fighter`（`hero`） | 英雄 Hero | D only；Improved MaxHP Increase（1st job） |
+| `page`（`paladin`） | 聖騎士 Paladin | 同上 |
+| `spearman`（`dk`） | 黑騎士 Dark Knight | 同上；min MP 公式不同 |
+| `beginner` | 初心者 Beginner | D only；no job-advance HP/MP/AP |
 
 **Magician** is not implemented yet.
 
 Optional `--target-mp`: minimum **base MP** at level 200. Omit to wash Extra MP down near job `min_mp` (legacy). Values below `min_mp(200)` for the job are rejected. Optimizer treats HP+MP as joint `reached_target`.
 
-Warrior / Brawler: leave `--improved-maxhp-level` unset to auto-max Improve MaxHP from the SP schedule (no SP-reset alternate wash). Override `0–10` when resuming mid-game.
+GUI：Improve MaxHP 一律依 SP 自動點滿。CLI 可用 `--improved-maxhp-level 0–10` 覆寫（中途接續偏離預設技能點時）。
 
 ### Mid-game resume（中途接續）
 
@@ -139,7 +141,7 @@ python -m hp_wash_thief optimize \
 - 語意：角色**已升到**該等（HP/MP 已含自然／職轉加成），本等 AP **尚未**分配。
 - 可填 `--base-mp` 或 `--extra-mp`（Extra MP = base MP − min MP）。
 - 70／120 剛轉職且職轉 AP 未花時，將 `--fresh-ap` 設為 `10`。
-- 報告中的 APR 為**接續後剩餘**（不含過去已花的 wash APR）。
+- 報告中的 APR 為**接續後使用的 APR**（不含過去已花的 wash APR）。
 - GUI：Optimize／Simulate 分頁勾選「中途接續」即可。
 
 ## What it answers
@@ -223,6 +225,8 @@ hp_wash_thief.spec
 - [HP Washing For New Players](https://royals.ms/forum/threads/hp-washing-for-new-players.41129/)
 - [Fully revised HP washing guide](https://royals.ms/forum/threads/fully-revised-hp-washing-guide.8286/)
 - [MapleRoyals Skill Library](https://royals.ms/forum/threads/mapleroyals-skill-library.209540/)
+- [Update #54 job-advance HP](https://royals.ms/forum/threads/update-54-05-07-2018.123721/)
+- [Gossamer job-advance field table](https://royals.ms/forum/threads/gossamers-hp-washing-notes-please-turn-into-a-guide-3.60048/)
 
 ### Maple Warrior (important)
 
@@ -232,9 +236,17 @@ Default: `--mw-percent 0.10 --mw-from-level 10` (10% of **base** INT from level 
 
 MP wash still uses **base INT only** (gear/MW do not apply). Maple Warrior is applied via `--mw-percent` / `--mw-from-level`.
 
-### Job advancement AP
+### Job advancement HP / MP / AP
 
-Per [MapleRoyals forum #45500](https://royals.ms/forum/threads/2nd-3rd-4th-job-bonuses.45500/): 1st/2nd job grant **0** bonus AP; 3rd/4th job grant **+5** AP each (levels 70 and 120). The simulator adds these on top of the normal 5 AP per level. Beginner has no job advances.
+1st/2nd job grant **0** bonus AP; 3rd/4th job grant **+5** AP each (levels 70 and 120). Beginner has no job advances. Per [#45500](https://royals.ms/forum/threads/2nd-3rd-4th-job-bonuses.45500/).
+
+HP/MP midpoints (rolls are 50-wide, i.e. ±25). 3rd/4th **HP** uses [Update #54](https://royals.ms/forum/threads/update-54-05-07-2018.123721/) (MP unchanged). Paladin/Dark Knight 2nd job stays 0 HP / 125 MP ([Gossamer field table](https://royals.ms/forum/threads/gossamers-hp-washing-notes-please-turn-into-a-guide-3.60048/)); their 3rd/4th use the warrior Update 54 HP.
+
+| Job | 1st | 2nd | 3rd | 4th |
+| --- | --- | --- | --- | --- |
+| Thief / Bowman / Pirate | 162.5 / 0 | 325 / 175 | 625 / 175（600–650 HP） | 925 / 175（900–950 HP） |
+| Hero | 225 / 0 | 325 / 0 | 1025 / 0（1000–1050 HP） | 1825 / 0（1800–1850 HP） |
+| Paladin / Dark Knight | 225 / 0 | 0 / 125 | 1025 / 0 | 1825 / 0 |
 
 ## Tests
 

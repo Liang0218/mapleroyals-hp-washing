@@ -176,7 +176,7 @@ def test_cli_simulate_resume(example_gear_path, tmp_path):
     assert rc == 0
     text = csv_path.read_text(encoding="utf-8-sig")
     assert "RESUME" in text
-    assert "中途接續" in text or "action_desc" in text
+    assert "中途接續" in text or "動作說明" in text
 
 
 def test_resume_extra_mp_matches_formula(example_gear):

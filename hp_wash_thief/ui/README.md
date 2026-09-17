@@ -15,5 +15,6 @@ scripts\build_windows.bat
 
 The UI only calls `hp_wash_thief.core.api` (`optimize` / `simulate`).
 
-Job selector covers Thief (A–D) and other classes (Policy D only). Warrior / Brawler
-can override Improve MaxHP level; leave blank for automatic SP schedule.
+Job selector uses 4th-job names in one field (Thief A–D; others Policy D only),
+e.g. 箭神／神射手 Bowmaster／Marksman. Improve MaxHP always follows the SP
+schedule in the GUI.

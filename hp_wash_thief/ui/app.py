@@ -43,8 +43,8 @@ JOB_LABELS = {
     "英雄 Hero": "fighter",
     "聖騎士 Paladin": "page",
     "黑騎士 Dark Knight": "spearman",
-    "弓箭手 Bowman": "bowman",
-    "盜賊 Thief": "thief",
+    "箭神／神射手 Bowmaster／Marksman": "bowman",
+    "夜使者／暗影神偷 Night Lord／Shadower": "thief",
     "拳霸 Buccaneer": "brawler",
     "槍神 Corsair": "gunslinger",
     "初心者 Beginner": "beginner",
@@ -218,7 +218,7 @@ class HpWashApp(ctk.CTk):
     def _build_help_tab(self, parent: ctk.CTkFrame) -> None:
         help_title = ctk.CTkLabel(
             parent,
-            text="政策、洗血方法與動作代碼（CSV 末段「說明」列／action_desc 也可對照）",
+            text="政策、洗血方法與動作代碼（CSV 末段「說明」列／動作說明欄也可對照）",
             font=ctk.CTkFont(weight="bold"),
             anchor="w",
             justify="left",

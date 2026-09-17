@@ -89,8 +89,8 @@ def test_integration_optimize_ab_exports_csv_and_report(example_gear, tmp_path):
     write_plan_csv(result.winner.plan, csv_path)
     rows = list(csv.DictReader(csv_path.open(encoding="utf-8-sig")))
     assert rows
-    assert "action_desc" in rows[0]
-    actions = {row["action"] for row in rows}
+    assert "動作說明" in rows[0]
+    actions = {row["動作"] for row in rows if row["動作"] not in ("", "METHOD1", "METHOD2", "欄位")}
     assert "RESET_INT" in actions
     assert any(a.startswith("HP") or a.startswith("MP") for a in actions)
 
@@ -170,4 +170,4 @@ def test_integration_cli_optimize_and_simulate(example_gear_path: Path, tmp_path
     assert rc == 0
     assert sim_csv.is_file()
     header = sim_csv.read_text(encoding="utf-8-sig").splitlines()[0]
-    assert "action_desc" in header
+    assert "動作說明" in header

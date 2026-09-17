@@ -29,7 +29,8 @@ def test_simulate_cli(tmp_path):
     assert rc in (0, 1)
     assert csv_path.exists()
     text = csv_path.read_text(encoding="utf-8")
-    assert "action" in text.splitlines()[0]
+    assert "動作" in text.splitlines()[0]
+    assert "動作說明" in text.splitlines()[0]
     assert "RESET_INT" in text or "HP5" in text
 
 
@@ -56,3 +57,22 @@ def test_optimize_cli_fighter_d_only(tmp_path):
     )
     assert rc in (0, 1)
     assert csv_path.exists()
+
+
+def test_optimize_cli_hero_alias():
+    rc = main(
+        [
+            "optimize",
+            "--job",
+            "hero",
+            "--target-hp",
+            "12000",
+            "--int-reset-level",
+            "120",
+            "--int-gear-file",
+            "examples/int_gear.json",
+            "--policies",
+            "auto",
+        ]
+    )
+    assert rc in (0, 1)
