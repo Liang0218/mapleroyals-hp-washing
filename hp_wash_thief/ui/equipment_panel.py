@@ -20,6 +20,7 @@ from hp_wash_thief.core.equipment import (
 )
 from hp_wash_thief.core.gear import clip_segments_before_reset
 from hp_wash_thief.core.models import IntGearSegment
+from hp_wash_thief.ui.fonts import ui_font
 from hp_wash_thief.ui.resources import default_equipment_path
 from hp_wash_thief.ui.user_errors import format_user_error
 
@@ -115,7 +116,7 @@ class EquipmentPanel(ctk.CTkFrame):
         title = ctk.CTkLabel(
             self,
             text="裝備管理：每個 Type 僅穿戴一件（Ring 最多 4 件），依等級自動計算 INT 區間",
-            font=ctk.CTkFont(weight="bold"),
+            font=ui_font(weight="bold"),
             anchor="w",
             justify="left",
             wraplength=640,
@@ -171,7 +172,7 @@ class EquipmentPanel(ctk.CTkFrame):
             (4, "", 0),
         ):
             header.grid_columnconfigure(col, weight=weight if weight else 0)
-            ctk.CTkLabel(header, text=text, font=ctk.CTkFont(weight="bold")).grid(
+            ctk.CTkLabel(header, text=text, font=ui_font(weight="bold")).grid(
                 row=0, column=col, sticky="w", padx=(0, 6)
             )
 
@@ -187,10 +188,10 @@ class EquipmentPanel(ctk.CTkFrame):
         ctk.CTkLabel(
             right,
             text="智裝 INT 預覽（依等級區間）",
-            font=ctk.CTkFont(weight="bold"),
+            font=ui_font(weight="bold"),
         ).grid(row=0, column=0, sticky="w", padx=8, pady=(8, 4))
         self.preview = ctk.CTkTextbox(
-            right, font=ctk.CTkFont(family="Microsoft JhengHei UI", size=13)
+            right, font=ui_font(size=13)
         )
         self.preview.grid(row=1, column=0, sticky="nsew", padx=8, pady=(0, 8))
 

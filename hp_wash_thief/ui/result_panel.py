@@ -7,6 +7,7 @@ import tkinter.ttk as ttk
 import customtkinter as ctk
 
 from hp_wash_thief.core.report import ReportTable
+from hp_wash_thief.ui.fonts import ui_font
 
 _COL_WIDTHS: dict[str, int] = {
     "#": 36,
@@ -24,8 +25,8 @@ class ResultPanel(ctk.CTkScrollableFrame):
     def __init__(self, master, **kwargs) -> None:
         super().__init__(master, **kwargs)
         self.grid_columnconfigure(0, weight=1)
-        self._font = ctk.CTkFont(family="Microsoft JhengHei UI", size=12)
-        self._title_font = ctk.CTkFont(family="Microsoft JhengHei UI", size=13, weight="bold")
+        self._font = ui_font(size=12)
+        self._title_font = ui_font(size=13, weight="bold")
 
     def show_text(self, text: str) -> None:
         self.show(text, [], "")

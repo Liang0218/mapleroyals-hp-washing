@@ -26,12 +26,14 @@ from hp_wash_thief.core.report import (
     write_plan_csv,
 )
 from hp_wash_thief.ui.equipment_panel import EquipmentPanel
+from hp_wash_thief.ui.fonts import apply_ctk_theme_font, apply_tk_named_fonts, ui_font
 from hp_wash_thief.ui.result_panel import ResultPanel
 from hp_wash_thief.ui.user_errors import format_user_error
 from hp_wash_thief.ui.resources import default_csv_path
 
 ctk.set_appearance_mode("light")
 ctk.set_default_color_theme("green")
+apply_ctk_theme_font()
 
 # Display label → internal value
 HP_MODE_LABELS = {
@@ -93,6 +95,7 @@ def _bind_wrap(label: ctk.CTkLabel, host, *, pad: int = 8) -> None:
 class HpWashApp(ctk.CTk):
     def __init__(self) -> None:
         super().__init__()
+        apply_tk_named_fonts(self)
         self.title("MapleRoyals 洗血 APR 最佳化")
         self.geometry("1100x780")
         self.minsize(880, 640)
@@ -107,7 +110,7 @@ class HpWashApp(ctk.CTk):
         header = ctk.CTkLabel(
             self,
             text="MapleRoyals 洗血 APR 最佳化（多職業）",
-            font=ctk.CTkFont(size=22, weight="bold"),
+            font=ui_font(size=22, weight="bold"),
         )
         header.grid(row=0, column=0, sticky="w", padx=16, pady=(14, 6))
 
@@ -192,7 +195,7 @@ class HpWashApp(ctk.CTk):
         ctk.CTkLabel(
             parent,
             text="操作說明",
-            font=ctk.CTkFont(size=16, weight="bold"),
+            font=ui_font(size=16, weight="bold"),
         ).grid(row=0, column=0, sticky="w", padx=12, pady=(12, 6))
 
         btn_row = ctk.CTkFrame(parent, fg_color="transparent")
@@ -209,7 +212,7 @@ class HpWashApp(ctk.CTk):
 
         box = ctk.CTkTextbox(
             parent,
-            font=ctk.CTkFont(family="Microsoft JhengHei UI", size=14),
+            font=ui_font(size=14),
         )
         box.grid(row=1, column=0, columnspan=2, sticky="nsew", padx=12, pady=(0, 12))
         box.insert("1.0", format_ui_guide())
@@ -219,14 +222,14 @@ class HpWashApp(ctk.CTk):
         help_title = ctk.CTkLabel(
             parent,
             text="政策、洗血方法與動作代碼（CSV 末段「說明」列／動作說明欄也可對照）",
-            font=ctk.CTkFont(weight="bold"),
+            font=ui_font(weight="bold"),
             anchor="w",
             justify="left",
             wraplength=640,
         )
         help_title.grid(row=0, column=0, sticky="ew", padx=12, pady=(12, 6))
         _bind_wrap(help_title, parent, pad=24)
-        box = ctk.CTkTextbox(parent, font=ctk.CTkFont(family="Microsoft JhengHei UI", size=13))
+        box = ctk.CTkTextbox(parent, font=ui_font(size=13))
         box.grid(row=1, column=0, sticky="nsew", padx=12, pady=(0, 12))
         box.insert("1.0", format_action_legend())
         box.configure(state="disabled")

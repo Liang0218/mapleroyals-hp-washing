@@ -58,8 +58,8 @@ Official Windows builds are attached to [GitHub Releases](https://github.com/Lia
 
 ```bash
 # bump version in pyproject.toml first, then:
-git tag v0.4.0
-git push origin v0.4.0
+git tag v0.4.1
+git push origin v0.4.1
 ```
 
 GitHub Actions (`.github/workflows/release-windows.yml`) runs tests, builds with PyInstaller on `windows-latest`, and uploads the zip to Releases.
