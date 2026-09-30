@@ -203,7 +203,8 @@ class OptimizeConfig:
     target_base_int_min: int = 100
     target_base_int_max: int = 500
     target_base_int_step: int = 10
-    mp_wash_end_min: int = 50
+    # 31 lets the search skip all post-INT MP wash (end < int-reached level).
+    mp_wash_end_min: int = 31
     top_n: int = 5
     # Optional: continue from an in-progress character instead of level 1.
     resume_from: Optional[ResumeFrom] = None

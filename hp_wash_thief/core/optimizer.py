@@ -110,7 +110,12 @@ def _int_search_bounds(config: OptimizeConfig) -> tuple[int, int]:
 def _mp_wash_end_candidates(
     config: OptimizeConfig, *, step: int, center: Optional[int] = None, radius: int = 0
 ) -> list[int]:
-    """mp_wash_end grid; on resume, collapse all ends below current level to one sentinel."""
+    """mp_wash_end grid; on resume, collapse all ends below current level to one sentinel.
+
+    Default min 31 is the earliest legal end: if INT is reached later, that
+    candidate does no post-INT MP wash (unlike the old min 50, which still
+    forced MP5 through 50 when INT landed earlier).
+    """
     mp_min = max(config.mp_wash_end_min, 31)
     mp_max = config.int_reset_level
     if mp_min > mp_max:

@@ -218,6 +218,11 @@ def _mp_wash_end_label(c: CandidateResult) -> str:
     """Human-readable MP wash end for reports (resume-aware)."""
     if c.resume_from is not None and c.mp_wash_end < c.resume_from.level:
         return f"不再 MP wash（接續 Lv{c.resume_from.level} 已超過結束等級 {c.mp_wash_end}）"
+    if c.int_reached_level > 0 and c.mp_wash_end < c.int_reached_level:
+        return (
+            f"達標 INT 後不再 MP wash"
+            f"（結束等級 {c.mp_wash_end} < 達標 Lv{c.int_reached_level}）"
+        )
     return f"MP wash 洗到 Lv{c.mp_wash_end}"
 
 
