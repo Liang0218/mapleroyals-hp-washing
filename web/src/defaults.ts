@@ -1,0 +1,15 @@
+import type { IntGearSegment } from "./core/models";
+
+export const DEFAULT_INT_GEAR: IntGearSegment[] = [
+  { from_level: 1, to_level: 9, int_gear: 0 },
+  { from_level: 10, to_level: 14, int_gear: 24 },
+  { from_level: 15, to_level: 19, int_gear: 37 },
+  { from_level: 20, to_level: 24, int_gear: 93 },
+  { from_level: 25, to_level: 29, int_gear: 103 },
+  { from_level: 30, to_level: 44, int_gear: 114 },
+  { from_level: 45, to_level: 49, int_gear: 123 },
+  { from_level: 50, to_level: 69, int_gear: 134 },
+  { from_level: 70, to_level: 89, int_gear: 138 },
+  { from_level: 90, to_level: 119, int_gear: 142 },
+  { from_level: 120, to_level: 154, int_gear: 159 },
+];

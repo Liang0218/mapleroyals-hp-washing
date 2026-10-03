@@ -125,6 +125,7 @@ def simulate(config: SimulateConfig) -> SimulateResult:
     return SimulateResult(
         policy=config.policy,
         target_base_int=config.target_base_int,
+        target_hp=config.target_hp,
         int_reached_level=state.int_reached_level,
         mp_wash_end=config.mp_wash_end,
         extra_mp_threshold=config.extra_mp_threshold,
@@ -855,9 +856,7 @@ def _method2_top_up(state: CharacterState, config: SimulateConfig) -> None:
     washes = 0
     hp_gained = 0.0
     removed = state.profile.mp_removed_per_apr
-    while state.base_hp + 1e-9 < target and state.can_remove_mp(
-        1, mp_floor=config.target_mp
-    ):
+    while state.base_hp + 1e-9 < target and state.can_remove_mp(1, mp_floor=config.target_mp):
         gain = state.profile.method2_hp(config.hp_mode, skill=state.skill)
         state.base_hp += gain
         state.base_mp -= removed
@@ -866,6 +865,7 @@ def _method2_top_up(state: CharacterState, config: SimulateConfig) -> None:
     if washes == 0:
         return
     state.method2_hp_wash_count += washes
+    skill_note = f"；ImproveMaxHP Lv{state.skill.effective_level}" if state.profile.maxhp_skill else ""
     state.plan.append(
         LevelPlanRow(
             level=state.level,
@@ -876,11 +876,6 @@ def _method2_top_up(state: CharacterState, config: SimulateConfig) -> None:
             base_mp=int(round(state.base_mp)),
             extra_mp=int(round(state.extra_mp())),
             apr_spent=washes,
-            notes=(
-                f"Method2×{washes}（+{hp_gained:.1f} HP；"
-                f"ImproveMaxHP Lv{state.skill.effective_level}）"
-                if state.profile.maxhp_skill
-                else f"Method2×{washes}（+{hp_gained:.1f} HP）"
-            ),
+            notes=f"Method2×{washes}（+{hp_gained:.1f} HP{skill_note}）",
         )
     )

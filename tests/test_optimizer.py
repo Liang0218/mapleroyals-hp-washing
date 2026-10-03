@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from hp_wash_thief.core.api import optimize, simulate
 from hp_wash_thief.core.gear import parse_int_gear
-from hp_wash_thief.core.models import OptimizeConfig, PolicyName, SimulateConfig
-from hp_wash_thief.core.optimizer import _mp_wash_end_candidates
+from hp_wash_thief.core.models import AprBreakdown, CandidateResult, OptimizeConfig, PolicyName, SimulateConfig
+from hp_wash_thief.core.optimizer import _candidate_sort_key, _mp_wash_end_candidates
 from hp_wash_thief.core.report import format_optimize_summary_text
 
 
@@ -88,6 +88,27 @@ def test_mp_wash_end_grid_includes_skip_sentinel():
     assert cfg.mp_wash_end_min == 31
     values = _mp_wash_end_candidates(cfg, step=10)
     assert values[0] == 31
+
+
+def test_hp_reached_but_mp_missed_prefers_highest_mp_before_apr():
+    common = dict(
+        policy=PolicyName.INT_ONLY_PLAIN,
+        target_base_int=200,
+        int_reached_level=50,
+        mp_wash_end=100,
+        extra_mp_threshold=60,
+        int_gear_after_reset=50,
+        final_base_hp=20000,
+        final_display_hp=20000,
+        base_int_peak=200,
+        reached_target=False,
+        target_hp=20000,
+        target_mp=8000,
+    )
+    lower_mp = CandidateResult(final_base_mp=7000, apr=AprBreakdown(method2_hp_wash_count=10), **common)
+    higher_mp = CandidateResult(final_base_mp=7500, apr=AprBreakdown(method2_hp_wash_count=20), **common)
+
+    assert sorted([lower_mp, higher_mp], key=_candidate_sort_key)[0] is higher_mp
 
 
 def test_optimize_skips_forced_mp_wash_to_50_when_unneeded():

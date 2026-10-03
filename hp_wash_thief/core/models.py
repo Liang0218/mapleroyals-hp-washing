@@ -308,6 +308,7 @@ class SimulateResult:
     job: str = "thief"
     improved_maxhp_level: Optional[int] = None
     target_mp: Optional[int] = None
+    target_hp: Optional[int] = None
 
 
 @dataclass
@@ -329,6 +330,7 @@ class CandidateResult:
     job: str = "thief"
     improved_maxhp_level: Optional[int] = None
     target_mp: Optional[int] = None
+    target_hp: Optional[int] = None
 
     @property
     def total_apr(self) -> int:
@@ -354,6 +356,7 @@ class CandidateResult:
             job=result.job,
             improved_maxhp_level=result.improved_maxhp_level,
             target_mp=result.target_mp,
+            target_hp=result.target_hp,
         )
 
 

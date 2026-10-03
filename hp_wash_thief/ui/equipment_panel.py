@@ -138,7 +138,7 @@ class EquipmentPanel(ctk.CTkFrame):
 
         ctk.CTkLabel(
             self,
-            text="預設 INT 為 0，請依角色填寫。完成後請「儲存 JSON…」，下次可用「載入 JSON…」還原。"
+            text="預設 INT 為 0，請依角色填寫。完成後可「儲存智力裝備設定」，下次再載入還原。"
             " 區間依 Optimize／Simulate 分頁的 INT 洗回等級即時重算。",
             text_color=("gray30", "gray70"),
             wraplength=900,
@@ -150,8 +150,8 @@ class EquipmentPanel(ctk.CTkFrame):
         for label, cmd, width in (
             ("新增列", self._add_row, 80),
             ("還原預設", self._load_defaults, 90),
-            ("載入 JSON…", self._load_json, 100),
-            ("儲存 JSON…", self._save_json, 100),
+            ("載入智力裝備設定", self._load_json, 140),
+            ("儲存智力裝備設定", self._save_json, 140),
         ):
             ctk.CTkButton(toolbar, text=label, width=width, command=cmd).pack(
                 side="left", padx=(0, 6)
@@ -325,7 +325,7 @@ class EquipmentPanel(ctk.CTkFrame):
 
     def _load_json(self) -> None:
         path = filedialog.askopenfilename(
-            title="載入裝備 JSON",
+            title="載入智力裝備設定",
             filetypes=[("JSON", "*.json"), ("所有檔案", "*.*")],
         )
         if not path:
@@ -342,7 +342,7 @@ class EquipmentPanel(ctk.CTkFrame):
 
     def _save_json(self) -> None:
         path = filedialog.asksaveasfilename(
-            title="儲存裝備 JSON",
+            title="儲存智力裝備設定",
             defaultextension=".json",
             filetypes=[("JSON", "*.json")],
         )
@@ -357,7 +357,7 @@ class EquipmentPanel(ctk.CTkFrame):
             )
             messagebox.showinfo(
                 "已儲存",
-                f"已寫入：{path}\n\n下次可用「載入 JSON…」還原這份裝備設定。",
+                f"已寫入：{path}\n\n下次可用「載入智力裝備設定」還原這份裝備設定。",
             )
         except Exception as exc:  # noqa: BLE001
             messagebox.showerror("錯誤", str(exc))

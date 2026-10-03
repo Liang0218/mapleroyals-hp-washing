@@ -258,18 +258,30 @@ def _lazy_summary_optimize(result: OptimizeResult) -> list[str]:
     )
 
     if w is not None and not w.reached_target:
-        lines = ["【懶人包 — 無法達成】", ""]
+        hp_reached = w.target_hp is not None and w.final_display_hp >= w.target_hp
+        mp_missed = w.target_mp is not None and w.final_base_mp < w.target_mp
+        if hp_reached and mp_missed:
+            lines = ["【無法同時達標 — HP 達標，MP 未達標】", ""]
+        else:
+            lines = ["【無法達成 — 最接近結果】", ""]
         lines.extend(_resume_block(result.resume_from, job=job_for_resume))
         job_name = get_job_profile(w.job).display_name_zh
         lines.append(f"  ★ 職業：{job_name}")
-        lines.append(
-            f"  ★ 結論：以目前參數無法洗到目標 HP"
-            f"（最接近約 {w.final_display_hp}）。"
-        )
-        lines.append("  ★ 請先調高「INT 洗回等級」，讓後面還能繼續 MP wash 再 Method2。")
-        lines.append(
-            "  ★ 若洗回等級已接近 200：請降低目標 HP，或中途保留更多 Extra MP 再接續。"
-        )
+        if hp_reached and mp_missed:
+            lines.append(
+                f"  ★ 目標 HP {w.target_hp} 已達成（實際 {w.final_display_hp}）；"
+                f"為達 HP 目標，額外使用 APR 後 base MP 為 {w.final_base_mp}，"
+                f"低於 MP 目標 {w.target_mp}。"
+            )
+            lines.append(f"  ★ 此計畫共使用 APR {w.total_apr}；逐等計畫包含低於 MP 目標後的追加 Method2。")
+        else:
+            hp_target = f"{w.target_hp}" if w.target_hp is not None else "目標"
+            lines.append(
+                f"  ★ 結論：目前參數無法達成目標 HP {hp_target}"
+                f"（最接近 {w.final_display_hp}；最終 MP {w.final_base_mp}；使用 APR {w.total_apr}）。"
+            )
+            lines.append("  ★ 可調高「INT 洗回等級」，讓後續有更多 Extra MP 可用於 Method2。")
+            lines.append("  ★ 若洗回等級已接近 200，可降低目標 HP 或中途保留更多 Extra MP 再接續。")
         lines.append("")
         lines.append("  （未達標故不提供可照做的洗法；請調整參數後重新最佳化。）")
         return lines

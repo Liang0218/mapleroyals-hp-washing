@@ -695,13 +695,20 @@ class HpWashApp(ctk.CTk):
             tables = [] if unreachable else build_optimize_tables(result)
             csv_path = self.opt_csv.get().strip()
             csv_msg = ""
+            hp_goal_reached = (
+                result.winner is not None
+                and result.winner.final_display_hp >= config.target_hp
+            )
             if csv_path:
-                if result.winner is None or not result.winner.reached_target or not result.winner.plan:
-                    csv_msg = "無法達標，未寫入 CSV。請先調高 INT 洗回等級後再試。"
+                if result.winner is None or not hp_goal_reached or not result.winner.plan:
+                    csv_msg = "無法達成 HP 目標，未寫入 CSV。請調整參數後再試。"
                 else:
                     write_plan_csv(result.winner.plan, csv_path)
-                    csv_msg = f"已寫入優勝計畫 CSV：{csv_path}"
-            elif result.winner and result.winner.reached_target and result.winner.plan:
+                    if result.winner.reached_target:
+                        csv_msg = f"已寫入優勝計畫 CSV：{csv_path}"
+                    else:
+                        csv_msg = f"HP 已達標但 MP 未達標；已寫入最接近結果 CSV：{csv_path}"
+            elif result.winner and hp_goal_reached and result.winner.plan:
                 csv_msg = PLAN_CSV_HINT
             return summary, tables, csv_msg
 
