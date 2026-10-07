@@ -9,7 +9,7 @@ from hp_wash_thief.core.policy import mp_wash_hardcore
 
 def test_method1_washes_affordable():
     assert method1_washes_affordable(12, 5) == 1
-    assert method1_washes_affordable(11, 5) == 0
+    assert method1_washes_affordable(11, 5) == 1
     assert method1_washes_affordable(60, 5) == 5
     assert method1_washes_affordable(36, 5) == 3
     assert method1_washes_affordable(120, 10) == 10

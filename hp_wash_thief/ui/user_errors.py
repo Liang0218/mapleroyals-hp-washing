@@ -7,15 +7,15 @@ import re
 # Exact English messages from core → 繁中
 _EXACT: dict[str, str] = {
     "target_hp must be positive": "目標 HP 必須大於 0。",
-    "int_reset_level out of range": "INT 洗回等級超出有效範圍（須為 2–200，且小於等級上限）。",
+    "int_reset_level out of range": "洗回 INT 等級超出有效範圍（須為 2–200，且小於等級上限）。",
     "mp_wash_end must satisfy 30 < mp_wash_end <= int_reset_level": (
-        "MP wash 結束等級須滿足：30 < 等級 ≤ INT 洗回等級。"
+        "MP wash 結束等級須滿足：30 < 等級 ≤ 洗回 INT 等級。"
     ),
     "target_base_int too low": "目標 base INT 過低（至少需 4）。",
     "extra_mp_threshold must be >= 0": "Extra MP 門檻不可為負數。",
-    "int_gear_after_reset must be >= 0": "INT reset 後 int_gear 不可為負數。",
+    "int_gear_after_reset must be >= 0": "洗回後升等裝備 INT 不可為負數。",
     "no INT gear segments before int_reset_level": (
-        "INT 洗回等級前沒有有效的裝備 INT 區間，請到「裝備 Equipment」分頁檢查設定。"
+        "洗回 INT 等級前沒有有效的裝備 INT 區間，請到「裝備 Equipment」分頁檢查設定。"
     ),
     "INT gear must contain at least one segment": "INT 裝備至少需要一個等級區間。",
     "INT gear JSON must be a list of segments": "INT 裝備 JSON 必須是區間陣列格式。",
@@ -65,10 +65,6 @@ _PATTERNS: list[tuple[re.Pattern[str], str]] = [
         lambda m: f"「{m.group(1)}」的穿戴等級必須 ≥ 1。",
     ),
     (
-        re.compile(r"^resume base_mp below job min_mp at level \(min=(\d+)\)$"),
-        lambda m: f"base MP 不可低於該職業目前等級最低 MP（{m.group(1)}）。",
-    ),
-    (
         re.compile(r"^target_mp below job min_mp at max_level \(min=(\d+)\)$"),
         lambda m: f"目標 MP 不可低於該職業滿等最低 MP（{m.group(1)}）。",
     ),
@@ -78,7 +74,7 @@ _PATTERNS: list[tuple[re.Pattern[str], str]] = [
     ),
     (
         re.compile(r"^overlapping INT gear segments:"),
-        lambda _m: "INT 裝備等級區間重疊，請檢查裝備或 INT 洗回等級設定。",
+        lambda _m: "INT 裝備等級區間重疊，請檢查裝備或洗回 INT 等級設定。",
     ),
     (
         re.compile(r"^invalid segment \d+-\d+: from_level > to_level$"),

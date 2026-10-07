@@ -10,6 +10,10 @@ describe("Python calculation-core parity: formulas", () => {
     expect(extraMp(1000, 50)).toBe(152);
     expect(method1WashesAffordable(60, 5)).toBe(5);
     expect(method1WashesAffordable(36, 5)).toBe(3);
+    expect(method1WashesAffordable(1, 5)).toBe(1);
+    expect(method1WashesAffordable(11, 5)).toBe(1);
+    expect(method1WashesAffordable(13, 5)).toBe(2);
+    expect(method1WashesAffordable(0, 5)).toBe(0);
     expect(mpWashesAffordable(100, 1000, 50, 5, "avg")).toBeGreaterThanOrEqual(0);
   });
 

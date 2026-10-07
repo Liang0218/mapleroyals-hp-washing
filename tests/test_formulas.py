@@ -34,9 +34,12 @@ def test_extra_mp_example_from_guide():
 
 def test_method1_washes_affordable():
     assert method1_washes_affordable(12, 5) == 1
-    assert method1_washes_affordable(11, 5) == 0
+    assert method1_washes_affordable(1, 5) == 1
+    assert method1_washes_affordable(11, 5) == 1
+    assert method1_washes_affordable(13, 5) == 2
+    assert method1_washes_affordable(0, 5) == 0
     assert method1_washes_affordable(76, 5) == 5
-    assert method1_washes_affordable(76, 10) == 6
+    assert method1_washes_affordable(76, 10) == 7
 
 
 def test_mp_washes_affordable():

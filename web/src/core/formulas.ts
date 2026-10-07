@@ -31,8 +31,8 @@ export function levelupMpIntBonus(totalInt: number): number {
 }
 
 export function method1WashesAffordable(extraMpValue: number, freshAp: number, mpRemovedPerApr = MP_REMOVED_PER_APR): number {
-  if (extraMpValue < mpRemovedPerApr || freshAp <= 0) return 0;
-  return Math.min(Math.trunc(freshAp), Math.floor(extraMpValue / mpRemovedPerApr));
+  if (extraMpValue <= 1e-9 || freshAp <= 0) return 0;
+  return Math.min(Math.trunc(freshAp), Math.ceil((extraMpValue - 1e-9) / mpRemovedPerApr));
 }
 
 export function mpWashesAffordable(baseInt: number, baseMp: number, level: number, freshAp: number, mode: HpMode, job = "thief"): number {
@@ -43,7 +43,7 @@ export function mpWashesAffordable(baseInt: number, baseMp: number, level: numbe
   for (let index = 0; index < freshAp; index += 1) {
     const gain = profile.freshApMp(baseInt, mode);
     mp += gain;
-    if (profile.extraMp(mp, level) < profile.mpRemovedPerApr) break;
+    if (profile.extraMp(mp, level) <= 1e-9) break;
     mp -= profile.mpRemovedPerApr;
     done += 1;
   }

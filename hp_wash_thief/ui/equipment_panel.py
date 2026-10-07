@@ -139,7 +139,7 @@ class EquipmentPanel(ctk.CTkFrame):
         ctk.CTkLabel(
             self,
             text="預設 INT 為 0，請依角色填寫。完成後可「儲存智力裝備設定」，下次再載入還原。"
-            " 區間依 Optimize／Simulate 分頁的 INT 洗回等級即時重算。",
+            " 區間依 Optimize／Simulate 分頁的洗回 INT 等級即時重算。",
             text_color=("gray30", "gray70"),
             wraplength=900,
             justify="left",

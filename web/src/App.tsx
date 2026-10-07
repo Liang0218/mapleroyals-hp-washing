@@ -9,11 +9,12 @@ import { downloadText, readJsonFile } from "./file/browser";
 import { planCsv } from "./file/plan-csv";
 
 type Tab = "guide" | "job-reference" | "equipment" | "optimize" | "simulate" | "actions";
-type ResumeFields = { level: string; baseHp: string; baseMp: string; extraMp: string; baseInt: string; baseLuk: string; baseDex: string; baseStr: string; freshAp: string; intResetDone: boolean; baseIntPeak: string };
+type ResumeFields = { level: string; baseHp: string; baseMp: string; baseInt: string; baseLuk: string; baseDex: string; baseStr: string; freshAp: string; intResetDone: boolean };
 type CalculatorConfig = {
   job: string; policy: PolicyName; targetHp: number; targetMp: string; targetInt: number;
   resetLevel: number; mpWashEnd: number; questHp: number; hpMode: HpMode;
   mwPercent: number; mwFromLevel: number; gearAfterReset: number; autoMethod2: boolean;
+  compareThiefPolicyC: boolean;
   resumeEnabled: boolean; resume: ResumeFields;
 };
 type AppCache = { version: 1; tab: Tab; equipment: EquipmentItem[]; optimize: CalculatorConfig; simulate: CalculatorConfig };
@@ -45,9 +46,9 @@ const initialEquipment: EquipmentItem[] = [
   ["Ring of Alchemist", "Ring", 10], ["Ring of Alchemist", "Ring", 10], ["Ring of Alchemist", "Ring", 10],
   ["Circle Of Ancient Thought", "Ring", 20], ["Almighty Ring", "Ring", 70], ["white Snowshoes", "Shoe", 10],
 ].map(([name, type, equip_level]) => ({ name: String(name), type: type as EquipmentItem["type"], int: 0, equip_level: Number(equip_level) }));
-const emptyResume: ResumeFields = { level: "", baseHp: "", baseMp: "", extraMp: "", baseInt: "", baseLuk: "4", baseDex: "25", baseStr: "4", freshAp: "5", intResetDone: false, baseIntPeak: "" };
+const emptyResume: ResumeFields = { level: "", baseHp: "", baseMp: "", baseInt: "", baseLuk: "4", baseDex: "25", baseStr: "4", freshAp: "5", intResetDone: false };
 function defaultConfig(): CalculatorConfig {
-  return { job: "thief", policy: "mp_wash_shortfall", targetHp: 27000, targetMp: "", targetInt: 350, resetLevel: 155, mpWashEnd: 100, questHp: 0, hpMode: "avg", mwPercent: 0.1, mwFromLevel: 10, gearAfterReset: 50, autoMethod2: true, resumeEnabled: false, resume: { ...emptyResume } };
+  return { job: "thief", policy: "mp_wash_shortfall", targetHp: 27000, targetMp: "", targetInt: 350, resetLevel: 155, mpWashEnd: 100, questHp: 0, hpMode: "avg", mwPercent: 0.1, mwFromLevel: 10, gearAfterReset: 50, autoMethod2: true, compareThiefPolicyC: true, resumeEnabled: false, resume: { ...emptyResume } };
 }
 function readCache(): AppCache {
   const fallback: AppCache = { version: 1, tab: "guide", equipment: initialEquipment, optimize: defaultConfig(), simulate: defaultConfig() };
@@ -99,12 +100,9 @@ export function App() {
     if (!current.resumeEnabled) return undefined;
     const level = optionalNumber(current.resume.level); const base_hp = optionalNumber(current.resume.baseHp); const base_int = optionalNumber(current.resume.baseInt);
     if (level === undefined || base_hp === undefined || base_int === undefined) throw new Error("接續計算請填寫目前等級、base HP 與 base INT。");
-    const base_mp = optionalNumber(current.resume.baseMp) ?? (() => {
-      const extra = optionalNumber(current.resume.extraMp);
-      if (extra === undefined) throw new Error("base MP 與 Extra MP 請至少填一項。");
-      return profile.minMp(level) + extra;
-    })();
-    return { level, base_hp, base_mp, base_int, base_luk: Number(current.resume.baseLuk), base_dex: Number(current.resume.baseDex), base_str: Number(current.resume.baseStr), fresh_ap: optionalNumber(current.resume.freshAp), int_reset_done: current.resume.intResetDone, base_int_peak: optionalNumber(current.resume.baseIntPeak) };
+    const base_mp = optionalNumber(current.resume.baseMp);
+    if (base_mp === undefined) throw new Error("請填寫 base MP。");
+    return { level, base_hp, base_mp, base_int, base_luk: Number(current.resume.baseLuk), base_dex: Number(current.resume.baseDex), base_str: Number(current.resume.baseStr), fresh_ap: optionalNumber(current.resume.freshAp), int_reset_done: current.resume.intResetDone };
   }
   function sharedConfig(current: CalculatorConfig) {
     const intGear = computeIntGearSegments(equipment, Math.max(1, current.resetLevel - 1));
@@ -123,7 +121,7 @@ export function App() {
       const activeProfile = getJobProfile(optimizeConfig.job);
       setError(undefined); setResult(undefined);
       setOptimized(optimize({
-        ...sharedConfig(optimizeConfig), policies: [...activeProfile.policies],
+        ...sharedConfig(optimizeConfig), policies: activeProfile.policies.filter((policy) => optimizeConfig.job !== "thief" || optimizeConfig.compareThiefPolicyC || policy !== "mp_wash_hardcore"),
         target_base_int_min: 100, target_base_int_max: 500, target_base_int_step: 10,
         mp_wash_end_min: 31, top_n: 5,
       }));
@@ -144,12 +142,12 @@ export function App() {
   return <main className="app-shell">
     <header className="app-header"><div><p className="eyebrow">MapleRoyals</p><h1>HP Washing APR Optimizer</h1></div></header>
     <nav className="tabbar" aria-label="Calculator sections">{tabs.map((item) => <button key={item.id} type="button" className={tab === item.id ? "tab active" : "tab"} onClick={() => changeTab(item.id)}>{item.label}</button>)}</nav>
-    {error && <p className="error global-error" role="alert">{error}</p>}
+    {error && tab !== "optimize" && <p className="error global-error" role="alert">{error}</p>}
 
-    {tab === "guide" && <section className="page-card"><div className="section-heading"><div><p className="eyebrow">Guide</p><h2>使用指南</h2></div><button type="button" onClick={() => changeTab("equipment")}>先設定裝備 →</button></div><ol className="guide-steps"><li><b>選擇職業</b><span>Thief 可比較 A／B／C／D 策略；其他職業使用 Policy D。</span></li><li><b>設定 INT 裝備</b><span>到「裝備 Equipment」頁編輯各等級可穿戴裝備，檢查 INT 區間預覽。</span></li><li><b>執行最佳化</b><span>輸入 HP／MP 目標與 INT reset 條件，搜尋低 APR 計畫。</span></li><li><b>執行模擬</b><span>指定 base INT 與 MP wash 結束等級，檢查單一計畫的逐級行動。</span></li><li><b>保留操作</b><span>此瀏覽器會自動記住上次的裝備及各分頁設定。</span></li></ol><div className="guide-note"><b>計算提示</b><p>最佳化與模擬會依目前裝備清單及各自的 INT reset level 即時更新 INT 裝備區間。</p></div></section>}
+    {tab === "guide" && <section className="page-card"><div className="section-heading"><div><p className="eyebrow">Guide</p><h2>使用指南</h2></div><button type="button" onClick={() => changeTab("equipment")}>先設定裝備 →</button></div><ol className="guide-steps"><li><b>選擇職業</b><span>Thief 可比較 A／B／C／D 策略；其他職業使用 Policy D。</span></li><li><b>設定 INT 裝備</b><span>到「裝備 Equipment」頁編輯各等級可穿戴裝備，檢查 INT 區間預覽。</span></li><li><b>執行最佳化</b><span>輸入 HP／MP 目標與洗回 INT 條件，搜尋低 APR 計畫。</span></li><li><b>執行模擬</b><span>指定 base INT 與 MP wash 結束等級，檢查單一計畫的逐級行動。</span></li><li><b>保留操作</b><span>此瀏覽器會自動記住上次的裝備及各分頁設定。</span></li></ol><div className="guide-note"><b>計算提示</b><p>最佳化與模擬會依目前裝備清單及各自設定的洗回 INT 等級，即時更新 INT 裝備區間。</p></div></section>}
 
     {tab === "equipment" && <section className="page-card equipment-page"><div className="section-heading"><div><p className="eyebrow">Equipment</p><h2>裝備設定</h2><p className="subheading">每種裝備槽取最高 INT；Ring 最多計入四件。下表會即時預覽各等級可用的總 INT。</p></div><div className="button-row"><input ref={equipmentInput} className="visually-hidden" type="file" accept="application/json,.json" onChange={(event) => void importEquipment(event.target.files?.[0])} /><button className="quiet" type="button" onClick={restoreDefaults}>還原預設</button><button className="quiet" type="button" onClick={() => equipmentInput.current?.click()}>載入智力裝備設定</button><button className="quiet" type="button" onClick={() => downloadText("int-equipment-settings.json", `${JSON.stringify(equipment, null, 2)}\n`, "application/json;charset=utf-8")}>儲存智力裝備設定</button></div></div>
-      <div className="equipment-toolbar"><button type="button" onClick={addEquipment}>＋ 新增裝備</button><span className="equipment-auto-note">編輯裝備清單後，最佳化與模擬會依各自設定的 INT reset level 自動套用。</span></div>
+      <div className="equipment-toolbar"><button type="button" onClick={addEquipment}>＋ 新增裝備</button><span className="equipment-auto-note">編輯裝備清單後，最佳化與模擬會依各自設定的洗回 INT 等級自動套用。</span></div>
       <div className="equipment-layout"><div className="equipment-table-wrap"><table className="equipment-table"><thead><tr><th>Equipment Name</th><th>Type</th><th>INT</th><th>Level to Equip</th><th></th></tr></thead><tbody>{equipment.map((item, index) => <tr key={`${index}-${item.name}`}><td><input aria-label={`Equipment ${index + 1} name`} value={item.name} onChange={(event) => updateEquipment(index, { name: event.target.value })} /></td><td><select aria-label={`Equipment ${index + 1} type`} value={item.type} onChange={(event) => updateEquipment(index, { type: event.target.value as EquipmentItem["type"] })}>{EQUIPMENT_TYPES.map((type) => <option key={type}>{type}</option>)}</select></td><td><input aria-label={`Equipment ${index + 1} INT`} type="number" min="0" value={item.int} onChange={(event) => updateEquipment(index, { int: Number(event.target.value) })} /></td><td><input aria-label={`Equipment ${index + 1} level`} type="number" min="1" value={item.equip_level} onChange={(event) => updateEquipment(index, { equip_level: Number(event.target.value) })} /></td><td><button className="remove" type="button" aria-label={`Remove equipment ${index + 1}`} onClick={() => removeEquipment(index)}>移除</button></td></tr>)}</tbody></table></div>
         <aside className="gear-preview"><h3>INT gear preview</h3><p>Reset 後裝備 INT：{optimizeConfig.gearAfterReset}</p>{gearPreview.length ? <table><thead><tr><th>等級</th><th>裝備 INT</th></tr></thead><tbody>{gearPreview.map((segment) => <tr key={segment.from_level}><td>{segment.from_level}–{segment.to_level}</td><td>{segment.int_gear}</td></tr>)}</tbody></table> : <p className="error">請檢查裝備名稱、INT 與裝備等級。</p>}</aside></div>
     </section>}
@@ -161,16 +159,16 @@ export function App() {
       <div className="form-section"><h3>角色與目標 <span>此分頁專屬設定</span></h3><div className="fields">
         <label>職業<select value={config.job} onChange={(event) => updateConfig({ job: event.target.value })}>{jobs.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
         <Field label="目標 HP" value={config.targetHp} onChange={(value) => updateConfig({ targetHp: Number(value) })} />
-        <Field label="目標 base MP（可空）" value={config.targetMp} onChange={(value) => updateConfig({ targetMp: value })} />
-        <Field label="INT reset level" value={config.resetLevel} onChange={(value) => updateConfig({ resetLevel: Number(value) })} />
-        <Field label="reset 後裝備 INT" value={config.gearAfterReset} onChange={(value) => updateConfig({ gearAfterReset: Number(value) })} />
+        <Field label="目標 MP（留空則洗到最低）" value={config.targetMp} onChange={(value) => updateConfig({ targetMp: value })} />
+        <Field label="洗回 INT 等級" value={config.resetLevel} onChange={(value) => updateConfig({ resetLevel: Number(value) })} />
+        <Field label="洗回後升等裝備 INT" value={config.gearAfterReset} onChange={(value) => updateConfig({ gearAfterReset: Number(value) })} />
         <Field label="任務／裝備 HP" value={config.questHp} onChange={(value) => updateConfig({ questHp: Number(value) })} />
         <label>HP 模式<select value={config.hpMode} onChange={(event) => updateConfig({ hpMode: event.target.value as HpMode })}><option value="avg">平均 avg</option><option value="min">最低 min</option><option value="max">最高 max</option></select></label>
         <Field label="Maple Warrior 比例" value={config.mwPercent} step="0.01" onChange={(value) => updateConfig({ mwPercent: Number(value) })} />
         <Field label="Maple Warrior 起始等級" value={config.mwFromLevel} onChange={(value) => updateConfig({ mwFromLevel: Number(value) })} />
       </div><p className="field-note">裝備 INT 會從「裝備 Equipment」分頁的裝備清單計算。</p></div>
 
-      {tab === "optimize" ? <p className="field-note">最佳化會使用桌面版預設搜尋策略與範圍。</p> : <div className="form-section"><h3>模擬參數 <span>只用於 Simulate</span></h3><div className="fields">
+      {tab === "optimize" ? <div className="form-section"><h3>最佳化比較策略 <span>只用於 Optimize</span></h3>{optimizeConfig.job === "thief" && <><label className="checkbox-field"><input type="checkbox" checked={optimizeConfig.compareThiefPolicyC} onChange={(event) => updateConfig({ compareThiefPolicyC: event.target.checked })} />比較 Policy C（Hardcore greedy）</label><p className="field-note">Policy C 會逐 AP 嘗試洗血與洗 MP，策略較繁瑣，搜尋也較耗時。關閉後只比較 A／B／D，可縮短最佳化時間。</p></>}</div> : <div className="form-section"><h3>模擬參數 <span>只用於 Simulate</span></h3><div className="fields">
         <label>Policy<select value={effectivePolicy} onChange={(event) => updateConfig({ policy: event.target.value as PolicyName })}>{profile.policies.map((value) => <option key={value} value={value}>{policyLabels[value]}</option>)}</select></label>
         <Field label="目標 base INT" value={config.targetInt} onChange={(value) => updateConfig({ targetInt: Number(value) })} />
         <Field label="MP wash 結束等級" value={config.mpWashEnd} onChange={(value) => updateConfig({ mpWashEnd: Number(value) })} />
@@ -179,17 +177,18 @@ export function App() {
 
       <details className="resume-section"><summary>中途接續 Resume</summary><label className="checkbox-field resume-toggle"><input type="checkbox" checked={config.resumeEnabled} onChange={(event) => updateConfig({ resumeEnabled: event.target.checked })} />從目前角色狀態接續計算，APR 只統計接下來使用的 APR</label>{config.resumeEnabled && <div className="fields resume-fields">
         <Field label="目前等級" value={config.resume.level} onChange={(level) => updateResume({ level })} /><Field label="base HP" value={config.resume.baseHp} onChange={(baseHp) => updateResume({ baseHp })} />
-        <Field label="base MP（擇一）" value={config.resume.baseMp} onChange={(baseMp) => updateResume({ baseMp })} /><Field label="Extra MP（擇一）" value={config.resume.extraMp} onChange={(extraMp) => updateResume({ extraMp })} />
+        <Field label="base MP" value={config.resume.baseMp} onChange={(baseMp) => updateResume({ baseMp })} />
         <Field label="base INT" value={config.resume.baseInt} onChange={(baseInt) => updateResume({ baseInt })} /><Field label="base STR" value={config.resume.baseStr} onChange={(baseStr) => updateResume({ baseStr })} />
         <Field label="base DEX" value={config.resume.baseDex} onChange={(baseDex) => updateResume({ baseDex })} /><Field label="base LUK" value={config.resume.baseLuk} onChange={(baseLuk) => updateResume({ baseLuk })} />
-        <Field label="本等尚未點的 AP" value={config.resume.freshAp} onChange={(freshAp) => updateResume({ freshAp })} /><Field label="base INT peak（可空）" value={config.resume.baseIntPeak} onChange={(baseIntPeak) => updateResume({ baseIntPeak })} />
+        <Field label="本等尚未點的 AP" value={config.resume.freshAp} onChange={(freshAp) => updateResume({ freshAp })} />
         <label className="checkbox-field"><input type="checkbox" checked={config.resume.intResetDone} onChange={(event) => updateResume({ intResetDone: event.target.checked })} />已完成 INT reset（base INT = 4）</label>
       </div>}</details>
-      <div className="runbar"><div><b>CSV 計畫輸出</b><span>完成計算後可下載逐級計畫</span></div><button type="button" onClick={tab === "optimize" ? runOptimize : runSimulate}>{tab === "optimize" ? "執行最佳化" : "執行模擬"}</button></div>
+      <div className="runbar"><div><b>CSV 計畫輸出</b><span>完成計算後可下載逐級計畫</span></div><div className="run-action"><button type="button" onClick={tab === "optimize" ? runOptimize : runSimulate}>{tab === "optimize" ? "執行最佳化" : "執行模擬"}</button>{tab === "optimize" && error && <p className="error run-error" role="alert">{error}</p>}</div></div>
       {tab === "simulate" && result && <SimulationResult result={result} />}{tab === "optimize" && optimized && <OptimizationResult result={optimized} />}
     </section>}
 
     {tab === "actions" && <section className="page-card"><p className="eyebrow">Actions</p><h2>策略、洗法與計畫動作說明</h2><div className="action-grid"><article><h3>Policy A — MP wash shortfall</h3><p>31 等級起進入 INT 目標階段。Extra MP 達 threshold 時用 Method 1 洗 HP；不足時先 MP wash。</p></article><article><h3>Policy B — INT dump shortfall</h3><p>Extra MP 足夠時用 Method 1；不足時把本等 AP 點入 INT，該列不增加洗血 APR。</p></article><article><h3>Policy C — Hardcore greedy</h3><p>10 等起逐 AP 檢查：Extra MP 足夠就 HP1；30 等起可嘗試 MP1；剩餘 AP 投入 INT／主屬性。</p></article><article><h3>Policy D — Plain INT</h3><p>先集中 INT，達標後進行 MP wash、Method 1／Method 2 與 INT reset。非 Thief 職業使用此策略。</p></article><article><h3>Method 1</h3><p>使用當等級新鮮 AP 加 HP，再以 APR 扣除職業對應 MP；新鮮 AP 回到 INT 或主屬性。</p></article><article><h3>Method 2</h3><p>使用 APR 扣 Extra MP 換取 HP，沒有新鮮 AP 限制；計算會遵守設定的目標 base MP 下限。</p></article><article><h3>計畫動作</h3><p><code>BUILD</code> 建立初始能力值；<code>HP1–HP5</code>／<code>MP1–MP5</code> 表示本等洗血／洗 MP；<code>M2</code> 為 Method 2；<code>RESET_INT</code> 為 INT 洗回；<code>RESUME</code> 標示接續起點。</p></article></div></section>}
+    <span className="version-badge">v{__APP_VERSION__}</span>
   </main>;
 }
 

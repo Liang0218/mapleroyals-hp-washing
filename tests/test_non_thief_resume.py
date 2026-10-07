@@ -195,7 +195,7 @@ def test_brawler_resume_auto_maxhp_unlocks_at_second_job():
     assert result.improved_maxhp_level == 10
 
 
-def test_fighter_resume_rejects_base_mp_below_min():
+def test_fighter_resume_allows_base_mp_below_min_after_apr():
     floor = get_job_profile(JobId.FIGHTER).min_mp(70)
     resume = ResumeFrom.from_stats(
         level=70,
@@ -205,19 +205,19 @@ def test_fighter_resume_rejects_base_mp_below_min():
         base_str=50,
         job="fighter",
     )
-    with pytest.raises(ValueError, match="resume base_mp below job min_mp"):
-        simulate(
-            SimulateConfig(
-                policy=PolicyName.INT_ONLY_PLAIN,
-                target_base_int=220,
-                target_hp=25000,
-                int_reset_level=155,
-                int_gear=_gear(),
-                job="fighter",
-                mp_wash_end=120,
-                resume_from=resume,
-            )
+    result = simulate(
+        SimulateConfig(
+            policy=PolicyName.INT_ONLY_PLAIN,
+            target_base_int=220,
+            target_hp=25000,
+            int_reset_level=155,
+            int_gear=_gear(),
+            job="fighter",
+            mp_wash_end=120,
+            resume_from=resume,
         )
+    )
+    assert result.resume_from is resume
 
 
 def test_extra_mp_from_stats_uses_job_min_mp():

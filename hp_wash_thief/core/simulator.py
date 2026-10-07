@@ -72,7 +72,9 @@ class CharacterState:
         """
         assert self.profile is not None
         removed = self.profile.mp_removed_per_apr * times
-        if self.extra_mp() < removed:
+        # APR checks that current MP is above min_mp before each removal; the
+        # resulting MP is allowed to fall below min_mp.
+        if self.extra_mp() - removed * (times - 1) <= 1e-9:
             return False
         if mp_floor is not None and self.base_mp - removed + 1e-9 < mp_floor:
             return False
@@ -171,18 +173,12 @@ def _validate_config(config: SimulateConfig) -> None:
 
 
 def _validate_resume(resume: ResumeFrom, config: SimulateConfig) -> None:
-    profile = get_job_profile(config.job)
     if not (1 <= resume.level <= config.max_level):
         raise ValueError("resume level out of range")
     if resume.base_hp <= 0:
         raise ValueError("resume base_hp must be positive")
     if resume.base_mp < 0:
         raise ValueError("resume base_mp must be >= 0")
-    min_at_level = profile.min_mp(resume.level)
-    if resume.base_mp + 1e-9 < min_at_level:
-        raise ValueError(
-            f"resume base_mp below job min_mp at level (min={min_at_level})"
-        )
     if resume.base_int < F.BASE_STAT_FLOOR:
         raise ValueError("resume base_int too low")
     if resume.base_luk < F.BASE_STAT_FLOOR:
@@ -453,7 +449,7 @@ def _try_one_mp_wash(state: CharacterState, config: SimulateConfig) -> float:
     assert state.profile is not None
     gain = state.profile.fresh_ap_mp(state.base_int, config.hp_mode)
     state.base_mp += gain
-    if state.extra_mp() < state.profile.mp_removed_per_apr:
+    if state.extra_mp() <= 1e-9:
         state.base_mp -= gain
         return 0.0
     state.base_mp -= state.profile.mp_removed_per_apr
@@ -714,7 +710,7 @@ def _mp_wash(
     for _ in range(mp_washes):
         gain = state.profile.fresh_ap_mp(state.base_int, config.hp_mode)
         state.base_mp += gain
-        if state.extra_mp() < removed:
+        if state.extra_mp() <= 1e-9:
             state.base_mp -= gain
             break
         state.base_mp -= removed

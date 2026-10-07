@@ -13,6 +13,7 @@ from typing import Optional
 
 import customtkinter as ctk
 
+from hp_wash_thief import __version__
 from hp_wash_thief.core.api import optimize, simulate
 from hp_wash_thief.core.jobs import JobId, get_job_profile
 from hp_wash_thief.core.models import HpMode, OptimizeConfig, PolicyName, ResumeFrom, SimulateConfig
@@ -161,6 +162,14 @@ class HpWashApp(ctk.CTk):
         self._equipment_panel.load_defaults()
         self._bind_gear_param_refresh()
 
+        version = ctk.CTkLabel(
+            self,
+            text=f"v{__version__}",
+            text_color=("#6b7280", "#9ca3af"),
+            font=ui_font(size=11),
+        )
+        version.grid(row=2, column=0, sticky="e", padx=16, pady=(0, 6))
+
     def _bind_gear_param_refresh(self) -> None:
         """Refresh equipment INT preview when reset-related params change."""
 
@@ -298,9 +307,9 @@ class HpWashApp(ctk.CTk):
                 JOB_VALUE_TO_LABEL["thief"],
             ),
             (f"{prefix}_target_hp", "目標 HP", ctk.CTkEntry, "27000"),
-            (f"{prefix}_target_mp", "目標 MP（可空）", ctk.CTkEntry, ""),
-            (f"{prefix}_int_reset_level", "INT 洗回等級", ctk.CTkEntry, "155"),
-            (f"{prefix}_int_gear_after_reset", "洗回後裝備 INT", ctk.CTkEntry, "50"),
+            (f"{prefix}_target_mp", "目標 MP（留空則洗到最低）", ctk.CTkEntry, ""),
+            (f"{prefix}_int_reset_level", "洗回 INT 等級", ctk.CTkEntry, "155"),
+            (f"{prefix}_int_gear_after_reset", "洗回後升等裝備 INT", ctk.CTkEntry, "50"),
             (f"{prefix}_quest_equip_hp", "任務／裝備 HP", ctk.CTkEntry, "0"),
             (f"{prefix}_mw_percent", "MW 比例", ctk.CTkEntry, "0.10"),
             (f"{prefix}_mw_from_level", "MW 起始等級", ctk.CTkEntry, "10"),
@@ -436,7 +445,7 @@ class HpWashApp(ctk.CTk):
         self._add_note(
             body,
             next_row,
-            "已升到該等。HP／MP 填 APR 視窗數值（須 ≥ 該職業 min MP）。Improve MaxHP 依等級自動。",
+            "已升到該等。HP／MP 填 APR 視窗數值；MP 可低於該等級 min MP。Improve MaxHP 依等級自動。",
         )
         self._toggle_resume(prefix)
 
@@ -540,10 +549,10 @@ class HpWashApp(ctk.CTk):
         mode_label = getattr(self, f"{prefix}_hp_mode").get()
         mode_value = HP_MODE_LABELS.get(mode_label, mode_label)
         int_reset_level = self._int(
-            getattr(self, f"{prefix}_int_reset_level"), "INT 洗回等級"
+            getattr(self, f"{prefix}_int_reset_level"), "洗回 INT 等級"
         )
         int_gear_after_reset = self._int(
-            getattr(self, f"{prefix}_int_gear_after_reset"), "INT 洗回後裝備 INT"
+            getattr(self, f"{prefix}_int_gear_after_reset"), "洗回後升等裝備 INT"
         )
         job = self._selected_job(prefix)
         target_mp_raw = getattr(self, f"{prefix}_target_mp").get().strip()
@@ -618,7 +627,6 @@ class HpWashApp(ctk.CTk):
         if not bool(getattr(self, f"{prefix}_resume_enabled").get()):
             return None
         job = self._selected_job(prefix)
-        profile = get_job_profile(job)
         level = self._int(getattr(self, f"{prefix}_resume_from_level"), "目前等級")
         base_hp = self._float(
             getattr(self, f"{prefix}_resume_base_hp"), "base HP（APR 顯示的數值）"
@@ -626,11 +634,6 @@ class HpWashApp(ctk.CTk):
         base_mp = self._float(
             getattr(self, f"{prefix}_resume_base_mp"), "base MP（APR 顯示的數值）"
         )
-        floor = profile.min_mp(level)
-        if base_mp + 1e-9 < floor:
-            raise ValueError(
-                f"base MP 不可低於該職業 Lv{level} 最低 MP（{floor}）。"
-            )
         base_int = self._int(getattr(self, f"{prefix}_resume_base_int"), "base INT")
         base_str = self._int(getattr(self, f"{prefix}_resume_base_str"), "base STR")
         base_luk = self._int(getattr(self, f"{prefix}_resume_base_luk"), "base LUK")

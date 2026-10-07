@@ -7,6 +7,7 @@ Sources:
 
 from __future__ import annotations
 
+import math
 from typing import Union
 
 from hp_wash_thief.core.models import HpMode
@@ -82,10 +83,15 @@ EXTRA_MP_THRESHOLD_DEFAULT = MP_REMOVED_PER_APR * 5  # 60
 def method1_washes_affordable(
     extra_mp_value: float, fresh_ap: int, *, mp_removed_per_apr: int = MP_REMOVED_PER_APR
 ) -> int:
-    """How many Method 1 washes fit in Extra MP and fresh AP this level."""
-    if extra_mp_value < mp_removed_per_apr or fresh_ap <= 0:
+    """How many APRs can remove MP before reaching the level's minimum MP.
+
+    An APR can be used while current MP is even 1 above the minimum, so each
+    successive removal consumes one full ``mp_removed_per_apr`` until the
+    pre-action MP is no longer above the minimum.
+    """
+    if extra_mp_value <= 1e-9 or fresh_ap <= 0:
         return 0
-    return min(int(fresh_ap), int(extra_mp_value // mp_removed_per_apr))
+    return min(int(fresh_ap), math.ceil((extra_mp_value - 1e-9) / mp_removed_per_apr))
 
 
 def mp_washes_affordable(
@@ -109,7 +115,7 @@ def mp_washes_affordable(
     for _ in range(fresh_ap):
         gain = profile.fresh_ap_mp(base_int, mode)
         mp += gain
-        if profile.extra_mp(mp, level) < removed:
+        if profile.extra_mp(mp, level) <= 1e-9:
             mp -= gain
             break
         mp -= removed
