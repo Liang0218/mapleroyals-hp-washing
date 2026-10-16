@@ -82,6 +82,50 @@ def _optimize_policy(config: OptimizeConfig, policy: PolicyName) -> PolicyBest:
             seen.add(key)
             fine_results.append(cand)
 
+    # If normal non-Thief INT stacking cannot meet both goals, test recurring
+    # early MP5 washing from each possible start level. Returned AP goes to INT
+    # until target INT is reached; the normal strategy then resumes. Candidate
+    # APR includes all later Method 1/2 washes, so feasible plans are compared
+    # by their full cost.
+    if (
+        not any(c.reached_target for c in fine_results)
+        and policy is PolicyName.INT_ONLY_PLAIN
+        and config.job != "thief"
+    ):
+        start_level = max(31, config.resume_from.level if config.resume_from else 31)
+        search_seeds = _unique_params(
+            sorted(fine_results, key=_candidate_sort_key)[: max(8, config.top_n)]
+        )
+        early_candidates: list[CandidateResult] = []
+        for seed in search_seeds:
+            for wash_level in range(start_level, config.int_reset_level):
+                early_candidates.append(
+                    _run(
+                        config,
+                        policy,
+                        target_base_int=seed.target_base_int,
+                        mp_wash_end=seed.mp_wash_end,
+                        extra_mp_threshold=seed.extra_mp_threshold,
+                        early_mp_wash_level=wash_level,
+                    )
+                )
+        early_candidates.sort(key=_candidate_sort_key)
+        for seed in early_candidates[: max(8, config.top_n)]:
+            early_candidates.extend(
+                _refine_around(
+                    config,
+                    policy,
+                    seed,
+                    early_mp_wash_level=seed.early_mp_wash_level,
+                )
+            )
+        seen_early = {_param_key(c) for c in fine_results}
+        for cand in early_candidates:
+            key = _param_key(cand)
+            if key not in seen_early:
+                seen_early.add(key)
+                fine_results.append(cand)
+
     fine_results.sort(key=_candidate_sort_key)
     feasible = [c for c in fine_results if c.reached_target]
     pool = feasible if feasible else fine_results
@@ -140,7 +184,12 @@ def _mp_wash_end_candidates(
     return values
 
 
-def _search(config: OptimizeConfig, policy: PolicyName, *, coarse: bool) -> Iterable[CandidateResult]:
+def _search(
+    config: OptimizeConfig,
+    policy: PolicyName,
+    *,
+    coarse: bool,
+) -> Iterable[CandidateResult]:
     int_step = 40 if coarse else config.target_base_int_step
     mp_step = 10 if coarse else 5
 
@@ -169,7 +218,11 @@ def _search(config: OptimizeConfig, policy: PolicyName, *, coarse: bool) -> Iter
 
 
 def _refine_around(
-    config: OptimizeConfig, policy: PolicyName, seed: CandidateResult
+    config: OptimizeConfig,
+    policy: PolicyName,
+    seed: CandidateResult,
+    *,
+    early_mp_wash_level: Optional[int] = None,
 ) -> Iterable[CandidateResult]:
     int_lo, int_hi = _int_search_bounds(config)
     int_candidates = _neighbors(
@@ -194,6 +247,7 @@ def _refine_around(
                 target_base_int=target_base_int,
                 mp_wash_end=mp_wash_end,
                 extra_mp_threshold=threshold,
+                early_mp_wash_level=early_mp_wash_level,
             )
 
 
@@ -204,6 +258,7 @@ def _run(
     target_base_int: int,
     mp_wash_end: int,
     extra_mp_threshold: int,
+    early_mp_wash_level: Optional[int] = None,
 ) -> CandidateResult:
     sim = simulate(
         SimulateConfig(
@@ -224,10 +279,20 @@ def _run(
             int_gear_after_reset=config.int_gear_after_reset,
             resume_from=config.resume_from,
             improved_maxhp_level=config.improved_maxhp_level,
-            target_mp=config.target_mp,
+            # Optimization must also evaluate plans that trade MP below its
+            # target for HP; the target is checked on the returned candidate.
+            target_mp=None,
+            early_mp_wash_level=early_mp_wash_level,
         )
     )
-    return CandidateResult.from_simulate(sim)
+    candidate = CandidateResult.from_simulate(sim)
+    candidate.target_mp = config.target_mp
+    candidate.reached_target = (
+        candidate.final_display_hp >= config.target_hp
+        and (config.target_mp is None or candidate.final_base_mp >= config.target_mp)
+    )
+    candidate.early_mp_wash_level = early_mp_wash_level
+    return candidate
 
 
 def _neighbors(center: int, *, low: int, high: int, step: int, radius: int) -> list[int]:
@@ -247,6 +312,7 @@ def _param_key(c: CandidateResult) -> tuple:
         c.target_base_int,
         c.mp_wash_end,
         c.extra_mp_threshold,
+        c.early_mp_wash_level,
     )
 
 
@@ -263,12 +329,7 @@ def _unique_params(cands: list[CandidateResult]) -> list[CandidateResult]:
 
 
 def _candidate_sort_key(c: CandidateResult) -> tuple:
-    """Feasible: lowest APR. If MP blocks HP, prefer reaching HP, then APR.
-
-    Mid-game resume often has many infeasible ``mp_wash_end < level`` clones with
-    tiny APR; preferring APR first made the optimizer recommend ``stop wash now``
-    with far-below-target HP instead of the closest reachable HP plan.
-    """
+    """Feasible plans minimize APR; otherwise prioritize HP, then MP, then APR."""
     if c.reached_target:
         return (
             0,
@@ -280,24 +341,12 @@ def _candidate_sort_key(c: CandidateResult) -> tuple:
             c.int_reached_level,
             c.policy.value,
         )
-    if (
-        c.target_mp is not None
-        and c.target_hp is not None
-        and c.final_display_hp >= c.target_hp
-    ):
-        return (
-            1,
-            -c.final_base_mp,
-            c.total_apr,
-            c.target_base_int,
-            c.base_int_peak,
-            c.mp_wash_end,
-            c.int_reached_level,
-            c.policy.value,
-        )
+    hp_shortfall = max(0, c.target_hp - c.final_display_hp) if c.target_hp is not None else 0
+    mp_shortfall = max(0, c.target_mp - c.final_base_mp) if c.target_mp is not None else 0
     return (
-        2,
-        -c.final_display_hp,
+        1,
+        hp_shortfall,
+        mp_shortfall,
         c.total_apr,
         c.target_base_int,
         c.base_int_peak,

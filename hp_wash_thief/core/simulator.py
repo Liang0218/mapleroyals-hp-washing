@@ -356,6 +356,11 @@ def _decide_action(state: CharacterState, config: SimulateConfig) -> Action:
         return Action.BUILD
     if _in_early_phase(state, config):
         if config.policy is PolicyName.INT_ONLY_PLAIN:
+            # Start recurring MP5 washes at the selected level. Each wash returns
+            # its APR into INT; once the target INT is reached, the regular
+            # post-INT strategy takes over automatically.
+            if config.early_mp_wash_level is not None and level >= config.early_mp_wash_level:
+                return Action.MP5
             return Action.BUILD if level <= 30 else Action.INT5
         return choose_early_action(
             config.policy,

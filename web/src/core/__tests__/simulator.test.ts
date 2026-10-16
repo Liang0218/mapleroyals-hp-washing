@@ -81,4 +81,57 @@ describe("Python calculation-core parity: simulator and optimizer", () => {
     expect(result).toMatchObject({ final_base_hp: 27008, final_display_hp: 27008, final_base_mp: 3081, int_reached_level: 78, base_int_peak: 380 });
     expect(result.apr).toEqual({ mp_wash_count: 130, method1_hp_wash_count: 730, method2_hp_wash_count: 253, int_reset_apr: 376 });
   });
+
+  it("prioritizes HP over an unreachable MP target during optimization", () => {
+    const result = optimize({
+      target_hp: 27000, target_mp: 30000, int_reset_level: 170,
+      int_gear: [{ from_level: 1, to_level: 200, int_gear: 100 }],
+      job: "bowman", max_level: 200, policies: ["int_only_plain"],
+      target_base_int_min: 400, target_base_int_max: 520,
+      target_base_int_step: 20, mp_wash_end_min: 150,
+    });
+    expect(result.winner?.final_display_hp).toBeGreaterThanOrEqual(27000);
+    expect(result.winner?.final_base_mp).toBeLessThan(30000);
+    expect(result.winner?.reached_target).toBe(false);
+  });
+
+  it("tries early MP washing into INT for an infeasible non-Thief resume", () => {
+    const result = optimize({
+      target_hp: 35000, target_mp: 12000, int_reset_level: 120,
+      int_gear: [{ from_level: 1, to_level: 200, int_gear: 30 }],
+      job: "bowman", max_level: 140,
+      target_base_int_min: 200, target_base_int_max: 320,
+      target_base_int_step: 20, mp_wash_end_min: 80,
+      resume_from: { level: 50, base_hp: 6000, base_mp: 853, base_int: 100, base_dex: 100 },
+    });
+    expect(result.winner?.reached_target).toBe(false);
+    expect(result.winner?.early_mp_wash_level).toBeDefined();
+    expect(result.winner?.plan.some((row) => row.action === "MP5" && row.level === result.winner!.early_mp_wash_level && row.level < result.winner!.int_reached_level)).toBe(true);
+  });
+
+  it("finds recurring early MP5 washes for the fresh Bowman 27000/30000 case", () => {
+    const config = {
+      target_hp: 27000, target_mp: 30000, int_reset_level: 170,
+      int_gear: [{ from_level: 1, to_level: 200, int_gear: 100 }],
+      job: "bowman", max_level: 200,
+      target_base_int_min: 480, target_base_int_max: 480,
+      target_base_int_step: 20, mp_wash_end_min: 170,
+    };
+    const result = optimize(config);
+    const regular = simulate({
+      policy: "int_only_plain", target_base_int: 480, target_hp: 27000,
+      int_reset_level: 170, int_gear: config.int_gear, job: "bowman",
+      max_level: 200, mp_wash_end: 170,
+    });
+    expect(result.winner?.early_mp_wash_level).toBeDefined();
+    expect(result.winner?.final_display_hp).toBe(regular.final_display_hp);
+    expect(result.winner!.final_base_mp).toBeGreaterThan(regular.final_base_mp);
+    const earlyRows = result.winner!.plan.filter((row) => row.level >= result.winner!.early_mp_wash_level! && row.level < result.winner!.int_reached_level);
+    expect(earlyRows.length).toBeGreaterThan(1);
+    expect(earlyRows.every((row) => row.action === "MP5")).toBe(true);
+    const earlyRow = earlyRows[0];
+    expect(earlyRow?.fresh_ap_mp).toBeGreaterThanOrEqual(5);
+    expect(earlyRow?.apr_spent).toBe(earlyRow?.fresh_ap_mp);
+    expect(earlyRow?.notes).toContain(`return INT ${earlyRow?.fresh_ap_mp}`);
+  });
 });

@@ -64,6 +64,7 @@ export interface SimulateConfig {
   resume_from?: ResumeFrom;
   improved_maxhp_level?: number;
   target_mp?: number;
+  early_mp_wash_level?: number;
 }
 
 export interface OptimizeConfig {
@@ -136,7 +137,7 @@ export interface SimulateResult {
   target_mp?: number;
 }
 
-export interface CandidateResult extends SimulateResult {}
+export interface CandidateResult extends SimulateResult { early_mp_wash_level?: number }
 
 export interface PolicyBest { policy: PolicyName; best?: CandidateResult; top: CandidateResult[]; }
 export interface ComparisonResult {

@@ -295,8 +295,8 @@ def test_optimize_resume_labels_stop_mp_wash():
     assert result.winner.improved_maxhp_level == 10
 
 
-def test_bowman_resume_infeasible_prefers_closest_hp():
-    """When target HP is unreachable, do not pick stop-wash (lowest APR, worst HP)."""
+def test_bowman_resume_reaches_hp_with_recurring_early_mp_washes():
+    """Recurring early MP5 washes can make this previously infeasible resume viable."""
     resume = ResumeFrom.from_stats(
         level=100,
         base_hp=16000,
@@ -316,16 +316,52 @@ def test_bowman_resume_infeasible_prefers_closest_hp():
         )
     )
     assert result.winner is not None
-    assert result.winner.reached_target is False
-    # Must keep washing MP rather than stop-now at lv99
-    assert result.winner.mp_wash_end >= resume.level
+    assert result.winner.reached_target is True
+    assert result.winner.final_display_hp >= 35000
+    assert result.winner.early_mp_wash_level is not None
     assert result.winner.apr.mp_wash_count > 0
-    assert result.winner.final_display_hp >= 28000
-    text = format_optimize_summary_text(result)
-    assert "無法達成" in text
-    assert "INT 洗回等級" in text
-    assert "照這樣做" not in text
-    assert "優勝方案詳情" not in text
+    early_rows = [
+        row for row in result.winner.plan
+        if result.winner.early_mp_wash_level <= row.level < result.winner.int_reached_level
+    ]
+    assert len(early_rows) > 1
+    assert all(row.action is Action.MP5 for row in early_rows)
+
+
+def test_bowman_infeasible_search_tries_early_mp_wash_into_int():
+    resume = ResumeFrom.from_stats(
+        level=50,
+        base_hp=6000,
+        base_mp=get_job_profile(JobId.BOWMAN).min_mp(50) + 5,
+        base_int=100,
+        base_dex=100,
+        job="bowman",
+    )
+    result = optimize(
+        OptimizeConfig(
+            target_hp=35000,
+            target_mp=12000,
+            int_reset_level=120,
+            int_gear=_gear(),
+            job="bowman",
+            max_level=140,
+            resume_from=resume,
+            target_base_int_min=200,
+            target_base_int_max=320,
+            target_base_int_step=20,
+            mp_wash_end_min=80,
+        )
+    )
+
+    assert result.winner is not None
+    assert result.winner.reached_target is False
+    assert result.winner.early_mp_wash_level is not None
+    assert any(
+        row.action is Action.MP5
+        and row.level == result.winner.early_mp_wash_level
+        and row.level < result.winner.int_reached_level
+        for row in result.winner.plan
+    )
 
 
 def test_bowman_resume_reachable_still_hits_target():

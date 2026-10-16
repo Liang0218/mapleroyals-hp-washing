@@ -245,6 +245,8 @@ class SimulateConfig:
     improved_maxhp_level: Optional[int] = None
     # Optional base MP floor at max level; None = wash Extra MP to near min_mp.
     target_mp: Optional[int] = None
+    # For non-Thief fallback optimization: one selected early level for MP5.
+    early_mp_wash_level: Optional[int] = None
 
     def __post_init__(self) -> None:
         from hp_wash_thief.core.jobs import get_job_profile
@@ -331,6 +333,7 @@ class CandidateResult:
     improved_maxhp_level: Optional[int] = None
     target_mp: Optional[int] = None
     target_hp: Optional[int] = None
+    early_mp_wash_level: Optional[int] = None
 
     @property
     def total_apr(self) -> int:

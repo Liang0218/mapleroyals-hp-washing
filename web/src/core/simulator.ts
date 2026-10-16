@@ -13,7 +13,7 @@ const pyRound = (value: number): number => {
   return floor % 2 === 0 ? floor : floor + 1;
 };
 
-type NormalizedConfig = Required<Omit<SimulateConfig, "resume_from" | "improved_maxhp_level" | "target_mp" | "hp_cap">> & Pick<SimulateConfig, "resume_from" | "improved_maxhp_level" | "target_mp" | "hp_cap">;
+type NormalizedConfig = Required<Omit<SimulateConfig, "resume_from" | "improved_maxhp_level" | "target_mp" | "hp_cap" | "early_mp_wash_level">> & Pick<SimulateConfig, "resume_from" | "improved_maxhp_level" | "target_mp" | "hp_cap" | "early_mp_wash_level">;
 
 class State {
   level = 1; base_str = STARTING_STR; base_dex = STARTING_DEX; base_int = STARTING_INT; base_luk = STARTING_LUK;
@@ -98,7 +98,12 @@ function decide(state: State, config: NormalizedConfig): Action {
   const hardcore = config.policy === "mp_wash_hardcore" && !state.int_reset_done && state.level < config.int_reset_level && state.base_int < config.target_base_int && state.level >= HARDCORE_EARLY_START_LEVEL;
   if (hardcore) return "HARDCORE_GREEDY";
   if (state.level <= 30) return "BUILD";
-  if (!state.int_reset_done && state.level < config.int_reset_level && state.base_int < config.target_base_int) return chooseEarlyAction(config.policy, state.extraMp(), config.extra_mp_threshold);
+  if (!state.int_reset_done && state.level < config.int_reset_level && state.base_int < config.target_base_int) {
+    // Start recurring MP5 washes at the selected level. Each wash returns its
+    // APR into INT; regular post-INT behavior resumes once target INT is reached.
+    if (config.policy === "int_only_plain") return config.early_mp_wash_level !== undefined && state.level >= config.early_mp_wash_level ? "MP5" : "INT5";
+    return chooseEarlyAction(config.policy, state.extraMp(), config.extra_mp_threshold);
+  }
   if (state.level <= config.mp_wash_end) return "MP5";
   return state.profile.preferMethod2 ? primaryAction(state) : "HP5";
 }

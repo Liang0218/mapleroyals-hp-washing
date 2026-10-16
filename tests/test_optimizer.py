@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from hp_wash_thief.core.api import optimize, simulate
 from hp_wash_thief.core.gear import parse_int_gear
-from hp_wash_thief.core.models import AprBreakdown, CandidateResult, OptimizeConfig, PolicyName, SimulateConfig
+from hp_wash_thief.core.models import Action, AprBreakdown, CandidateResult, OptimizeConfig, PolicyName, SimulateConfig
 from hp_wash_thief.core.optimizer import _candidate_sort_key, _mp_wash_end_candidates
 from hp_wash_thief.core.report import format_optimize_summary_text
 
@@ -116,6 +116,100 @@ def test_hp_reached_but_mp_missed_prefers_highest_mp_before_apr():
     higher_mp = CandidateResult(final_base_mp=7500, apr=AprBreakdown(method2_hp_wash_count=20), **common)
 
     assert sorted([lower_mp, higher_mp], key=_candidate_sort_key)[0] is higher_mp
+
+
+def test_infeasible_optimizer_prioritizes_hp_then_mp_then_apr():
+    common = dict(
+        policy=PolicyName.INT_ONLY_PLAIN,
+        target_base_int=20,
+        int_reached_level=50,
+        mp_wash_end=100,
+        extra_mp_threshold=60,
+        int_gear_after_reset=50,
+        final_base_hp=10000,
+        final_display_hp=10000,
+        base_int_peak=20,
+        reached_target=False,
+        target_hp=20000,
+        target_mp=10000,
+    )
+    mp_closer_but_hp_farther = CandidateResult(
+        final_base_mp=10000,
+        apr=AprBreakdown(),
+        **{**common, "final_base_hp": 9000, "final_display_hp": 9000},
+    )
+    hp_closer = CandidateResult(final_base_mp=4000, apr=AprBreakdown(method2_hp_wash_count=100), **common)
+    same_goals_lower_apr = CandidateResult(final_base_mp=4000, apr=AprBreakdown(method2_hp_wash_count=50), **common)
+
+    assert sorted([mp_closer_but_hp_farther, hp_closer], key=_candidate_sort_key)[0] is hp_closer
+    assert sorted([hp_closer, same_goals_lower_apr], key=_candidate_sort_key)[0] is same_goals_lower_apr
+
+
+def test_optimizer_can_trade_mp_below_target_to_reach_hp():
+    result = optimize(
+        OptimizeConfig(
+            target_hp=27000,
+            target_mp=30000,
+            int_reset_level=170,
+            int_gear=GEAR,
+            job="bowman",
+            max_level=200,
+            policies=[PolicyName.INT_ONLY_PLAIN],
+            target_base_int_min=400,
+            target_base_int_max=520,
+            target_base_int_step=20,
+            mp_wash_end_min=150,
+        )
+    )
+
+    assert result.winner is not None
+    assert result.winner.final_display_hp >= 27000
+    assert result.winner.final_base_mp < 30000
+    assert result.winner.reached_target is False
+
+
+def test_infeasible_bowman_searches_recurring_early_mp5_levels():
+    config = dict(
+        target_hp=27000,
+        target_mp=30000,
+        int_reset_level=170,
+        int_gear=GEAR,
+        job="bowman",
+        max_level=200,
+        target_base_int_min=480,
+        target_base_int_max=480,
+        target_base_int_step=20,
+        mp_wash_end_min=170,
+    )
+    result = optimize(OptimizeConfig(**config))
+    regular = simulate(
+        SimulateConfig(
+            policy=PolicyName.INT_ONLY_PLAIN,
+            target_base_int=480,
+            target_hp=27000,
+            int_reset_level=170,
+            int_gear=GEAR,
+            job="bowman",
+            max_level=200,
+            mp_wash_end=170,
+        )
+    )
+
+    assert result.winner is not None
+    assert result.winner.early_mp_wash_level is not None
+    assert result.winner.final_display_hp == regular.final_display_hp
+    assert result.winner.final_base_mp > regular.final_base_mp
+    assert result.winner.total_apr > regular.apr.total_apr
+    early_rows = [
+        row for row in result.winner.plan
+        if result.winner.early_mp_wash_level <= row.level < result.winner.int_reached_level
+    ]
+    assert len(early_rows) > 1
+    assert all(row.action is Action.MP5 for row in early_rows)
+    early_row = early_rows[0]
+    assert early_row.fresh_ap_mp >= 5
+    assert early_row.apr_spent == early_row.fresh_ap_mp
+    assert f"INT {early_row.fresh_ap_mp} DEX 0" in early_row.notes
 
 
 def test_optimize_skips_forced_mp_wash_to_50_when_unneeded():
