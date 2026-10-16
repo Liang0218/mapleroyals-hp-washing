@@ -1,7 +1,7 @@
 import type { LevelPlanRow } from "../core/models";
 
 const fields: Array<[string, keyof LevelPlanRow]> = [
-  ["等級", "level"], ["動作", "action"], ["base INT", "base_int"], ["base LUK", "base_luk"],
+  ["等級", "level"], ["動作", "action"], ["base INT", "base_int"],
   ["base HP", "base_hp"], ["base MP", "base_mp"], ["Extra MP", "extra_mp"], ["本等 AP_INT", "fresh_ap_int"],
   ["本等 AP_LUK", "fresh_ap_luk"], ["本等 AP_DEX", "fresh_ap_dex"], ["本等 AP_STR", "fresh_ap_str"],
   ["本等 AP_HP", "fresh_ap_hp"], ["本等 AP_MP", "fresh_ap_mp"], ["本等 APR", "apr_spent"], ["備註", "notes"],

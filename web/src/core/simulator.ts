@@ -70,7 +70,10 @@ export function simulate(input: SimulateConfig): SimulateResult {
 
 function seedResume(state: State, config: NormalizedConfig): void {
   const resume = config.resume_from!;
-  if (!(resume.level >= 1 && resume.level <= config.max_level) || resume.base_hp <= 0 || resume.base_mp < 0 || resume.base_int < 4) throw new Error("invalid resume snapshot");
+  if (!(resume.level >= 1 && resume.level <= config.max_level)) throw new Error("resume level out of range");
+  if (resume.base_hp <= 0) throw new Error("resume base_hp must be positive");
+  if (resume.base_mp < 0) throw new Error("resume base_mp must be >= 0");
+  if (resume.base_int < 4) throw new Error("resume base_int too low");
   if (resume.int_reset_done && resume.base_int > BASE_STAT_FLOOR) throw new Error("int_reset_done but base_int > 4");
   state.level = resume.level; state.base_hp = resume.base_hp; state.base_mp = resume.base_mp; state.base_int = resume.base_int;
   state.base_luk = resume.base_luk ?? 4; state.base_dex = resume.base_dex ?? 25; state.base_str = resume.base_str ?? 4;

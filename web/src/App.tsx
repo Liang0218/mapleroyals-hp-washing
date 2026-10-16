@@ -7,6 +7,7 @@ import { optimize } from "./core/optimizer";
 import { simulate } from "./core/simulator";
 import { downloadText, readJsonFile } from "./file/browser";
 import { planCsv } from "./file/plan-csv";
+import { formatUserError } from "./user-errors";
 
 type Tab = "guide" | "job-reference" | "equipment" | "optimize" | "simulate" | "actions";
 type ResumeFields = { level: string; baseHp: string; baseMp: string; baseInt: string; baseLuk: string; baseDex: string; baseStr: string; freshAp: string; intResetDone: boolean };
@@ -99,9 +100,9 @@ export function App() {
   function buildResume(current: CalculatorConfig): ResumeFrom | undefined {
     if (!current.resumeEnabled) return undefined;
     const level = optionalNumber(current.resume.level); const base_hp = optionalNumber(current.resume.baseHp); const base_int = optionalNumber(current.resume.baseInt);
-    if (level === undefined || base_hp === undefined || base_int === undefined) throw new Error("接續計算請填寫目前等級、base HP 與 base INT。");
+    if (level === undefined || base_hp === undefined || base_int === undefined) throw new Error("中途接續請填寫「目前等級」、「base HP」與「base INT」。");
     const base_mp = optionalNumber(current.resume.baseMp);
-    if (base_mp === undefined) throw new Error("請填寫 base MP。");
+    if (base_mp === undefined) throw new Error("中途接續請填寫「base MP」。");
     return { level, base_hp, base_mp, base_int, base_luk: Number(current.resume.baseLuk), base_dex: Number(current.resume.baseDex), base_str: Number(current.resume.baseStr), fresh_ap: optionalNumber(current.resume.freshAp), int_reset_done: current.resume.intResetDone };
   }
   function sharedConfig(current: CalculatorConfig) {
@@ -114,7 +115,7 @@ export function App() {
       const policy = activeProfile.policies.includes(simulateConfig.policy) ? simulateConfig.policy : activeProfile.policies[0];
       setError(undefined); setOptimized(undefined);
       setResult(simulate({ ...sharedConfig(simulateConfig), policy, target_base_int: simulateConfig.targetInt, mp_wash_end: simulateConfig.mpWashEnd, auto_method2: simulateConfig.autoMethod2 }));
-    } catch (caught) { setResult(undefined); setError(caught instanceof Error ? caught.message : "模擬失敗"); }
+    } catch (caught) { setResult(undefined); setError(formatUserError(caught)); }
   }
   function runOptimize() {
     try {
@@ -125,12 +126,12 @@ export function App() {
         target_base_int_min: 4, target_base_int_max: 999, target_base_int_step: 10,
         mp_wash_end_min: 31, top_n: 5,
       }));
-    } catch (caught) { setOptimized(undefined); setError(caught instanceof Error ? caught.message : "最佳化失敗"); }
+    } catch (caught) { setOptimized(undefined); setError(formatUserError(caught)); }
   }
   async function importEquipment(file?: File) {
     if (!file) return;
     try { const items = parseEquipment(await readJsonFile(file)); setCache((previous) => ({ ...previous, equipment: items })); setError(undefined); }
-    catch (caught) { setError(caught instanceof Error ? caught.message : "裝備設定載入失敗"); }
+    catch (caught) { setError(formatUserError(caught)); }
   }
   function addEquipment() { setCache((previous) => ({ ...previous, equipment: [...previous.equipment, { name: "", type: "Hat", int: 0, equip_level: 10 }] })); }
   function updateEquipment(index: number, patch: Partial<EquipmentItem>) {
@@ -181,7 +182,7 @@ export function App() {
         <Field label="base INT" value={config.resume.baseInt} onChange={(baseInt) => updateResume({ baseInt })} /><Field label="base STR" value={config.resume.baseStr} onChange={(baseStr) => updateResume({ baseStr })} />
         <Field label="base DEX" value={config.resume.baseDex} onChange={(baseDex) => updateResume({ baseDex })} /><Field label="base LUK" value={config.resume.baseLuk} onChange={(baseLuk) => updateResume({ baseLuk })} />
         <Field label="本等尚未點的 AP" value={config.resume.freshAp} onChange={(freshAp) => updateResume({ freshAp })} />
-        <label className="checkbox-field"><input type="checkbox" checked={config.resume.intResetDone} onChange={(event) => updateResume({ intResetDone: event.target.checked })} />已完成 INT reset（base INT = 4）</label>
+        <label className="checkbox-field"><input type="checkbox" checked={config.resume.intResetDone} onChange={(event) => updateResume({ intResetDone: event.target.checked })} />INT 已洗回 4，之後不再點 INT</label>
       </div>}</details>
       <div className="runbar"><div><b>CSV 計畫輸出</b><span>完成計算後可下載逐級計畫</span></div><div className="run-action"><button type="button" onClick={tab === "optimize" ? runOptimize : runSimulate}>{tab === "optimize" ? "執行最佳化" : "執行模擬"}</button>{tab === "optimize" && error && <p className="error run-error" role="alert">{error}</p>}</div></div>
       {tab === "simulate" && result && <SimulationResult result={result} />}{tab === "optimize" && optimized && <OptimizationResult result={optimized} />}
@@ -210,4 +211,4 @@ function OptimizationResult({ result }: { result: OptimizeResult }) {
   return <section className="result-panel"><div className="result-heading"><div><p className="eyebrow">Optimization result</p><h3>最佳化結果</h3></div></div><div className={`goal-outcome ${winner.reached_target ? "success" : "failure"}`} role="status"><strong>{outcome}</strong><span>HP 目標 {winner.target_hp}，實際 {winner.final_display_hp}（{hpReached ? "達標" : "未達標"}）；{mpDetail}；APR {totalApr(winner.apr)}。</span></div><Metrics items={[[policyLabels[winner.policy], "優勝策略"], [totalApr(winner.apr).toLocaleString(), "總 APR"], [String(winner.target_base_int), "最佳 base INT"], [String(winner.mp_wash_end), "MP wash 結束等級"], [winner.final_display_hp.toLocaleString(), "最終 HP"], [winner.final_base_mp.toLocaleString(), "最終 base MP"]]} /><h4>策略比較</h4><div className="comparison-grid">{policies.filter((item): item is [string, NonNullable<typeof item[1]>] => item[1] !== undefined).map(([letter, candidate]) => <article key={letter}><span>Policy {letter}</span><b>{totalApr(candidate.apr).toLocaleString()} APR</b><small>INT {candidate.target_base_int} · MP 結束 {candidate.mp_wash_end} · HP {candidate.final_display_hp.toLocaleString()}</small></article>)}</div><div className="result-heading"><h4>優勝計畫（{winner.plan.length} 列）</h4><button type="button" className="quiet" onClick={() => downloadText("optimized-plan.csv", planCsv(winner.plan), "text/csv;charset=utf-8")}>下載 CSV</button></div><PlanTable rows={winner.plan} /></section>;
 }
 function Metrics({ items }: { items: Array<[string, string]> }) { return <div className="metrics">{items.map(([value, label]) => <span key={label}><b>{value}</b>{label}</span>)}</div>; }
-function PlanTable({ rows }: { rows: SimulateResult["plan"] }) { return <div className="plan"><table><thead><tr><th>Lv</th><th>Action</th><th>base INT</th><th>base LUK</th><th>base HP</th><th>base MP</th><th>Extra MP</th><th>AP</th><th>APR</th><th>備註</th></tr></thead><tbody>{rows.map((row, index) => <tr key={`${row.level}-${row.action}-${index}`}><td>{row.level}</td><td>{row.action}</td><td>{row.base_int}</td><td>{row.base_luk}</td><td>{row.base_hp}</td><td>{row.base_mp}</td><td>{row.extra_mp}</td><td>INT {row.fresh_ap_int} · HP {row.fresh_ap_hp} · MP {row.fresh_ap_mp}</td><td>{row.apr_spent}</td><td>{row.notes}</td></tr>)}</tbody></table></div>; }
+function PlanTable({ rows }: { rows: SimulateResult["plan"] }) { return <div className="plan"><table><thead><tr><th>Lv</th><th>Action</th><th>base INT</th><th>base HP</th><th>base MP</th><th>Extra MP</th><th>AP</th><th>APR</th><th>備註</th></tr></thead><tbody>{rows.map((row, index) => <tr key={`${row.level}-${row.action}-${index}`}><td>{row.level}</td><td>{row.action}</td><td>{row.base_int}</td><td>{row.base_hp}</td><td>{row.base_mp}</td><td>{row.extra_mp}</td><td>INT {row.fresh_ap_int} · HP {row.fresh_ap_hp} · MP {row.fresh_ap_mp}</td><td>{row.apr_spent}</td><td>{row.notes}</td></tr>)}</tbody></table></div>; }

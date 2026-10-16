@@ -12,6 +12,8 @@ describe("browser file formats", () => {
     const csv = planCsv([{ level: 10, action: "BUILD", base_int: 20, base_luk: 4, base_hp: 100, base_mp: 100, extra_mp: 0, fresh_ap_int: 5, fresh_ap_luk: 0, fresh_ap_dex: 0, fresh_ap_str: 0, fresh_ap_hp: 0, fresh_ap_mp: 0, apr_spent: 0, notes: "test" }]);
     expect(csv.startsWith("\ufeff")).toBe(true);
     expect(csv).toContain("\"等級\"");
+    expect(csv).not.toContain("\"主/副屬性\"");
+    expect(csv).not.toContain("\"base LUK\"");
     expect(csv).toContain("\"BUILD\"");
   });
 });

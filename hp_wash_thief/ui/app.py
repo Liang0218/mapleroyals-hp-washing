@@ -437,7 +437,7 @@ class HpWashApp(ctk.CTk):
             (
                 f"{prefix}_resume_int_reset_done",
                 "INT 洗回",
-                lambda p: ctk.CTkCheckBox(p, text="已洗回（INT=4）"),
+                lambda p: ctk.CTkCheckBox(p, text="INT 已洗回 4，之後不再點 INT"),
                 "",
             ),
         ]
