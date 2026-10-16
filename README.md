@@ -1,8 +1,9 @@
 # MapleRoyals HP Wash APR Optimizer
 
-Reusable Python calculation core + terminal CLI + CustomTkinter desktop GUI for
-MapleRoyals HP washing APR optimization (Thief A–D comparison; other jobs Policy D /
-Method2). Windows users can build a shareable `.exe` folder with PyInstaller.
+Reusable Python calculation core + terminal CLI + CustomTkinter desktop GUI, with
+a separate browser calculator in `web/`, for MapleRoyals HP washing APR
+optimization (Thief A–D comparison; other jobs Policy D / Method 2). Windows
+users can build a shareable `.exe` folder with PyInstaller.
 
 ## Requirements
 
@@ -35,6 +36,9 @@ In the window you can:
 
 Non-Thief jobs hide A–D comparison and search Policy D only (stack INT → MP wash → Method2).
 
+The browser calculator is documented in [web/README.md](web/README.md). It has
+its own Node.js setup, build, and test commands and does not use the Python package.
+
 ### Build a Windows app folder (on a Windows PC)
 
 ```bat
@@ -58,8 +62,8 @@ Official Windows builds are attached to [GitHub Releases](https://github.com/Lia
 
 ```bash
 # bump version in pyproject.toml first, then:
-git tag v1.1.0
-git push origin v1.1.0
+git tag v1.2.0
+git push origin v1.2.0
 ```
 
 GitHub Actions (`.github/workflows/release-windows.yml`) runs tests, builds with PyInstaller on `windows-latest`, and uploads the zip to Releases.
@@ -215,6 +219,7 @@ hp_wash_thief/
   cli.py
   ui/            # CustomTkinter desktop app
 examples/
+web/              # Browser calculator (React + TypeScript + Vite)
 scripts/build_windows.bat
 hp_wash_thief.spec
 ```
@@ -251,12 +256,11 @@ HP/MP midpoints (rolls are 50-wide, i.e. ±25). 3rd/4th **HP** uses [Update #54]
 ## Tests
 
 ```bash
-pytest -q
+python -m pytest
 ```
 
 ## Out of scope
 
-- Web / Streamlit / Electron
 - Magician wash (deferred)
 - NX market prices, auto-search of `int_reset_level`
 - SP-reset alternate Improve MaxHP washing
