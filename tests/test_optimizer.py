@@ -16,6 +16,13 @@ GEAR = parse_int_gear(
 )
 
 
+def test_optimizer_default_int_search_includes_no_extra_int_and_high_values():
+    config = OptimizeConfig(target_hp=22000, int_reset_level=140, int_gear=GEAR)
+
+    assert config.target_base_int_min == 4
+    assert config.target_base_int_max == 999
+
+
 def test_optimize_abd_policies_narrow():
     result = optimize(
         OptimizeConfig(

@@ -199,9 +199,9 @@ class OptimizeConfig:
     int_gear_after_reset: int = 50
     # Extra MP threshold for early HP wash×5. None → job default (mp_removed × 5).
     extra_mp_threshold: Optional[int] = None
-    # Search bounds (overridable for tests)
-    target_base_int_min: int = 100
-    target_base_int_max: int = 500
+    # Search bounds: base INT 4 means no level-up Fresh AP is added to INT.
+    target_base_int_min: int = 4
+    target_base_int_max: int = 999
     target_base_int_step: int = 10
     # 31 lets the search skip all post-INT MP wash (end < int-reached level).
     mp_wash_end_min: int = 31

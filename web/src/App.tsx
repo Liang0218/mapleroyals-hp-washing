@@ -122,7 +122,7 @@ export function App() {
       setError(undefined); setResult(undefined);
       setOptimized(optimize({
         ...sharedConfig(optimizeConfig), policies: activeProfile.policies.filter((policy) => optimizeConfig.job !== "thief" || optimizeConfig.compareThiefPolicyC || policy !== "mp_wash_hardcore"),
-        target_base_int_min: 100, target_base_int_max: 500, target_base_int_step: 10,
+        target_base_int_min: 4, target_base_int_max: 999, target_base_int_step: 10,
         mp_wash_end_min: 31, top_n: 5,
       }));
     } catch (caught) { setOptimized(undefined); setError(caught instanceof Error ? caught.message : "最佳化失敗"); }

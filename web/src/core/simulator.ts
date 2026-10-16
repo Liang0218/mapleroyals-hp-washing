@@ -79,7 +79,7 @@ function seedResume(state: State, config: NormalizedConfig): void {
   if (state.profile.maxhpSkill) state.skill.seedForResume(state.level, state.profile.jobAdvances);
 }
 function markIntReached(state: State, config: NormalizedConfig): void { if (state.int_reached_level === 0 && state.base_int >= config.target_base_int) state.int_reached_level = state.level; }
-function applyStartingAp(state: State, config: NormalizedConfig): void { state.base_int += STARTING_FRESH_AP; state.noteInt(); state.plan.push(row(state, "BUILD", { fresh_ap_int: STARTING_FRESH_AP, notes: "Creation AP → INT" })); void config; }
+function applyStartingAp(state: State, config: NormalizedConfig): void { const toInt = Math.min(STARTING_FRESH_AP, Math.max(0, config.target_base_int - state.base_int)); const toPrimary = STARTING_FRESH_AP - toInt; state.base_int += toInt; addPrimary(state, toPrimary); state.noteInt(); state.plan.push(row(state, "BUILD", { fresh_ap_int: toInt, ...primaryFields(state, toPrimary), notes: `Creation AP → INT ${toInt}, ${state.profile.primaryStat.toUpperCase()} ${toPrimary}` })); }
 function levelUp(state: State, level: number, config: NormalizedConfig): void {
   const advance = state.profile.jobAdvances.get(level); if (advance) state.skill.onJobAdvance(advance.number); state.skill.onLevel();
   const currentInt = totalInt(state.base_int, config.int_gear, level, { mwPercent: config.mw_percent, mwFromLevel: config.mw_from_level, intResetLevel: config.int_reset_level, intGearAfterReset: config.int_gear_after_reset });

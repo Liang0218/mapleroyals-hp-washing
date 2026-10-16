@@ -263,10 +263,14 @@ def _maybe_mark_int_reached(state: CharacterState, config: SimulateConfig) -> No
 
 
 def _apply_starting_ap(state: CharacterState, config: SimulateConfig) -> None:
-    """Level 1: put all creation AP into INT."""
+    """Level 1: use creation AP to reach the selected INT target, then primary."""
     ap = F.STARTING_FRESH_AP
-    state.base_int += ap
+    to_int = min(ap, max(0, config.target_base_int - state.base_int))
+    to_primary = ap - to_int
+    state.base_int += to_int
+    _add_primary(state, to_primary)
     state.note_int()
+    assert state.profile is not None
     state.plan.append(
         LevelPlanRow(
             level=1,
@@ -276,8 +280,9 @@ def _apply_starting_ap(state: CharacterState, config: SimulateConfig) -> None:
             base_hp=int(round(state.base_hp)),
             base_mp=int(round(state.base_mp)),
             extra_mp=int(round(state.extra_mp())),
-            fresh_ap_int=ap,
-            notes="創角 AP → INT",
+            fresh_ap_int=to_int,
+            notes=f"創角 AP → INT {to_int} {_primary_name(state.profile)} {to_primary}",
+            **_primary_fresh_fields(state.profile, to_primary),
         )
     )
 

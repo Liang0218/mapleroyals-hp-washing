@@ -43,15 +43,20 @@ describe("Python calculation-core parity: simulator and optimizer", () => {
     expect(result.plan[0].action).toBe("RESUME");
   });
 
+  it("puts creation AP in the primary stat when target INT stays at base floor", () => {
+    const result = simulate({ policy: "int_only_plain", target_base_int: 4, target_hp: 1000, int_reset_level: 40, int_gear: exampleGear, mp_wash_end: 31, max_level: 40 });
+    expect(result.plan[0]).toMatchObject({ fresh_ap_int: 0, fresh_ap_luk: 9, base_int: 4, base_luk: 13 });
+  });
+
   it("matches Desktop Optimize defaults for the supplied settings file", () => {
     const result = optimize({ target_hp: 27000, int_reset_level: 155, int_gear: exampleGear, job: "thief", int_gear_after_reset: 50, policies: ["mp_wash_shortfall", "int_dump_shortfall", "mp_wash_hardcore", "int_only_plain"], quest_equip_hp: 0, hp_mode: "avg", mw_percent: 0.1, mw_from_level: 10, top_n: 5 });
-    expect(result.winner).toMatchObject({ policy: "mp_wash_hardcore", target_base_int: 330, mp_wash_end: 96, final_display_hp: 27006 });
+    expect(result.winner).toMatchObject({ policy: "mp_wash_shortfall", target_base_int: 384, mp_wash_end: 101, final_display_hp: 27010 });
     expect(result.winner?.apr.mp_wash_count).toBeDefined();
-    expect(result.winner && result.winner.apr.mp_wash_count + result.winner.apr.method1_hp_wash_count + result.winner.apr.method2_hp_wash_count + result.winner.apr.int_reset_apr).toBe(1473);
-    expect(result.by_policy.mp_wash_shortfall?.best).toMatchObject({ target_base_int: 380, mp_wash_end: 101, final_display_hp: 27008 });
-    expect(result.by_policy.int_dump_shortfall?.best).toMatchObject({ target_base_int: 350, mp_wash_end: 101, final_display_hp: 27002 });
-    expect(result.by_policy.mp_wash_hardcore?.best).toMatchObject({ target_base_int: 330, mp_wash_end: 96, final_display_hp: 27006 });
-    expect(result.by_policy.int_only_plain?.best).toMatchObject({ target_base_int: 250, mp_wash_end: 106, final_display_hp: 27014 });
+    expect(result.winner && result.winner.apr.mp_wash_count + result.winner.apr.method1_hp_wash_count + result.winner.apr.method2_hp_wash_count + result.winner.apr.int_reset_apr).toBe(1487);
+    expect(result.by_policy.mp_wash_shortfall?.best).toMatchObject({ target_base_int: 384, mp_wash_end: 101, final_display_hp: 27010 });
+    expect(result.by_policy.int_dump_shortfall?.best).toMatchObject({ target_base_int: 344, mp_wash_end: 101, final_display_hp: 27018 });
+    expect(result.by_policy.mp_wash_hardcore?.best).toMatchObject({ target_base_int: 394, mp_wash_end: 101, final_display_hp: 27004 });
+    expect(result.by_policy.int_only_plain?.best).toMatchObject({ target_base_int: 334, mp_wash_end: 106, final_display_hp: 27014 });
   });
 
   it("matches the supplied app's A / INT 380 / MP end 101 scenario", () => {

@@ -29,6 +29,26 @@ def test_threshold_default_is_twelve_times_five():
     assert EXTRA_MP_THRESHOLD_DEFAULT == 60
 
 
+def test_target_int_at_base_floor_puts_creation_ap_in_primary_stat():
+    result = simulate(
+        SimulateConfig(
+            policy=PolicyName.INT_ONLY_PLAIN,
+            target_base_int=4,
+            target_hp=1000,
+            int_reset_level=40,
+            int_gear=GEAR,
+            mp_wash_end=31,
+            max_level=40,
+        )
+    )
+
+    creation = result.plan[0]
+    assert creation.fresh_ap_int == 0
+    assert creation.fresh_ap_luk == 9
+    assert creation.base_int == 4
+    assert creation.base_luk == 13
+
+
 def test_simulate_runs_and_resets_int():
     result = simulate(
         SimulateConfig(
