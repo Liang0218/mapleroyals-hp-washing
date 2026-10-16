@@ -56,6 +56,7 @@ export interface SimulateConfig {
   quest_equip_hp?: number;
   hp_mode?: HpMode;
   max_level?: number;
+  hp_cap?: number;
   auto_method2?: boolean;
   mw_percent?: number;
   mw_from_level?: number;
@@ -74,6 +75,7 @@ export interface OptimizeConfig {
   quest_equip_hp?: number;
   hp_mode?: HpMode;
   max_level?: number;
+  hp_cap?: number;
   mw_percent?: number;
   mw_from_level?: number;
   int_gear_after_reset?: number;
@@ -147,6 +149,8 @@ export interface OptimizeResult {
   winner?: CandidateResult;
   top_candidates: CandidateResult[];
   resume_from?: ResumeFrom;
+  continued_to_200_hp?: number;
+  continued_to_200_plan?: LevelPlanRow[];
 }
 
 export const totalApr = (apr: AprBreakdown): number =>

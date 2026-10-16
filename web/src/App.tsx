@@ -12,7 +12,7 @@ import { formatUserError } from "./user-errors";
 type Tab = "guide" | "job-reference" | "equipment" | "optimize" | "simulate" | "actions";
 type ResumeFields = { level: string; baseHp: string; baseMp: string; baseInt: string; baseLuk: string; baseDex: string; baseStr: string; freshAp: string; intResetDone: boolean };
 type CalculatorConfig = {
-  job: string; policy: PolicyName; targetHp: number; targetMp: string; targetInt: number;
+  job: string; policy: PolicyName; targetHp: number; targetMp: string; targetLevel: string; targetInt: number;
   resetLevel: number; mpWashEnd: number; questHp: number; hpMode: HpMode;
   mwPercent: number; mwFromLevel: number; gearAfterReset: number; autoMethod2: boolean;
   compareThiefPolicyC: boolean;
@@ -49,7 +49,7 @@ const initialEquipment: EquipmentItem[] = [
 ].map(([name, type, equip_level]) => ({ name: String(name), type: type as EquipmentItem["type"], int: 0, equip_level: Number(equip_level) }));
 const emptyResume: ResumeFields = { level: "", baseHp: "", baseMp: "", baseInt: "", baseLuk: "4", baseDex: "25", baseStr: "4", freshAp: "5", intResetDone: false };
 function defaultConfig(): CalculatorConfig {
-  return { job: "thief", policy: "mp_wash_shortfall", targetHp: 27000, targetMp: "", targetInt: 350, resetLevel: 155, mpWashEnd: 100, questHp: 0, hpMode: "avg", mwPercent: 0.1, mwFromLevel: 10, gearAfterReset: 50, autoMethod2: true, compareThiefPolicyC: true, resumeEnabled: false, resume: { ...emptyResume } };
+  return { job: "thief", policy: "mp_wash_shortfall", targetHp: 27000, targetMp: "", targetLevel: "200", targetInt: 350, resetLevel: 155, mpWashEnd: 100, questHp: 0, hpMode: "avg", mwPercent: 0.1, mwFromLevel: 10, gearAfterReset: 50, autoMethod2: true, compareThiefPolicyC: true, resumeEnabled: false, resume: { ...emptyResume } };
 }
 function readCache(): AppCache {
   const fallback: AppCache = { version: 1, tab: "guide", equipment: initialEquipment, optimize: defaultConfig(), simulate: defaultConfig() };
@@ -60,8 +60,8 @@ function readCache(): AppCache {
     return {
       version: 1, tab: tabsAllowed ? raw.tab! : fallback.tab,
       equipment: Array.isArray(raw.equipment) ? parseEquipment(raw.equipment) : fallback.equipment,
-      optimize: { ...fallback.optimize, ...(raw.optimize ?? {}), resume: { ...emptyResume, ...(raw.optimize?.resume ?? {}) } },
-      simulate: { ...fallback.simulate, ...(raw.simulate ?? {}), resume: { ...emptyResume, ...(raw.simulate?.resume ?? {}) } },
+      optimize: { ...fallback.optimize, ...(raw.optimize ?? {}), targetLevel: String(raw.optimize?.targetLevel ?? fallback.optimize.targetLevel), resume: { ...emptyResume, ...(raw.optimize?.resume ?? {}) } },
+      simulate: { ...fallback.simulate, ...(raw.simulate ?? {}), targetLevel: String(raw.simulate?.targetLevel ?? fallback.simulate.targetLevel), resume: { ...emptyResume, ...(raw.simulate?.resume ?? {}) } },
     };
   } catch { return fallback; }
 }
@@ -106,8 +106,11 @@ export function App() {
     return { level, base_hp, base_mp, base_int, base_luk: Number(current.resume.baseLuk), base_dex: Number(current.resume.baseDex), base_str: Number(current.resume.baseStr), fresh_ap: optionalNumber(current.resume.freshAp), int_reset_done: current.resume.intResetDone };
   }
   function sharedConfig(current: CalculatorConfig) {
+    const levelInput = String(current.targetLevel ?? "");
+    const targetLevel = levelInput.trim() === "" ? 200 : Number(levelInput);
+    if (!Number.isInteger(targetLevel) || targetLevel < 31 || targetLevel > 200) throw new Error("target_level out of range");
     const intGear = computeIntGearSegments(equipment, Math.max(1, current.resetLevel - 1));
-    return { target_hp: current.targetHp, target_mp: optionalNumber(current.targetMp), int_reset_level: current.resetLevel, int_gear: intGear, job: current.job, int_gear_after_reset: current.gearAfterReset, quest_equip_hp: current.questHp, hp_mode: current.hpMode, mw_percent: current.mwPercent, mw_from_level: current.mwFromLevel, resume_from: buildResume(current) };
+    return { target_hp: current.targetHp, target_mp: optionalNumber(current.targetMp), max_level: targetLevel, int_reset_level: current.resetLevel, int_gear: intGear, job: current.job, int_gear_after_reset: current.gearAfterReset, quest_equip_hp: current.questHp, hp_mode: current.hpMode, mw_percent: current.mwPercent, mw_from_level: current.mwFromLevel, resume_from: buildResume(current) };
   }
   function runSimulate() {
     try {
@@ -161,6 +164,7 @@ export function App() {
         <label>職業<select value={config.job} onChange={(event) => updateConfig({ job: event.target.value })}>{jobs.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
         <Field label="目標 HP" value={config.targetHp} onChange={(value) => updateConfig({ targetHp: Number(value) })} />
         <Field label="目標 MP（留空則洗到最低）" value={config.targetMp} onChange={(value) => updateConfig({ targetMp: value })} />
+        <label>目標等級（留空則表示 200 等）<input type="number" min={31} max={200} step={1} value={config.targetLevel} onChange={(event) => updateConfig({ targetLevel: event.target.value })} /></label>
         <Field label="洗回 INT 等級" value={config.resetLevel} onChange={(value) => updateConfig({ resetLevel: Number(value) })} />
         <Field label="洗回後升等裝備 INT" value={config.gearAfterReset} onChange={(value) => updateConfig({ gearAfterReset: Number(value) })} />
         <Field label="任務／裝備 HP" value={config.questHp} onChange={(value) => updateConfig({ questHp: Number(value) })} />
@@ -208,7 +212,8 @@ function OptimizationResult({ result }: { result: OptimizeResult }) {
   const mpReached = winner.target_mp === undefined || winner.final_base_mp >= winner.target_mp;
   const outcome = winner.reached_target ? "已達成目標" : hpReached && !mpReached ? "無法同時達標 — HP 已達標，MP 未達標" : "無法達成 — 最接近結果";
   const mpDetail = winner.target_mp === undefined ? "未設定 MP 目標" : `MP 目標 ${winner.target_mp}，實際 ${winner.final_base_mp}${mpReached ? "（達標）" : "（未達標）"}`;
-  return <section className="result-panel"><div className="result-heading"><div><p className="eyebrow">Optimization result</p><h3>最佳化結果</h3></div></div><div className={`goal-outcome ${winner.reached_target ? "success" : "failure"}`} role="status"><strong>{outcome}</strong><span>HP 目標 {winner.target_hp}，實際 {winner.final_display_hp}（{hpReached ? "達標" : "未達標"}）；{mpDetail}；APR {totalApr(winner.apr)}。</span></div><Metrics items={[[policyLabels[winner.policy], "優勝策略"], [totalApr(winner.apr).toLocaleString(), "總 APR"], [String(winner.target_base_int), "最佳 base INT"], [String(winner.mp_wash_end), "MP wash 結束等級"], [winner.final_display_hp.toLocaleString(), "最終 HP"], [winner.final_base_mp.toLocaleString(), "最終 base MP"]]} /><h4>策略比較</h4><div className="comparison-grid">{policies.filter((item): item is [string, NonNullable<typeof item[1]>] => item[1] !== undefined).map(([letter, candidate]) => <article key={letter}><span>Policy {letter}</span><b>{totalApr(candidate.apr).toLocaleString()} APR</b><small>INT {candidate.target_base_int} · MP 結束 {candidate.mp_wash_end} · HP {candidate.final_display_hp.toLocaleString()}</small></article>)}</div><div className="result-heading"><h4>優勝計畫（{winner.plan.length} 列）</h4><button type="button" className="quiet" onClick={() => downloadText("optimized-plan.csv", planCsv(winner.plan), "text/csv;charset=utf-8")}>下載 CSV</button></div><PlanTable rows={winner.plan} /></section>;
+  const fullPlan = result.continued_to_200_plan ? [...winner.plan, ...result.continued_to_200_plan] : winner.plan;
+  return <section className="result-panel"><Metrics items={[[String(winner.plan.at(-1)?.level ?? ""), "\u76EE\u6A19\u7B49\u7D1A"], [(result.continued_to_200_hp ?? winner.final_display_hp).toLocaleString(), "\u7E7C\u7E8C\u5230 200 \u7B49\u6700\u9AD8 HP"]]} /><div className="result-heading"><div><p className="eyebrow">Optimization result</p><h3>最佳化結果</h3></div></div><div className={`goal-outcome ${winner.reached_target ? "success" : "failure"}`} role="status"><strong>{outcome}</strong><span>HP 目標 {winner.target_hp}，實際 {winner.final_display_hp}（{hpReached ? "達標" : "未達標"}）；{mpDetail}；APR {totalApr(winner.apr)}。</span></div><Metrics items={[[policyLabels[winner.policy], "優勝策略"], [totalApr(winner.apr).toLocaleString(), "總 APR"], [String(winner.target_base_int), "最佳 base INT"], [String(winner.mp_wash_end), "MP wash 結束等級"], [winner.final_display_hp.toLocaleString(), "最終 HP"], [winner.final_base_mp.toLocaleString(), "最終 base MP"]]} /><h4>策略比較</h4><div className="comparison-grid">{policies.filter((item): item is [string, NonNullable<typeof item[1]>] => item[1] !== undefined).map(([letter, candidate]) => <article key={letter}><span>Policy {letter}</span><b>{totalApr(candidate.apr).toLocaleString()} APR</b><small>INT {candidate.target_base_int} · MP 結束 {candidate.mp_wash_end} · HP {candidate.final_display_hp.toLocaleString()}</small></article>)}</div><div className="result-heading"><h4>優勝計畫（{fullPlan.length} 列）</h4><button type="button" className="quiet" onClick={() => downloadText("optimized-plan.csv", planCsv(fullPlan), "text/csv;charset=utf-8")}>下載 CSV</button></div><PlanTable rows={fullPlan} /></section>;
 }
 function Metrics({ items }: { items: Array<[string, string]> }) { return <div className="metrics">{items.map(([value, label]) => <span key={label}><b>{value}</b>{label}</span>)}</div>; }
 function PlanTable({ rows }: { rows: SimulateResult["plan"] }) { return <div className="plan"><table><thead><tr><th>Lv</th><th>Action</th><th>base INT</th><th>base HP</th><th>base MP</th><th>Extra MP</th><th>AP</th><th>APR</th><th>備註</th></tr></thead><tbody>{rows.map((row, index) => <tr key={`${row.level}-${row.action}-${index}`}><td>{row.level}</td><td>{row.action}</td><td>{row.base_int}</td><td>{row.base_hp}</td><td>{row.base_mp}</td><td>{row.extra_mp}</td><td>INT {row.fresh_ap_int} · HP {row.fresh_ap_hp} · MP {row.fresh_ap_mp}</td><td>{row.apr_spent}</td><td>{row.notes}</td></tr>)}</tbody></table></div>; }

@@ -1,8 +1,8 @@
-import { getJobProfile } from "./jobs";
+import { getJobProfile, makeSkillTracker } from "./jobs";
 import { simulate } from "./simulator";
 import { totalApr, type CandidateResult, type ComparisonResult, type OptimizeConfig, type OptimizeResult, type PolicyBest, type PolicyName } from "./models";
 
-type Normalized = Required<Omit<OptimizeConfig, "policies" | "resume_from" | "improved_maxhp_level" | "target_mp">> & Pick<OptimizeConfig, "policies" | "resume_from" | "improved_maxhp_level" | "target_mp">;
+type Normalized = Required<Omit<OptimizeConfig, "policies" | "resume_from" | "improved_maxhp_level" | "target_mp" | "hp_cap">> & Pick<OptimizeConfig, "policies" | "resume_from" | "improved_maxhp_level" | "target_mp" | "hp_cap">;
 function normalize(config: OptimizeConfig): Normalized {
   return { ...config, job: config.job ?? "thief", quest_equip_hp: config.quest_equip_hp ?? 0, hp_mode: config.hp_mode ?? "avg", max_level: config.max_level ?? 200, mw_percent: config.mw_percent ?? 0.1, mw_from_level: config.mw_from_level ?? 10, int_gear_after_reset: config.int_gear_after_reset ?? 50, extra_mp_threshold: config.extra_mp_threshold ?? getJobProfile(config.job ?? "thief").defaultExtraMpThreshold(), target_base_int_min: config.target_base_int_min ?? 4, target_base_int_max: config.target_base_int_max ?? 999, target_base_int_step: config.target_base_int_step ?? 10, mp_wash_end_min: config.mp_wash_end_min ?? 31, top_n: config.top_n ?? 5 };
 }
@@ -33,5 +33,91 @@ export function optimize(input: OptimizeConfig): OptimizeResult {
   const config = normalize(input); const policies = config.policies?.length ? config.policies : getJobProfile(config.job).policies; const by_policy: Partial<Record<PolicyName, PolicyBest>> = {};
   for (const policy of policies) by_policy[policy] = policyBest(config, policy);
   const all = Object.values(by_policy).flatMap((entry) => entry?.top.filter((item) => item.reached_target) ?? []).sort(compare); const resultComparison = comparison(by_policy); const fallback = Object.values(by_policy).map((entry) => entry?.best).filter((item): item is CandidateResult => item !== undefined).sort(compare)[0];
-  return { by_policy, comparison: resultComparison, winner: resultComparison.winner ?? all[0] ?? fallback, top_candidates: all.slice(0, config.top_n), resume_from: config.resume_from };
+  let winner = resultComparison.winner ?? all[0] ?? fallback;
+  let continued_to_200_hp: number | undefined;
+  let continued_to_200_plan: CandidateResult["plan"] | undefined;
+  let resetLevelMethod2Hp: number | undefined;
+  if (winner) {
+    if (config.max_level >= 200) continued_to_200_hp = Math.min(30_000, winner.final_display_hp);
+    else {
+      const finalState = winner.plan.at(-1);
+      const continuation = simulate({
+        policy: winner.policy, target_base_int: winner.target_base_int, target_hp: 1_000_000_000,
+        int_reset_level: config.int_reset_level, int_gear: config.int_gear,
+        job: config.job, mp_wash_end: 31,
+        extra_mp_threshold: config.extra_mp_threshold, quest_equip_hp: config.quest_equip_hp,
+        hp_mode: config.hp_mode, max_level: 200, auto_method2: true,
+        hp_cap: Math.max(1, 30_000 - config.quest_equip_hp),
+        mw_percent: config.mw_percent, mw_from_level: config.mw_from_level,
+        int_gear_after_reset: config.int_gear_after_reset,
+        resume_from: {
+          level: config.max_level, base_hp: winner.final_base_hp, base_mp: winner.final_base_mp,
+          base_int: finalState?.base_int ?? 4, base_int_peak: winner.base_int_peak, fresh_ap: 0,
+          int_reset_done: config.max_level >= config.int_reset_level,
+        },
+      });
+      continued_to_200_hp = continuation.final_display_hp;
+      continued_to_200_plan = continuation.plan;
+    }
+
+    if ((!config.resume_from || config.resume_from.level <= config.int_reset_level) && !config.resume_from?.int_reset_done) {
+      const resetSnapshot = simulate({
+        policy: winner.policy, target_base_int: winner.target_base_int, target_hp: 1_000_000_000,
+        int_reset_level: config.int_reset_level, int_gear: config.int_gear,
+        job: config.job, mp_wash_end: winner.mp_wash_end,
+        extra_mp_threshold: config.extra_mp_threshold, quest_equip_hp: config.quest_equip_hp,
+        hp_mode: config.hp_mode, max_level: config.int_reset_level, auto_method2: false,
+        hp_cap: Math.max(1, 30_000 - config.quest_equip_hp),
+        mw_percent: config.mw_percent, mw_from_level: config.mw_from_level,
+        int_gear_after_reset: config.int_gear_after_reset, resume_from: config.resume_from,
+      });
+      const profile = getJobProfile(config.job);
+      const extraMpAtReset = Math.max(0, profile.extraMp(resetSnapshot.final_base_mp, config.int_reset_level));
+      const plannedMethod2 = winner.apr.method2_hp_wash_count;
+      const skill = makeSkillTracker(profile, config.improved_maxhp_level);
+      skill.seedForResume(config.int_reset_level, profile.jobAdvances);
+      const method2Hp = profile.method2Hp(config.hp_mode, skill);
+      const capBaseHp = Math.max(1, 30_000 - config.quest_equip_hp);
+      const affordableBeforeHpCap = Math.max(0, Math.ceil((extraMpAtReset - 1e-9) / profile.mpRemovedPerApr));
+      const hpSpace = Math.max(0, capBaseHp - resetSnapshot.final_base_hp);
+      const washesToHpCap = method2Hp > 0 ? Math.ceil(hpSpace / method2Hp) : 0;
+      const earlyMethod2Count = Math.min(plannedMethod2, affordableBeforeHpCap, washesToHpCap);
+      const afterEarlyMethod2 = simulate({
+        policy: winner.policy, target_base_int: 4,
+        target_hp: resetSnapshot.final_base_hp + earlyMethod2Count * method2Hp + config.quest_equip_hp,
+        int_reset_level: config.int_reset_level, int_gear: config.int_gear,
+        job: config.job, mp_wash_end: 31, extra_mp_threshold: config.extra_mp_threshold,
+        quest_equip_hp: config.quest_equip_hp, hp_mode: config.hp_mode,
+        max_level: config.int_reset_level, auto_method2: true, hp_cap: capBaseHp,
+        mw_percent: config.mw_percent, mw_from_level: config.mw_from_level,
+        int_gear_after_reset: config.int_gear_after_reset,
+        resume_from: {
+          level: config.int_reset_level, base_hp: resetSnapshot.final_base_hp,
+          base_mp: resetSnapshot.final_base_mp, base_int: 4,
+          base_int_peak: resetSnapshot.base_int_peak, fresh_ap: 0, int_reset_done: true,
+        },
+      });
+      resetLevelMethod2Hp = afterEarlyMethod2.final_display_hp;
+      const afterEarlyMethod2To200 = simulate({
+        policy: winner.policy, target_base_int: 4, target_hp: 1_000_000_000,
+        int_reset_level: config.int_reset_level, int_gear: config.int_gear,
+        job: config.job, mp_wash_end: 31, extra_mp_threshold: config.extra_mp_threshold,
+        quest_equip_hp: config.quest_equip_hp, hp_mode: config.hp_mode,
+        max_level: 200, auto_method2: true, hp_cap: capBaseHp,
+        mw_percent: config.mw_percent, mw_from_level: config.mw_from_level,
+        int_gear_after_reset: config.int_gear_after_reset,
+        resume_from: {
+          level: config.int_reset_level, base_hp: afterEarlyMethod2.final_base_hp,
+          base_mp: afterEarlyMethod2.final_base_mp, base_int: 4,
+          base_int_peak: resetSnapshot.base_int_peak, fresh_ap: 0, int_reset_done: true,
+        },
+      });
+      const earlyMethod2To200Hp = afterEarlyMethod2To200.final_display_hp;
+      const note = `\u4E5F\u53EF\u9078\u64C7\u5728\u6B64\u63D0\u65E9\u505A Method 2\uFF1A\u6700\u591A ${earlyMethod2Count} \u6B21\uFF08\u539F\u8A08\u756B 200 \u7B49 ${plannedMethod2} \u6B21\uFF09\uFF0C\u7576\u4E0B HP ${resetLevelMethod2Hp.toLocaleString()}\uFF1B\u7E7C\u7E8C\u6D17\u5230 200 \u7B49\u53EF\u9054 ${earlyMethod2To200Hp.toLocaleString()} HP\u3002`;
+      const annotate = (plan: CandidateResult["plan"]) => plan.map((row) => row.level === config.int_reset_level && row.action === "RESET_INT" ? { ...row, notes: `${row.notes} ${note}` } : row);
+      if (config.max_level < config.int_reset_level && continued_to_200_plan) continued_to_200_plan = annotate(continued_to_200_plan);
+      else winner = { ...winner, plan: annotate(winner.plan) };
+    }
+  }
+  return { by_policy, comparison: resultComparison, winner, top_candidates: all.slice(0, config.top_n), resume_from: config.resume_from, continued_to_200_hp, continued_to_200_plan };
 }

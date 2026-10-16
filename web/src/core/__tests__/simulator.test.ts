@@ -24,6 +24,22 @@ describe("Python calculation-core parity: simulator and optimizer", () => {
     expect(winner!.apr.mp_wash_count + winner!.apr.method1_hp_wash_count + winner!.apr.method2_hp_wash_count + winner!.apr.int_reset_apr).toBe(1487);
   });
 
+  it("optimizes before the INT reset level and projects maximum HP at level 200", () => {
+    const result = optimize({
+      target_hp: 10000, int_reset_level: 60, max_level: 40,
+      int_gear: [{ from_level: 1, to_level: 200, int_gear: 30 }],
+      policies: ["int_only_plain"], target_base_int_min: 100,
+      target_base_int_max: 100, target_base_int_step: 10,
+      mp_wash_end_min: 31, top_n: 1,
+    });
+    expect(result.winner?.plan.at(-1)?.level).toBe(40);
+    expect(result.continued_to_200_hp).toBeGreaterThan(result.winner!.final_display_hp);
+    expect(result.continued_to_200_hp).toBeLessThanOrEqual(30000);
+    expect(result.continued_to_200_plan?.at(-1)?.level).toBe(200);
+    expect(result.continued_to_200_plan?.find((row) => row.level === 60 && row.action === "RESET_INT")?.notes).toContain("最多");
+    expect(result.continued_to_200_plan?.find((row) => row.level === 60 && row.action === "RESET_INT")?.notes).toContain("HP");
+  });
+
   it("matches a non-Thief Improve MaxHP calculation", () => {
     const result = simulate({ policy: "int_only_plain", target_base_int: 220, target_hp: 25000, int_reset_level: 155, int_gear: [{ from_level: 1, to_level: 200, int_gear: 30 }], job: "fighter", mp_wash_end: 120 });
     expect(result).toMatchObject({ final_base_hp: 25022, final_base_mp: 11782, improved_maxhp_level: 10 });
@@ -57,6 +73,7 @@ describe("Python calculation-core parity: simulator and optimizer", () => {
     expect(result.by_policy.int_dump_shortfall?.best).toMatchObject({ target_base_int: 344, mp_wash_end: 101, final_display_hp: 27018 });
     expect(result.by_policy.mp_wash_hardcore?.best).toMatchObject({ target_base_int: 394, mp_wash_end: 101, final_display_hp: 27004 });
     expect(result.by_policy.int_only_plain?.best).toMatchObject({ target_base_int: 334, mp_wash_end: 106, final_display_hp: 27014 });
+    expect(result.winner?.plan.find((row) => row.action === "RESET_INT")?.notes).toContain("200");
   });
 
   it("matches the supplied app's A / INT 380 / MP end 101 scenario", () => {

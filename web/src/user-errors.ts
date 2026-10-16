@@ -1,4 +1,5 @@
 const exactMessages: Record<string, string> = {
+  "target_level out of range": "\u300C\u76EE\u6A19\u7B49\u7D1A\u300D\u5FC5\u9808\u662F 31 \u5230 200 \u7684\u6574\u6578\u3002",
   "target_hp must be positive": "「目標 HP」必須大於 0。",
   "int_reset_level out of range": "「洗回 INT 等級」必須大於 1，且不可超過等級上限。",
   "mp_wash_end must satisfy 30 < mp_wash_end <= int_reset_level": "「MP wash 結束等級」必須大於 30，且不可高於「洗回 INT 等級」。",
