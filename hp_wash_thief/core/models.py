@@ -141,6 +141,7 @@ class ResumeFrom:
     base_dex: int = 25
     base_str: int = 4
     fresh_ap: Optional[int] = None  # default 5; use 10 at 70/120 if job AP unspent
+    unwashed_ap: int = 0
     int_reset_done: bool = False
     base_int_peak: Optional[int] = None
 
@@ -157,6 +158,7 @@ class ResumeFrom:
         base_dex: int = 25,
         base_str: int = 4,
         fresh_ap: Optional[int] = None,
+        unwashed_ap: int = 0,
         int_reset_done: bool = False,
         base_int_peak: Optional[int] = None,
         job: str = "thief",
@@ -177,6 +179,7 @@ class ResumeFrom:
             base_dex=int(base_dex),
             base_str=int(base_str),
             fresh_ap=fresh_ap,
+            unwashed_ap=int(unwashed_ap),
             int_reset_done=bool(int_reset_done),
             base_int_peak=base_int_peak,
         )
@@ -261,6 +264,7 @@ class AprBreakdown:
     method1_hp_wash_count: int = 0
     method2_hp_wash_count: int = 0
     int_reset_apr: int = 0
+    resume_wash_apr: int = 0
 
     @property
     def total_apr(self) -> int:
@@ -269,6 +273,7 @@ class AprBreakdown:
             + self.method1_hp_wash_count
             + self.method2_hp_wash_count
             + self.int_reset_apr
+            + self.resume_wash_apr
         )
 
 

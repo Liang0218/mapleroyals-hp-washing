@@ -434,6 +434,7 @@ class HpWashApp(ctk.CTk):
             (f"{prefix}_resume_base_dex", "base DEX", ctk.CTkEntry, "25"),
             (f"{prefix}_resume_base_luk", "base LUK", ctk.CTkEntry, "4"),
             (f"{prefix}_resume_fresh_ap", "尚未點的 AP", ctk.CTkEntry, "5"),
+            (f"{prefix}_resume_unwashed_ap", "尚未洗回的 HP／MP AP", ctk.CTkEntry, "0"),
             (
                 f"{prefix}_resume_int_reset_done",
                 "INT 洗回",
@@ -640,6 +641,7 @@ class HpWashApp(ctk.CTk):
         base_dex = self._int(getattr(self, f"{prefix}_resume_base_dex"), "base DEX")
         fresh_raw = getattr(self, f"{prefix}_resume_fresh_ap").get().strip()
         fresh_ap = int(fresh_raw) if fresh_raw else None
+        unwashed_ap = self._int(getattr(self, f"{prefix}_resume_unwashed_ap"), "尚未洗回的 HP／MP AP")
         return ResumeFrom.from_stats(
             level=level,
             base_hp=base_hp,
@@ -649,6 +651,7 @@ class HpWashApp(ctk.CTk):
             base_luk=base_luk,
             base_dex=base_dex,
             fresh_ap=fresh_ap,
+            unwashed_ap=unwashed_ap,
             int_reset_done=bool(getattr(self, f"{prefix}_resume_int_reset_done").get()),
             job=job,
         )

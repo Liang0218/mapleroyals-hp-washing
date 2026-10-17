@@ -12,8 +12,18 @@ describe("Python calculation-core parity: simulator and optimizer", () => {
   it("matches the established Thief A simulation result", () => {
     const result = simulate({ policy: "mp_wash_shortfall", target_base_int: 320, target_hp: 27000, int_reset_level: 155, int_gear: exampleGear, mp_wash_end: 120, hp_mode: "avg", extra_mp_threshold: 60, int_gear_after_reset: 50 });
     expect(result).toMatchObject({ final_base_hp: 27016, final_display_hp: 27016, final_base_mp: 6394, int_reached_level: 67 });
-    expect(result.apr).toEqual({ mp_wash_count: 290, method1_hp_wash_count: 570, method2_hp_wash_count: 449, int_reset_apr: 316 });
+    expect(result.apr).toEqual({ mp_wash_count: 290, method1_hp_wash_count: 570, method2_hp_wash_count: 449, int_reset_apr: 316, resume_wash_apr: 0 });
     expect(result.plan).toHaveLength(202);
+    const method1Note = result.plan.find((row) => row.fresh_ap_hp === 5)?.notes ?? "";
+    expect(method1Note).toMatch(/洗回 5 點 AP（MP -60）→ (?:INT|LUK|DEX|STR) \d+/);
+    expect(result.plan.some((row) => row.notes.includes("MP 淨增加"))).toBe(true);
+    const method2Note = result.plan.find((row) => row.action === "M2")?.notes ?? "";
+    expect(method2Note).toContain("Method 2：洗回 ");
+    expect(method2Note).toContain("→ HP +");
+    const mpWashNote = result.plan.find((row) => row.fresh_ap_mp > 0)?.notes ?? "";
+    expect(mpWashNote).toMatch(/洗回 5 點 AP（MP -60）→ (?:INT|LUK|DEX|STR) \d+/);
+    expect(mpWashNote).not.toContain("APR -");
+    expect(mpWashNote).not.toMatch(/\b(?:INT|LUK|DEX|STR) 0\b/);
   });
 
   it("matches the established A/B optimizer winner", () => {
@@ -50,8 +60,19 @@ describe("Python calculation-core parity: simulator and optimizer", () => {
     const result = simulate({ policy: "mp_wash_shortfall", target_base_int: 320, target_hp: 22000, int_reset_level: 155, int_gear: exampleGear, mp_wash_end: 120, int_gear_after_reset: 50, resume_from: { level: 90, base_hp: 14000, base_mp: 2208, base_int: 320, base_luk: 60, fresh_ap: 5 } });
     expect(result).toMatchObject({ final_base_hp: 26145, final_base_mp: 7664, int_reached_level: 90 });
     expect(result.plan[0].action).toBe("RESUME");
+    expect(result.plan[1].notes).toContain("MP 淨增加");
     expect(result.plan).toHaveLength(113);
     expect(result.apr.mp_wash_count + result.apr.method1_hp_wash_count + result.apr.method2_hp_wash_count + result.apr.int_reset_apr).toBe(876);
+  });
+
+  it("counts HP and MP AP awaiting washback in the resumed APR total", () => {
+    const result = simulate({ policy: "mp_wash_shortfall", target_base_int: 324, target_hp: 22000, int_reset_level: 155, int_gear: exampleGear, mp_wash_end: 120, int_gear_after_reset: 50, resume_from: { level: 90, base_hp: 14000, base_mp: 2208, base_int: 320, unwashed_ap: 5 } });
+    expect(result.apr.resume_wash_apr).toBe(5);
+    expect(result.plan[0].apr_spent).toBe(5);
+    expect(result.plan[0]).toMatchObject({ base_int: 324, fresh_ap_int: 4, fresh_ap_luk: 1 });
+    expect(result.plan[0].notes).toContain("待洗回 AP 5 點 → INT 4、LUK 1");
+    expect(result.plan[0].notes).toContain("本等剩餘 AP 5 點由下一列分配");
+    expect(result.plan.find((row) => row.action === "RESET_INT")?.notes).toContain("→ LUK ");
   });
 
   it("accepts a resume snapshot with MP below the level minimum", () => {
@@ -79,7 +100,7 @@ describe("Python calculation-core parity: simulator and optimizer", () => {
   it("matches the supplied app's A / INT 380 / MP end 101 scenario", () => {
     const result = simulate({ policy: "mp_wash_shortfall", target_base_int: 380, target_hp: 27000, int_reset_level: 155, int_gear: exampleGear, job: "thief", mp_wash_end: 101, quest_equip_hp: 0, hp_mode: "avg", mw_percent: 0.1, mw_from_level: 10, int_gear_after_reset: 50, extra_mp_threshold: 60, auto_method2: true });
     expect(result).toMatchObject({ final_base_hp: 27008, final_display_hp: 27008, final_base_mp: 3081, int_reached_level: 78, base_int_peak: 380 });
-    expect(result.apr).toEqual({ mp_wash_count: 130, method1_hp_wash_count: 730, method2_hp_wash_count: 253, int_reset_apr: 376 });
+    expect(result.apr).toEqual({ mp_wash_count: 130, method1_hp_wash_count: 730, method2_hp_wash_count: 253, int_reset_apr: 376, resume_wash_apr: 0 });
   });
 
   it("prioritizes HP over an unreachable MP target during optimization", () => {
@@ -132,6 +153,6 @@ describe("Python calculation-core parity: simulator and optimizer", () => {
     const earlyRow = earlyRows[0];
     expect(earlyRow?.fresh_ap_mp).toBeGreaterThanOrEqual(5);
     expect(earlyRow?.apr_spent).toBe(earlyRow?.fresh_ap_mp);
-    expect(earlyRow?.notes).toContain(`return INT ${earlyRow?.fresh_ap_mp}`);
+    expect(earlyRow?.notes).toContain(`洗回 ${earlyRow?.fresh_ap_mp} 點 AP（MP -${(earlyRow?.fresh_ap_mp ?? 0) * 12}）→ INT ${earlyRow?.fresh_ap_mp}`);
   });
 });

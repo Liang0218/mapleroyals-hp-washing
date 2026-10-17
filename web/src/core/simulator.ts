@@ -18,7 +18,7 @@ type NormalizedConfig = Required<Omit<SimulateConfig, "resume_from" | "improved_
 class State {
   level = 1; base_str = STARTING_STR; base_dex = STARTING_DEX; base_int = STARTING_INT; base_luk = STARTING_LUK;
   base_hp = STARTING_HP; base_mp = STARTING_MP; base_int_peak = STARTING_INT; int_reached_level = 0;
-  mp_wash_count = 0; method1_hp_wash_count = 0; method2_hp_wash_count = 0; int_reset_apr = 0;
+  mp_wash_count = 0; method1_hp_wash_count = 0; method2_hp_wash_count = 0; int_reset_apr = 0; resume_wash_apr = 0; resume_wash_int = 0;
   int_reset_done = false; level_fresh_ap = FRESH_AP_PER_LEVEL; plan: LevelPlanRow[] = [];
   constructor(readonly profile: JobProfile, readonly skill: SkillTracker) {}
   noteInt(): void { this.base_int_peak = Math.max(this.base_int_peak, this.base_int); }
@@ -58,13 +58,13 @@ export function simulate(input: SimulateConfig): SimulateResult {
   const state = new State(profile, skill);
   let startLoop = 2;
   if (config.resume_from) {
-    seedResume(state, config); state.plan.push(row(state, "RESUME", { notes: "Resume snapshot" }));
+    seedResume(state, config); state.plan.push(row(state, "RESUME", { apr_spent: state.resume_wash_apr, fresh_ap_int: state.resume_wash_int, ...primaryFields(state, state.resume_wash_apr - state.resume_wash_int), notes: [`接續 Lv${state.level}`, state.resume_wash_apr > 0 ? `待洗回 AP ${state.resume_wash_apr} 點 → ${allocationSummary(state, state.resume_wash_int, state.resume_wash_apr - state.resume_wash_int)}` : "", state.level_fresh_ap > 0 ? `本等剩餘 AP ${state.level_fresh_ap} 點由下一列分配` : ""].filter(Boolean).join("；") }));
     markIntReached(state, config); execute(state, decide(state, config), config); markIntReached(state, config); maybeReset(state, config); startLoop = state.level + 1;
   } else { applyStartingAp(state, config); markIntReached(state, config); }
   for (let level = startLoop; level <= config.max_level; level += 1) { levelUp(state, level, config); execute(state, decide(state, config), config); markIntReached(state, config); maybeReset(state, config); }
   if (config.auto_method2) method2TopUp(state, config);
   if (state.level >= config.int_reset_level && !state.int_reset_done && state.base_int > BASE_STAT_FLOOR) resetInt(state);
-  const apr: AprBreakdown = { mp_wash_count: state.mp_wash_count, method1_hp_wash_count: state.method1_hp_wash_count, method2_hp_wash_count: state.method2_hp_wash_count, int_reset_apr: state.int_reset_apr };
+  const apr: AprBreakdown = { mp_wash_count: state.mp_wash_count, method1_hp_wash_count: state.method1_hp_wash_count, method2_hp_wash_count: state.method2_hp_wash_count, int_reset_apr: state.int_reset_apr, resume_wash_apr: state.resume_wash_apr };
   const display = state.base_hp + config.quest_equip_hp;
   return { policy: config.policy, target_base_int: config.target_base_int, target_hp: config.target_hp, int_reached_level: state.int_reached_level, mp_wash_end: config.mp_wash_end, extra_mp_threshold: config.extra_mp_threshold, int_gear_after_reset: config.int_gear_after_reset, final_base_hp: pyRound(state.base_hp), final_display_hp: pyRound(display), final_base_mp: pyRound(state.base_mp), base_int_peak: state.base_int_peak, reached_target: display + 1e-9 >= config.target_hp && (config.target_mp === undefined || state.base_mp + 1e-9 >= config.target_mp), apr, plan: state.plan, resume_from: config.resume_from, job: config.job, improved_maxhp_level: profile.maxhpSkill ? state.skill.effectiveLevel : undefined, target_mp: config.target_mp };
 }
@@ -76,14 +76,17 @@ function seedResume(state: State, config: NormalizedConfig): void {
   if (resume.base_mp < 0) throw new Error("resume base_mp must be >= 0");
   if (resume.base_int < 4) throw new Error("resume base_int too low");
   if (resume.int_reset_done && resume.base_int > BASE_STAT_FLOOR) throw new Error("int_reset_done but base_int > 4");
+  if ((resume.unwashed_ap ?? 0) < 0) throw new Error("unwashed AP must be >= 0");
   state.level = resume.level; state.base_hp = config.hp_cap === undefined ? resume.base_hp : Math.min(resume.base_hp, config.hp_cap); state.base_mp = resume.base_mp; state.base_int = resume.base_int;
   state.base_luk = resume.base_luk ?? 4; state.base_dex = resume.base_dex ?? 25; state.base_str = resume.base_str ?? 4;
   state.base_int_peak = Math.max(resume.base_int_peak ?? resume.base_int, resume.base_int); state.int_reset_done = resume.int_reset_done ?? false;
   state.level_fresh_ap = resume.fresh_ap ?? FRESH_AP_PER_LEVEL; state.int_reached_level = state.base_int >= config.target_base_int || state.int_reset_done ? state.level : 0;
+  state.resume_wash_apr = resume.unwashed_ap ?? 0;
+  if (state.resume_wash_apr) [state.resume_wash_int] = dump(state, config, state.resume_wash_apr);
   if (state.profile.maxhpSkill) state.skill.seedForResume(state.level, state.profile.jobAdvances);
 }
 function markIntReached(state: State, config: NormalizedConfig): void { if (state.int_reached_level === 0 && state.base_int >= config.target_base_int) state.int_reached_level = state.level; }
-function applyStartingAp(state: State, config: NormalizedConfig): void { const toInt = Math.min(STARTING_FRESH_AP, Math.max(0, config.target_base_int - state.base_int)); const toPrimary = STARTING_FRESH_AP - toInt; state.base_int += toInt; addPrimary(state, toPrimary); state.noteInt(); state.plan.push(row(state, "BUILD", { fresh_ap_int: toInt, ...primaryFields(state, toPrimary), notes: `Creation AP → INT ${toInt}, ${state.profile.primaryStat.toUpperCase()} ${toPrimary}` })); }
+function applyStartingAp(state: State, config: NormalizedConfig): void { const toInt = Math.min(STARTING_FRESH_AP, Math.max(0, config.target_base_int - state.base_int)); const toPrimary = STARTING_FRESH_AP - toInt; state.base_int += toInt; addPrimary(state, toPrimary); state.noteInt(); state.plan.push(row(state, "BUILD", { fresh_ap_int: toInt, ...primaryFields(state, toPrimary), notes: `初始 AP 分配：INT ${toInt}、${primaryStatLabel(state)} ${toPrimary}` })); }
 function levelUp(state: State, level: number, config: NormalizedConfig): void {
   const advance = state.profile.jobAdvances.get(level); if (advance) state.skill.onJobAdvance(advance.number); state.skill.onLevel();
   const currentInt = totalInt(state.base_int, config.int_gear, level, { mwPercent: config.mw_percent, mwFromLevel: config.mw_from_level, intResetLevel: config.int_reset_level, intGearAfterReset: config.int_gear_after_reset });
@@ -94,6 +97,11 @@ function levelUp(state: State, level: number, config: NormalizedConfig): void {
 function pickAdvance(mid: number, spread = 25, mode: "avg" | "min" | "max"): number { if (mid === 0) return 0; return mode === "min" ? Math.max(0, mid - spread) : mode === "max" ? mid + spread : mid; }
 function maybeReset(state: State, config: NormalizedConfig): void { if (!state.int_reset_done && state.level >= config.int_reset_level && state.base_int > BASE_STAT_FLOOR) resetInt(state); }
 function primaryAction(state: State): Action { return state.profile.primaryStat === "str" ? "STR5" : state.profile.primaryStat === "dex" ? "DEX5" : "LUK5"; }
+function primaryStatLabel(state: State): string { return state.profile.primaryStat.toUpperCase(); }
+function formatAmount(value: number): string { return String(Number(value.toFixed(1))); }
+function allocationSummary(state: State, toInt: number, toPrimary: number): string {
+  return [toInt > 0 ? `INT ${toInt}` : "", toPrimary > 0 ? `${primaryStatLabel(state)} ${toPrimary}` : ""].filter(Boolean).join("、");
+}
 function decide(state: State, config: NormalizedConfig): Action {
   const hardcore = config.policy === "mp_wash_hardcore" && !state.int_reset_done && state.level < config.int_reset_level && state.base_int < config.target_base_int && state.level >= HARDCORE_EARLY_START_LEVEL;
   if (hardcore) return "HARDCORE_GREEDY";
@@ -117,20 +125,79 @@ function build(state: State, config: NormalizedConfig): void {
   if (state.level < 11 && state.profile.firstJobStat !== "none") { const need = state.profile.firstJobStat === "dex" ? Math.max(0, state.profile.firstJobRequirement - state.base_dex) : Math.max(0, state.profile.firstJobRequirement - state.base_str); if (state.profile.firstJobStat === "dex" && need && state.base_int < 20) { const take = Math.min(ap, 20 - state.base_int); state.base_int += take; toInt += take; ap -= take; } const take = Math.min(ap, need); if (state.profile.firstJobStat === "dex") { state.base_dex += take; dex += take; } else { state.base_str += take; str += take; } ap -= take; }
   const stack = Math.min(ap, intRoom(state, config)); state.base_int += stack; toInt += stack; ap -= stack; if (ap) addPrimary(state, ap); state.noteInt();
   if (state.profile.primaryStat === "dex") dex += ap; if (state.profile.primaryStat === "str") str += ap;
-  state.plan.push(row(state, "BUILD", { fresh_ap_int: toInt, fresh_ap_dex: dex, fresh_ap_str: str, fresh_ap_luk: state.profile.primaryStat === "luk" ? ap : 0, notes: "Build stats" }));
+  const toPrimary = state.profile.primaryStat === "str" ? str : state.profile.primaryStat === "dex" ? dex : ap;
+  state.plan.push(row(state, "BUILD", { fresh_ap_int: toInt, fresh_ap_dex: dex, fresh_ap_str: str, fresh_ap_luk: state.profile.primaryStat === "luk" ? ap : 0, notes: `本等 AP 分配：${allocationSummary(state, toInt, toPrimary)}` }));
 }
-function method1(state: State, config: NormalizedConfig, requested: number): void { let done = 0; let toInt = 0; let toPrimary = 0; for (let index = 0; index < requested; index += 1) { if (config.hp_cap !== undefined && state.base_hp >= config.hp_cap || !state.canRemoveMp(1, config.target_mp)) break; const hp = state.profile.method1Hp(config.hp_mode, state.skill); state.base_hp += config.hp_cap === undefined ? hp : Math.min(hp, config.hp_cap - state.base_hp); state.base_mp -= state.profile.mpRemovedPerApr; const [i, p] = assignWash(state, config, 1); toInt += i; toPrimary += p; done += 1; } const [leftInt, leftPrimary] = done < state.level_fresh_ap ? dump(state, config, state.level_fresh_ap - done) : [0, 0]; state.method1_hp_wash_count += done; state.plan.push(row(state, done ? (`HP${Math.min(5, done)}` as Action) : leftInt ? "INT5" : primaryAction(state), { fresh_ap_hp: done, fresh_ap_int: leftInt, apr_spent: done, ...primaryFields(state, leftPrimary), notes: `Method1 × ${done}; return INT ${toInt}, primary ${toPrimary}` })); }
-function mpWash(state: State, config: NormalizedConfig, requested: number): void { let done = 0; let toInt = 0; let toPrimary = 0; for (let index = 0; index < requested; index += 1) { const gain = state.profile.freshApMp(state.base_int, config.hp_mode); state.base_mp += gain; if (state.extraMp() <= 1e-9) { state.base_mp -= gain; break; } state.base_mp -= state.profile.mpRemovedPerApr; const [i, p] = assignWash(state, config, 1); toInt += i; toPrimary += p; done += 1; } const [leftInt, leftPrimary] = done < state.level_fresh_ap ? dump(state, config, state.level_fresh_ap - done) : [0, 0]; state.mp_wash_count += done; state.plan.push(row(state, done ? (`MP${Math.min(5, done)}` as Action) : leftInt ? "INT5" : primaryAction(state), { fresh_ap_mp: done, fresh_ap_int: leftInt, apr_spent: done, ...primaryFields(state, leftPrimary), notes: `MP wash × ${done}; return INT ${toInt}, primary ${toPrimary}` })); }
-function greedy(state: State, config: NormalizedConfig): void { let remaining = state.level_fresh_ap; let hp = 0; let mp = 0; while (remaining > 0) { if (config.hp_cap !== undefined && state.base_hp >= config.hp_cap) break; if (state.canRemoveMp(1, config.target_mp)) { const gain = state.profile.method1Hp(config.hp_mode, state.skill); state.base_hp += config.hp_cap === undefined ? gain : Math.min(gain, config.hp_cap - state.base_hp); state.base_mp -= state.profile.mpRemovedPerApr; assignWash(state, config, 1); state.method1_hp_wash_count += 1; hp += 1; remaining -= 1; continue; } if (state.level >= HARDCORE_MP_WASH_MIN_LEVEL) { const gain = state.profile.freshApMp(state.base_int, config.hp_mode); state.base_mp += gain; if (state.extraMp() > 1e-9) { state.base_mp -= state.profile.mpRemovedPerApr; assignWash(state, config, 1); state.mp_wash_count += 1; mp += 1; remaining -= 1; continue; } state.base_mp -= gain; } break; } const [toInt, toPrimary] = remaining ? dump(state, config, remaining) : [0, 0]; state.plan.push(row(state, "HARDCORE_GREEDY", { fresh_ap_hp: hp, fresh_ap_mp: mp, fresh_ap_int: toInt, apr_spent: hp + mp, ...primaryFields(state, toPrimary), notes: "Greedy HP1/MP1" })); }
-function execute(state: State, action: Action, config: NormalizedConfig): void { if (action === "BUILD") return build(state, config); if (action === "HARDCORE_GREEDY") return greedy(state, config); if (action.startsWith("HP")) return method1(state, config, method1WashesAffordable(state.extraMp(), state.level_fresh_ap, state.profile.mpRemovedPerApr)); if (action.startsWith("MP")) return mpWash(state, config, mpWashesAffordable(state.base_int, state.base_mp, state.level, state.level_fresh_ap, config.hp_mode, config.job)); if (action === "INT5") { const [toInt, toPrimary] = dump(state, config, state.level_fresh_ap); state.plan.push(row(state, toInt ? "INT5" : primaryAction(state), { fresh_ap_int: toInt, ...primaryFields(state, toPrimary), notes: "Dump fresh AP" })); return; } if (action === "LUK5" || action === "STR5" || action === "DEX5") { addPrimary(state, state.level_fresh_ap); state.plan.push(row(state, action, { ...primaryFields(state, state.level_fresh_ap), notes: "Primary stat" })); } }
-function resetInt(state: State): void { if (state.base_int <= BASE_STAT_FLOOR) { state.int_reset_done = true; return; } const moved = state.base_int - BASE_STAT_FLOOR; state.base_int = BASE_STAT_FLOOR; addPrimary(state, moved); state.int_reset_apr += moved; state.int_reset_done = true; state.plan.push(row(state, "RESET_INT", { apr_spent: moved, notes: "Reset INT" })); }
+function method1(state: State, config: NormalizedConfig, requested: number): void {
+  let done = 0; let toInt = 0; let toPrimary = 0; let hpGained = 0;
+  for (let index = 0; index < requested; index += 1) {
+    if ((config.hp_cap !== undefined && state.base_hp >= config.hp_cap) || !state.canRemoveMp(1, config.target_mp)) break;
+    const hp = state.profile.method1Hp(config.hp_mode, state.skill);
+    const hpAdded = config.hp_cap === undefined ? hp : Math.min(hp, config.hp_cap - state.base_hp);
+    state.base_hp += hpAdded; hpGained += hpAdded; state.base_mp -= state.profile.mpRemovedPerApr;
+    const [i, p] = assignWash(state, config, 1); toInt += i; toPrimary += p; done += 1;
+  }
+  const [leftInt, leftPrimary] = done < state.level_fresh_ap ? dump(state, config, state.level_fresh_ap - done) : [0, 0];
+  state.method1_hp_wash_count += done;
+  const washAllocation = allocationSummary(state, toInt, toPrimary); const remainingAllocation = allocationSummary(state, leftInt, leftPrimary);
+  const notes = [done ? `乾淨 AP ${done} 點 → HP +${formatAmount(hpGained)}` : "", washAllocation ? `洗回 ${done} 點 AP（MP -${formatAmount(done * state.profile.mpRemovedPerApr)}）→ ${washAllocation}` : "", remainingAllocation ? `剩餘 AP → ${remainingAllocation}` : ""].filter(Boolean).join("；");
+  state.plan.push(row(state, done ? (`HP${Math.min(5, done)}` as Action) : leftInt ? "INT5" : primaryAction(state), { fresh_ap_hp: done, fresh_ap_int: leftInt, apr_spent: done, ...primaryFields(state, leftPrimary), notes }));
+}
+function mpWash(state: State, config: NormalizedConfig, requested: number): void {
+  let done = 0; let toInt = 0; let toPrimary = 0; let mpNet = 0;
+  for (let index = 0; index < requested; index += 1) {
+    const gain = state.profile.freshApMp(state.base_int, config.hp_mode); state.base_mp += gain;
+    if (state.extraMp() <= 1e-9) { state.base_mp -= gain; break; }
+    state.base_mp -= state.profile.mpRemovedPerApr; mpNet += gain - state.profile.mpRemovedPerApr;
+    const [i, p] = assignWash(state, config, 1); toInt += i; toPrimary += p; done += 1;
+  }
+  const [leftInt, leftPrimary] = done < state.level_fresh_ap ? dump(state, config, state.level_fresh_ap - done) : [0, 0];
+  state.mp_wash_count += done;
+  const washAllocation = allocationSummary(state, toInt, toPrimary); const remainingAllocation = allocationSummary(state, leftInt, leftPrimary);
+  const notes = [done ? `乾淨 AP ${done} 點 → MP` : "", done ? `MP 淨${mpNet >= 0 ? "增加" : "減少"} ${formatAmount(Math.abs(mpNet))}` : "", washAllocation ? `洗回 ${done} 點 AP（MP -${formatAmount(done * state.profile.mpRemovedPerApr)}）→ ${washAllocation}` : "", remainingAllocation ? `剩餘 AP → ${remainingAllocation}` : ""].filter(Boolean).join("；");
+  state.plan.push(row(state, done ? (`MP${Math.min(5, done)}` as Action) : leftInt ? "INT5" : primaryAction(state), { fresh_ap_mp: done, fresh_ap_int: leftInt, apr_spent: done, ...primaryFields(state, leftPrimary), notes }));
+}
+function greedy(state: State, config: NormalizedConfig): void {
+  let remaining = state.level_fresh_ap; let hp = 0; let mp = 0; let returnedInt = 0; let returnedPrimary = 0; let hpGained = 0; let mpNet = 0;
+  while (remaining > 0) {
+    if (config.hp_cap !== undefined && state.base_hp >= config.hp_cap) break;
+    if (state.canRemoveMp(1, config.target_mp)) {
+      const gain = state.profile.method1Hp(config.hp_mode, state.skill); const added = config.hp_cap === undefined ? gain : Math.min(gain, config.hp_cap - state.base_hp);
+      state.base_hp += added; hpGained += added; state.base_mp -= state.profile.mpRemovedPerApr;
+      const [i, p] = assignWash(state, config, 1); returnedInt += i; returnedPrimary += p; state.method1_hp_wash_count += 1; hp += 1; remaining -= 1; continue;
+    }
+    if (state.level >= HARDCORE_MP_WASH_MIN_LEVEL) {
+      const gain = state.profile.freshApMp(state.base_int, config.hp_mode); state.base_mp += gain;
+      if (state.extraMp() > 1e-9) { state.base_mp -= state.profile.mpRemovedPerApr; mpNet += gain - state.profile.mpRemovedPerApr; const [i, p] = assignWash(state, config, 1); returnedInt += i; returnedPrimary += p; state.mp_wash_count += 1; mp += 1; remaining -= 1; continue; }
+      state.base_mp -= gain;
+    }
+    break;
+  }
+  const [toInt, toPrimary] = remaining ? dump(state, config, remaining) : [0, 0];
+  const returnedAllocation = allocationSummary(state, returnedInt, returnedPrimary); const remainingAllocation = allocationSummary(state, toInt, toPrimary);
+  const notes = [hp ? `洗血：乾淨 AP ${hp} 點 → HP （HP +${formatAmount(hpGained)}、MP -${formatAmount(hp * state.profile.mpRemovedPerApr)}）` : "", mp ? `乾淨 AP ${mp} 點 → MP （MP 淨增加 ${formatAmount(mpNet)}）` : "", returnedAllocation ? `洗回 AP → ${returnedAllocation}` : "", remainingAllocation ? `剩餘 AP → ${remainingAllocation}` : ""].filter(Boolean).join("；");
+  state.plan.push(row(state, "HARDCORE_GREEDY", { fresh_ap_hp: hp, fresh_ap_mp: mp, fresh_ap_int: toInt, apr_spent: hp + mp, ...primaryFields(state, toPrimary), notes }));
+}
+function execute(state: State, action: Action, config: NormalizedConfig): void {
+  if (action === "BUILD") return build(state, config);
+  if (action === "HARDCORE_GREEDY") return greedy(state, config);
+  if (action.startsWith("HP")) return method1(state, config, method1WashesAffordable(state.extraMp(), state.level_fresh_ap, state.profile.mpRemovedPerApr));
+  if (action.startsWith("MP")) return mpWash(state, config, mpWashesAffordable(state.base_int, state.base_mp, state.level, state.level_fresh_ap, config.hp_mode, config.job));
+  if (action === "INT5") { const [toInt, toPrimary] = dump(state, config, state.level_fresh_ap); state.plan.push(row(state, toInt ? "INT5" : primaryAction(state), { fresh_ap_int: toInt, ...primaryFields(state, toPrimary), notes: `本等 AP 分配：${allocationSummary(state, toInt, toPrimary)}` })); return; }
+  if (action === "LUK5" || action === "STR5" || action === "DEX5") { addPrimary(state, state.level_fresh_ap); state.plan.push(row(state, action, { ...primaryFields(state, state.level_fresh_ap), notes: `本等 AP 分配：${primaryStatLabel(state)} ${state.level_fresh_ap}` })); }
+}
+function resetInt(state: State): void {
+  if (state.base_int <= BASE_STAT_FLOOR) { state.int_reset_done = true; return; }
+  const moved = state.base_int - BASE_STAT_FLOOR; state.base_int = BASE_STAT_FLOOR; addPrimary(state, moved); state.int_reset_apr += moved; state.int_reset_done = true;
+  state.plan.push(row(state, "RESET_INT", { apr_spent: moved, notes: `INT ${moved} → ${primaryStatLabel(state)} ${moved}` }));
+}
 function method2TopUp(state: State, config: NormalizedConfig): void {
   const target = config.target_hp - config.quest_equip_hp;
-  let washes = 0;
-  const wash = () => { const hp = state.profile.method2Hp(config.hp_mode, state.skill); state.base_hp += config.hp_cap === undefined ? hp : Math.min(hp, config.hp_cap - state.base_hp); state.base_mp -= state.profile.mpRemovedPerApr; washes += 1; };
+  let washes = 0; let hpGained = 0;
+  const wash = () => { const hp = state.profile.method2Hp(config.hp_mode, state.skill); const added = config.hp_cap === undefined ? hp : Math.min(hp, config.hp_cap - state.base_hp); state.base_hp += added; hpGained += added; state.base_mp -= state.profile.mpRemovedPerApr; washes += 1; };
   while (state.base_hp + 1e-9 < target && (config.hp_cap === undefined || state.base_hp + 1e-9 < config.hp_cap) && state.canRemoveMp(1, config.target_mp)) wash();
   if (washes) {
     state.method2_hp_wash_count += washes;
-    state.plan.push(row(state, "M2", { apr_spent: washes, notes: `Method2 × ${washes}` }));
+    state.plan.push(row(state, "M2", { apr_spent: washes, notes: `Method 2：洗回 ${washes} 點 AP（MP -${formatAmount(washes * state.profile.mpRemovedPerApr)}）→ HP +${formatAmount(hpGained)}` }));
   }
 }

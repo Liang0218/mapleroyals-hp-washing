@@ -58,6 +58,27 @@ def test_resume_simulate_starts_at_snapshot_level(example_gear):
     assert "使用 APR" in format_simulate_report(result)
 
 
+def test_resume_counts_unwashed_hp_and_mp_ap_as_remaining_apr(example_gear):
+    resume = ResumeFrom.from_stats(
+        level=90, base_hp=14000, base_mp=2208, base_int=320,
+        unwashed_ap=5,
+    )
+    result = simulate(SimulateConfig(
+        policy=PolicyName.MP_WASH_SHORTFALL, target_base_int=324,
+        target_hp=22000, int_reset_level=155, int_gear=example_gear,
+        mp_wash_end=120, resume_from=resume,
+    ))
+    assert result.apr.resume_wash_apr == 5
+    assert result.plan[0].base_int == 324
+    assert result.plan[0].fresh_ap_int == 4
+    assert result.plan[0].fresh_ap_luk == 1
+    assert result.apr.total_apr == (
+        result.apr.mp_wash_count + result.apr.method1_hp_wash_count
+        + result.apr.method2_hp_wash_count + result.apr.int_reset_apr + 5
+    )
+    assert result.plan[0].apr_spent == 5
+
+
 def test_resume_int_already_reset_no_second_reset_apr(example_gear):
     resume = ResumeFrom.from_stats(
         level=160,

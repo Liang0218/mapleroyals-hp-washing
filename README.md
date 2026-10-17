@@ -147,6 +147,8 @@ python -m hp_wash_thief optimize \
 - 70／120 剛轉職且職轉 AP 未花時，將 `--fresh-ap` 設為 `10`。
 - 報告中的 APR 為**接續後使用的 APR**（不含過去已花的 wash APR）。
 - GUI：Optimize／Simulate 分頁勾選「中途接續」即可。
+- Resume accepts one `unwashed-ap` count for AP still in HP/MP. Each point adds 1 APR; returned AP fills target INT first, then the primary stat.
+- CLI: `--unwashed-ap`; the current base HP/MP fields should still contain the character values.
 
 ## What it answers
 

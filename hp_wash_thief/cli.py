@@ -171,6 +171,7 @@ def _add_resume_args(p: argparse.ArgumentParser) -> None:
         default=None,
         help="Unspent fresh AP this level (default: 5; use 10 at 70/120 if job AP unspent)",
     )
+    g.add_argument("--unwashed-ap", type=int, default=0, help="AP currently in HP/MP awaiting washback; each point adds one APR and returns to INT or primary stat")
     g.add_argument(
         "--int-reset-done",
         action="store_true",
@@ -201,6 +202,7 @@ def _parse_resume(args: argparse.Namespace) -> Optional[ResumeFrom]:
         base_dex=args.base_dex,
         base_str=getattr(args, "base_str", 4),
         fresh_ap=args.fresh_ap,
+        unwashed_ap=args.unwashed_ap,
         int_reset_done=args.int_reset_done,
         base_int_peak=args.base_int_peak,
         job=args.job,

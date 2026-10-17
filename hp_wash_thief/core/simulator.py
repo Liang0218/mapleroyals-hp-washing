@@ -48,6 +48,8 @@ class CharacterState:
     method1_hp_wash_count: int = 0
     method2_hp_wash_count: int = 0
     int_reset_apr: int = 0
+    resume_wash_apr: int = 0
+    resume_wash_int: int = 0
     int_reset_done: bool = False
     level_fresh_ap: int = F.FRESH_AP_PER_LEVEL
     plan: list[LevelPlanRow] = field(default_factory=list)
@@ -120,6 +122,7 @@ def simulate(config: SimulateConfig) -> SimulateResult:
         method1_hp_wash_count=state.method1_hp_wash_count,
         method2_hp_wash_count=state.method2_hp_wash_count,
         int_reset_apr=state.int_reset_apr,
+        resume_wash_apr=state.resume_wash_apr,
     )
     assert config.extra_mp_threshold is not None
     hp_ok = display_hp + 1e-9 >= config.target_hp
@@ -189,6 +192,8 @@ def _validate_resume(resume: ResumeFrom, config: SimulateConfig) -> None:
         raise ValueError("resume base_str too low")
     if resume.fresh_ap is not None and resume.fresh_ap < 0:
         raise ValueError("resume fresh_ap must be >= 0")
+    if resume.unwashed_ap < 0:
+        raise ValueError("unwashed AP must be >= 0")
     if resume.int_reset_done and resume.base_int > F.BASE_STAT_FLOOR:
         raise ValueError("int_reset_done but base_int > 4")
     if resume.base_int_peak is not None and resume.base_int_peak < resume.base_int:
@@ -211,7 +216,7 @@ def _seed_from_resume(
     elif profile.maxhp_skill is not None:
         adv_map = {lv: adv for lv, (adv, _) in profile.job_advances.items()}
         skill.seed_for_resume(resume.level, adv_map)
-    return CharacterState(
+    state = CharacterState(
         level=resume.level,
         base_str=resume.base_str,
         base_dex=resume.base_dex,
@@ -226,10 +231,14 @@ def _seed_from_resume(
             else 0
         ),
         int_reset_done=resume.int_reset_done,
+        resume_wash_apr=resume.unwashed_ap,
         level_fresh_ap=fresh,
         profile=profile,
         skill=skill,
     )
+    if resume.unwashed_ap:
+        state.resume_wash_int, _ = _dump_points(state, config, resume.unwashed_ap)
+    return state
 
 
 def _append_resume_marker(state: CharacterState, config: SimulateConfig) -> None:
@@ -247,6 +256,11 @@ def _append_resume_marker(state: CharacterState, config: SimulateConfig) -> None
             base_hp=int(round(state.base_hp)),
             base_mp=int(round(state.base_mp)),
             extra_mp=int(round(state.extra_mp())),
+            apr_spent=state.resume_wash_apr,
+            fresh_ap_int=state.resume_wash_int,
+            **_primary_fresh_fields(
+                state.profile, state.resume_wash_apr - state.resume_wash_int
+            ),
             notes=(
                 f"中途接續：Lv{state.level}｜INT {state.base_int}｜"
                 f"Extra MP {int(round(state.extra_mp()))}｜本等剩餘 AP {fresh}"

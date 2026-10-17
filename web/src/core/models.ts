@@ -40,6 +40,7 @@ export interface ResumeFrom {
   base_dex?: number;
   base_str?: number;
   fresh_ap?: number;
+  unwashed_ap?: number;
   int_reset_done?: boolean;
   base_int_peak?: number;
 }
@@ -96,6 +97,7 @@ export interface AprBreakdown {
   method1_hp_wash_count: number;
   method2_hp_wash_count: number;
   int_reset_apr: number;
+  resume_wash_apr: number;
 }
 
 export interface LevelPlanRow {
@@ -155,4 +157,4 @@ export interface OptimizeResult {
 }
 
 export const totalApr = (apr: AprBreakdown): number =>
-  apr.mp_wash_count + apr.method1_hp_wash_count + apr.method2_hp_wash_count + apr.int_reset_apr;
+  apr.mp_wash_count + apr.method1_hp_wash_count + apr.method2_hp_wash_count + apr.int_reset_apr + apr.resume_wash_apr;

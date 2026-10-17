@@ -11,11 +11,13 @@ def assert_apr_identity(apr: AprBreakdown) -> None:
         + apr.method1_hp_wash_count
         + apr.method2_hp_wash_count
         + apr.int_reset_apr
+        + apr.resume_wash_apr
     )
     assert apr.mp_wash_count >= 0
     assert apr.method1_hp_wash_count >= 0
     assert apr.method2_hp_wash_count >= 0
     assert apr.int_reset_apr >= 0
+    assert apr.resume_wash_apr >= 0
 
 
 def assert_plan_invariants(result: SimulateResult) -> None:

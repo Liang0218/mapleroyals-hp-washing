@@ -10,7 +10,7 @@ import { planCsv } from "./file/plan-csv";
 import { formatUserError } from "./user-errors";
 
 type Tab = "guide" | "job-reference" | "equipment" | "optimize" | "simulate" | "actions";
-type ResumeFields = { level: string; baseHp: string; baseMp: string; baseInt: string; baseLuk: string; baseDex: string; baseStr: string; freshAp: string; intResetDone: boolean };
+type ResumeFields = { level: string; baseHp: string; baseMp: string; baseInt: string; baseLuk: string; baseDex: string; baseStr: string; freshAp: string; unwashedAp: string; intResetDone: boolean };
 type CalculatorConfig = {
   job: string; policy: PolicyName; targetHp: number; targetMp: string; targetLevel: string; targetInt: number;
   resetLevel: number; mpWashEnd: number; questHp: number; hpMode: HpMode;
@@ -47,9 +47,13 @@ const initialEquipment: EquipmentItem[] = [
   ["Ring of Alchemist", "Ring", 10], ["Ring of Alchemist", "Ring", 10], ["Ring of Alchemist", "Ring", 10],
   ["Circle Of Ancient Thought", "Ring", 20], ["Almighty Ring", "Ring", 70], ["white Snowshoes", "Shoe", 10],
 ].map(([name, type, equip_level]) => ({ name: String(name), type: type as EquipmentItem["type"], int: 0, equip_level: Number(equip_level) }));
-const emptyResume: ResumeFields = { level: "", baseHp: "", baseMp: "", baseInt: "", baseLuk: "4", baseDex: "25", baseStr: "4", freshAp: "5", intResetDone: false };
+const emptyResume: ResumeFields = { level: "", baseHp: "", baseMp: "", baseInt: "", baseLuk: "4", baseDex: "25", baseStr: "4", freshAp: "5", unwashedAp: "0", intResetDone: false };
 function defaultConfig(): CalculatorConfig {
   return { job: "thief", policy: "mp_wash_shortfall", targetHp: 27000, targetMp: "", targetLevel: "200", targetInt: 350, resetLevel: 155, mpWashEnd: 100, questHp: 0, hpMode: "avg", mwPercent: 0.1, mwFromLevel: 10, gearAfterReset: 50, autoMethod2: true, compareThiefPolicyC: true, resumeEnabled: false, resume: { ...emptyResume } };
+}
+function cachedResume(value?: Partial<ResumeFields> & { unwashedHpAp?: string; unwashedMpAp?: string }): ResumeFields {
+  const legacyCount = Number(value?.unwashedHpAp ?? 0) + Number(value?.unwashedMpAp ?? 0);
+  return { ...emptyResume, ...(value ?? {}), unwashedAp: value?.unwashedAp ?? String(legacyCount) };
 }
 function readCache(): AppCache {
   const fallback: AppCache = { version: 1, tab: "guide", equipment: initialEquipment, optimize: defaultConfig(), simulate: defaultConfig() };
@@ -60,8 +64,8 @@ function readCache(): AppCache {
     return {
       version: 1, tab: tabsAllowed ? raw.tab! : fallback.tab,
       equipment: Array.isArray(raw.equipment) ? parseEquipment(raw.equipment) : fallback.equipment,
-      optimize: { ...fallback.optimize, ...(raw.optimize ?? {}), targetLevel: String(raw.optimize?.targetLevel ?? fallback.optimize.targetLevel), resume: { ...emptyResume, ...(raw.optimize?.resume ?? {}) } },
-      simulate: { ...fallback.simulate, ...(raw.simulate ?? {}), targetLevel: String(raw.simulate?.targetLevel ?? fallback.simulate.targetLevel), resume: { ...emptyResume, ...(raw.simulate?.resume ?? {}) } },
+      optimize: { ...fallback.optimize, ...(raw.optimize ?? {}), targetLevel: String(raw.optimize?.targetLevel ?? fallback.optimize.targetLevel), resume: cachedResume(raw.optimize?.resume as (Partial<ResumeFields> & { unwashedHpAp?: string; unwashedMpAp?: string }) | undefined) },
+      simulate: { ...fallback.simulate, ...(raw.simulate ?? {}), targetLevel: String(raw.simulate?.targetLevel ?? fallback.simulate.targetLevel), resume: cachedResume(raw.simulate?.resume as (Partial<ResumeFields> & { unwashedHpAp?: string; unwashedMpAp?: string }) | undefined) },
     };
   } catch { return fallback; }
 }
@@ -103,7 +107,7 @@ export function App() {
     if (level === undefined || base_hp === undefined || base_int === undefined) throw new Error("中途接續請填寫「目前等級」、「base HP」與「base INT」。");
     const base_mp = optionalNumber(current.resume.baseMp);
     if (base_mp === undefined) throw new Error("中途接續請填寫「base MP」。");
-    return { level, base_hp, base_mp, base_int, base_luk: Number(current.resume.baseLuk), base_dex: Number(current.resume.baseDex), base_str: Number(current.resume.baseStr), fresh_ap: optionalNumber(current.resume.freshAp), int_reset_done: current.resume.intResetDone };
+    return { level, base_hp, base_mp, base_int, base_luk: Number(current.resume.baseLuk), base_dex: Number(current.resume.baseDex), base_str: Number(current.resume.baseStr), fresh_ap: optionalNumber(current.resume.freshAp), unwashed_ap: Number(current.resume.unwashedAp || 0), int_reset_done: current.resume.intResetDone };
   }
   function sharedConfig(current: CalculatorConfig) {
     const levelInput = String(current.targetLevel ?? "");
@@ -186,6 +190,7 @@ export function App() {
         <Field label="base INT" value={config.resume.baseInt} onChange={(baseInt) => updateResume({ baseInt })} /><Field label="base STR" value={config.resume.baseStr} onChange={(baseStr) => updateResume({ baseStr })} />
         <Field label="base DEX" value={config.resume.baseDex} onChange={(baseDex) => updateResume({ baseDex })} /><Field label="base LUK" value={config.resume.baseLuk} onChange={(baseLuk) => updateResume({ baseLuk })} />
         <Field label="本等尚未點的 AP" value={config.resume.freshAp} onChange={(freshAp) => updateResume({ freshAp })} />
+        <Field label="尚未洗回的 HP／MP AP" value={config.resume.unwashedAp} onChange={(unwashedAp) => updateResume({ unwashedAp })} />
         <label className="checkbox-field"><input type="checkbox" checked={config.resume.intResetDone} onChange={(event) => updateResume({ intResetDone: event.target.checked })} />INT 已洗回 4，之後不再點 INT</label>
       </div>}</details>
       <div className="runbar"><div><b>CSV 計畫輸出</b><span>完成計算後可下載逐級計畫</span></div><div className="run-action"><button type="button" onClick={tab === "optimize" ? runOptimize : runSimulate}>{tab === "optimize" ? "執行最佳化" : "執行模擬"}</button>{tab === "optimize" && error && <p className="error run-error" role="alert">{error}</p>}</div></div>
