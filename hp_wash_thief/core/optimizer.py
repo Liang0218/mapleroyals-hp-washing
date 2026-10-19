@@ -88,35 +88,68 @@ def _optimize_policy(config: OptimizeConfig, policy: PolicyName) -> PolicyBest:
     # APR includes all later Method 1/2 washes, so feasible plans are compared
     # by their full cost.
     if (
-        not any(c.reached_target for c in fine_results)
+        (config.target_mp is not None or not any(c.reached_target for c in fine_results))
         and policy is PolicyName.INT_ONLY_PLAIN
         and config.job != "thief"
     ):
         start_level = max(31, config.resume_from.level if config.resume_from else 31)
-        search_seeds = _unique_params(
-            sorted(fine_results, key=_candidate_sort_key)[: max(8, config.top_n)]
-        )
         early_candidates: list[CandidateResult] = []
-        for seed in search_seeds:
+        finalist_limit = max(8, config.top_n)
+        int_lo, int_hi = _int_search_bounds(config)
+        int_targets = list(range(int_lo, int_hi + 1, config.target_base_int_step))
+        if int_hi not in int_targets:
+            int_targets.append(int_hi)
+        threshold = config.extra_mp_threshold
+        if threshold is None:
+            threshold = get_job_profile(config.job).default_extra_mp_threshold()
+
+        # Search the full target-INT × start-level space. The best start can be
+        # much later than 31 because each MP5 then removes more MP. Use the
+        # reset level as the initial wash end; finalists are refined across
+        # nearby wash ends below.
+        for target_base_int in int_targets:
             for wash_level in range(start_level, config.int_reset_level):
                 early_candidates.append(
                     _run(
                         config,
                         policy,
-                        target_base_int=seed.target_base_int,
-                        mp_wash_end=seed.mp_wash_end,
-                        extra_mp_threshold=seed.extra_mp_threshold,
+                        target_base_int=target_base_int,
+                        mp_wash_end=config.int_reset_level,
+                        extra_mp_threshold=threshold,
                         early_mp_wash_level=wash_level,
                     )
                 )
+                if len(early_candidates) > finalist_limit * 2:
+                    early_candidates.sort(key=_candidate_sort_key)
+                    del early_candidates[finalist_limit:]
         early_candidates.sort(key=_candidate_sort_key)
-        for seed in early_candidates[: max(8, config.top_n)]:
+        del early_candidates[finalist_limit:]
+        # A protected pass can discover a plan whose later M1/M2 washes would
+        # otherwise push MP just below its target. Keep the relaxed plans too:
+        # when the MP target is impossible, the optimizer still needs a useful
+        # best-effort HP result.
+        if config.target_mp is not None:
+            early_candidates.extend(
+                _run(
+                    config,
+                    policy,
+                    target_base_int=seed.target_base_int,
+                    mp_wash_end=seed.mp_wash_end,
+                    extra_mp_threshold=seed.extra_mp_threshold,
+                    early_mp_wash_level=seed.early_mp_wash_level,
+                    protect_target_mp=True,
+                )
+                for seed in list(early_candidates)
+            )
+        finalists = list(early_candidates)
+        for seed in finalists:
             early_candidates.extend(
                 _refine_around(
                     config,
                     policy,
                     seed,
                     early_mp_wash_level=seed.early_mp_wash_level,
+                    search_all_mp_wash_ends=True,
                 )
             )
         seen_early = {_param_key(c) for c in fine_results}
@@ -223,6 +256,7 @@ def _refine_around(
     seed: CandidateResult,
     *,
     early_mp_wash_level: Optional[int] = None,
+    search_all_mp_wash_ends: bool = False,
 ) -> Iterable[CandidateResult]:
     int_lo, int_hi = _int_search_bounds(config)
     int_candidates = _neighbors(
@@ -232,8 +266,10 @@ def _refine_around(
         step=config.target_base_int_step,
         radius=2,
     )
-    mp_candidates = _mp_wash_end_candidates(
-        config, step=5, center=seed.mp_wash_end, radius=2
+    mp_candidates = (
+        _mp_wash_end_candidates(config, step=5)
+        if search_all_mp_wash_ends
+        else _mp_wash_end_candidates(config, step=5, center=seed.mp_wash_end, radius=2)
     )
     threshold = config.extra_mp_threshold
     if threshold is None:
@@ -259,6 +295,7 @@ def _run(
     mp_wash_end: int,
     extra_mp_threshold: int,
     early_mp_wash_level: Optional[int] = None,
+    protect_target_mp: bool = False,
 ) -> CandidateResult:
     sim = simulate(
         SimulateConfig(
@@ -279,20 +316,27 @@ def _run(
             int_gear_after_reset=config.int_gear_after_reset,
             resume_from=config.resume_from,
             improved_maxhp_level=config.improved_maxhp_level,
-            # Optimization must also evaluate plans that trade MP below its
-            # target for HP; the target is checked on the returned candidate.
-            target_mp=None,
+            target_mp=config.target_mp if protect_target_mp else None,
             early_mp_wash_level=early_mp_wash_level,
         )
     )
     candidate = CandidateResult.from_simulate(sim)
     candidate.target_mp = config.target_mp
+    if config.target_mp is not None:
+        _annotate_mp_over_cap(candidate.plan)
     candidate.reached_target = (
         candidate.final_display_hp >= config.target_hp
         and (config.target_mp is None or candidate.final_base_mp >= config.target_mp)
     )
     candidate.early_mp_wash_level = early_mp_wash_level
     return candidate
+
+
+def _annotate_mp_over_cap(plan) -> None:
+    warning = "\u26a0 base MP \u8d85\u904e 30,000\uff1b\u5efa\u8b70\u63d0\u65e9\u505a Method 2\u3002"
+    for row in plan:
+        if row.base_mp > 30_000 and warning not in row.notes:
+            row.notes = f"{row.notes} {warning}".strip()
 
 
 def _neighbors(center: int, *, low: int, high: int, step: int, radius: int) -> list[int]:

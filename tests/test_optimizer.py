@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from hp_wash_thief.core.api import optimize, simulate
 from hp_wash_thief.core.gear import parse_int_gear
-from hp_wash_thief.core.models import Action, AprBreakdown, CandidateResult, OptimizeConfig, PolicyName, SimulateConfig
+from hp_wash_thief.core.models import Action, AprBreakdown, CandidateResult, IntGearSegment, OptimizeConfig, PolicyName, ResumeFrom, SimulateConfig
 from hp_wash_thief.core.optimizer import _candidate_sort_key, _mp_wash_end_candidates
 from hp_wash_thief.core.report import format_optimize_summary_text
 
@@ -210,6 +210,43 @@ def test_infeasible_bowman_searches_recurring_early_mp5_levels():
     assert early_row.fresh_ap_mp >= 5
     assert early_row.apr_spent == early_row.fresh_ap_mp
     assert f"INT {early_row.fresh_ap_mp} DEX 0" in early_row.notes
+
+
+def test_early_mp5_search_pairs_higher_int_targets_with_later_starts():
+    result = optimize(
+        OptimizeConfig(
+            target_hp=30000,
+            target_mp=29000,
+            int_reset_level=170,
+            max_level=200,
+            job="bowman",
+            policies=[PolicyName.INT_ONLY_PLAIN],
+            int_gear=[
+                IntGearSegment(108, 119, 170),
+                IntGearSegment(120, 169, 190),
+            ],
+            int_gear_after_reset=170,
+            mp_wash_end_min=170,
+            target_base_int_min=524,
+            target_base_int_max=634,
+            target_base_int_step=10,
+            resume_from=ResumeFrom(
+                level=108,
+                base_hp=3444,
+                base_mp=18943,
+                base_int=524,
+                base_dex=100,
+            ),
+        )
+    )
+
+    assert result.winner is not None
+    assert result.winner.reached_target
+    assert result.winner.target_base_int > 524
+    assert result.winner.early_mp_wash_level is not None
+    assert result.winner.early_mp_wash_level > 108
+    assert result.winner.final_base_mp >= 29000
+    assert result.winner.final_display_hp >= 30000
 
 
 def test_optimize_skips_forced_mp_wash_to_50_when_unneeded():

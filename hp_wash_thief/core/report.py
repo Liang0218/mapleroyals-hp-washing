@@ -641,10 +641,11 @@ def _plan_summary(c: CandidateResult) -> list[str]:
             or row.level % 10 == 0
         )
         if show:
+            mp_marker = " ⚠" if c.target_mp is not None and row.base_mp > 30_000 else ""
             lines.append(
                 f"  {row.level:>3}  {row.action.value:<12}  "
                 f"{row.base_int:>4}  {row.base_luk:>4}  {row.base_hp:>6}  "
-                f"{row.base_mp:>5}  {row.extra_mp:>4}  {row.apr_spent:>3}"
+                f"{str(row.base_mp) + mp_marker:>7}  {row.extra_mp:>4}  {row.apr_spent:>3}"
             )
             desc = action_description(row.action)
             extras: list[str] = []

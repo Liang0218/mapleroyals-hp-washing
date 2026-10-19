@@ -116,6 +116,9 @@ def simulate(config: SimulateConfig) -> SimulateResult:
     if not state.int_reset_done and state.base_int > F.BASE_STAT_FLOOR:
         _reset_int_to_floor(state, config)
 
+    if config.target_mp is not None:
+        _annotate_mp_over_cap(state.plan)
+
     display_hp = state.base_hp + config.quest_equip_hp
     apr = AprBreakdown(
         mp_wash_count=state.mp_wash_count,
@@ -124,6 +127,7 @@ def simulate(config: SimulateConfig) -> SimulateResult:
         int_reset_apr=state.int_reset_apr,
         resume_wash_apr=state.resume_wash_apr,
     )
+
     assert config.extra_mp_threshold is not None
     hp_ok = display_hp + 1e-9 >= config.target_hp
     mp_ok = config.target_mp is None or state.base_mp + 1e-9 >= config.target_mp
@@ -147,6 +151,13 @@ def simulate(config: SimulateConfig) -> SimulateResult:
         improved_maxhp_level=state.skill.effective_level if profile.maxhp_skill else None,
         target_mp=config.target_mp,
     )
+
+
+def _annotate_mp_over_cap(plan: list[LevelPlanRow]) -> None:
+    warning = "\u26a0 base MP \u8d85\u904e 30,000\uff1b\u5efa\u8b70\u63d0\u65e9\u505a Method 2\u3002"
+    for row in plan:
+        if row.base_mp > 30_000 and warning not in row.notes:
+            row.notes = f"{row.notes} {warning}".strip()
 
 
 def _validate_config(config: SimulateConfig) -> None:

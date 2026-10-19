@@ -64,6 +64,10 @@ export function simulate(input: SimulateConfig): SimulateResult {
   for (let level = startLoop; level <= config.max_level; level += 1) { levelUp(state, level, config); execute(state, decide(state, config), config); markIntReached(state, config); maybeReset(state, config); }
   if (config.auto_method2) method2TopUp(state, config);
   if (state.level >= config.int_reset_level && !state.int_reset_done && state.base_int > BASE_STAT_FLOOR) resetInt(state);
+  if (config.target_mp !== undefined) {
+    const warning = "⚠ base MP 超過 30,000；建議提早做 Method 2。";
+    for (const planRow of state.plan) if (planRow.base_mp > 30_000 && !planRow.notes.includes(warning)) planRow.notes = `${planRow.notes} ${warning}`.trim();
+  }
   const apr: AprBreakdown = { mp_wash_count: state.mp_wash_count, method1_hp_wash_count: state.method1_hp_wash_count, method2_hp_wash_count: state.method2_hp_wash_count, int_reset_apr: state.int_reset_apr, resume_wash_apr: state.resume_wash_apr };
   const display = state.base_hp + config.quest_equip_hp;
   return { policy: config.policy, target_base_int: config.target_base_int, target_hp: config.target_hp, int_reached_level: state.int_reached_level, mp_wash_end: config.mp_wash_end, extra_mp_threshold: config.extra_mp_threshold, int_gear_after_reset: config.int_gear_after_reset, final_base_hp: pyRound(state.base_hp), final_display_hp: pyRound(display), final_base_mp: pyRound(state.base_mp), base_int_peak: state.base_int_peak, reached_target: display + 1e-9 >= config.target_hp && (config.target_mp === undefined || state.base_mp + 1e-9 >= config.target_mp), apr, plan: state.plan, resume_from: config.resume_from, job: config.job, improved_maxhp_level: profile.maxhpSkill ? state.skill.effectiveLevel : undefined, target_mp: config.target_mp };

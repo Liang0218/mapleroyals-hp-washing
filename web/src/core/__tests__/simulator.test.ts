@@ -155,4 +155,40 @@ describe("Python calculation-core parity: simulator and optimizer", () => {
     expect(earlyRow?.apr_spent).toBe(earlyRow?.fresh_ap_mp);
     expect(earlyRow?.notes).toContain(`洗回 ${earlyRow?.fresh_ap_mp} 點 AP（MP -${(earlyRow?.fresh_ap_mp ?? 0) * 12}）→ INT ${earlyRow?.fresh_ap_mp}`);
   });
+
+  it("pairs higher INT targets with later early-MP5 starts for a resumed Bowman", () => {
+    const result = optimize({
+      target_hp: 30000, target_mp: 29000, int_reset_level: 170, max_level: 200,
+      job: "bowman", policies: ["int_only_plain"],
+      int_gear: [
+        { from_level: 108, to_level: 119, int_gear: 170 },
+        { from_level: 120, to_level: 169, int_gear: 190 },
+      ],
+      int_gear_after_reset: 170, mp_wash_end_min: 170,
+      target_base_int_min: 524, target_base_int_max: 634, target_base_int_step: 10,
+      resume_from: { level: 108, base_hp: 3444, base_mp: 18943, base_int: 524, base_dex: 100 },
+    });
+    expect(result.winner?.reached_target).toBe(true);
+    expect(result.winner?.target_base_int).toBeGreaterThan(524);
+    expect(result.winner?.early_mp_wash_level).toBeGreaterThan(108);
+    expect(result.winner?.final_base_mp).toBeGreaterThanOrEqual(29000);
+    expect(result.winner?.final_display_hp).toBeGreaterThanOrEqual(30000);
+  });
+
+  it("marks base MP over 30000 without scheduling extra Method 2 washes", () => {
+    const result = simulate({
+      policy: "int_only_plain", target_base_int: 4, target_hp: 5000,
+      int_reset_level: 170, int_gear: exampleGear, job: "bowman",
+      max_level: 200, mp_wash_end: 170, target_mp: 29000,
+      resume_from: {
+        level: 199, base_hp: 5000, base_mp: 29999, base_int: 4,
+        base_dex: 100, fresh_ap: 0, int_reset_done: true,
+      },
+    });
+    const overflowRow = result.plan.find((row) => row.level === 200)!;
+    expect(overflowRow.base_mp).toBeGreaterThan(30000);
+    expect(overflowRow.notes).toContain("提早做 Method 2");
+    expect(result.plan.some((row) => row.action === "M2" && row.level === 200)).toBe(false);
+  });
+
 });

@@ -7,9 +7,11 @@ import pytest
 from hp_wash_thief.core.api import optimize, simulate
 from hp_wash_thief.core.jobs import JobId, get_job_profile
 from hp_wash_thief.core.models import (
+    Action,
     IntGearSegment,
     OptimizeConfig,
     PolicyName,
+    ResumeFrom,
     SimulateConfig,
 )
 from hp_wash_thief.ui.user_errors import format_user_error
@@ -121,3 +123,33 @@ def test_optimize_respects_target_mp():
         assert result.winner.final_base_mp >= target_mp
         assert result.winner.final_display_hp >= 16000
         assert result.winner.target_mp == target_mp
+
+
+def test_plan_marks_base_mp_over_30000_without_scheduling_extra_method2():
+    result = simulate(
+        SimulateConfig(
+            policy=PolicyName.INT_ONLY_PLAIN,
+            target_base_int=4,
+            target_hp=5000,
+            int_reset_level=170,
+            int_gear=_gear(),
+            job="bowman",
+            max_level=200,
+            mp_wash_end=170,
+            target_mp=29000,
+            resume_from=ResumeFrom(
+                level=199,
+                base_hp=5000,
+                base_mp=29999,
+                base_int=4,
+                base_dex=100,
+                fresh_ap=0,
+                int_reset_done=True,
+            ),
+        )
+    )
+
+    overflow_row = next(row for row in result.plan if row.level == 200)
+    assert overflow_row.base_mp > 30000
+    assert "提早做 Method 2" in overflow_row.notes
+    assert not any(row.action is Action.M2 and row.level == 200 for row in result.plan)
