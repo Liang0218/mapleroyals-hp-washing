@@ -2,6 +2,8 @@ import { getJobProfile, makeSkillTracker } from "./jobs";
 import { simulate } from "./simulator";
 import { totalApr, type CandidateResult, type ComparisonResult, type OptimizeConfig, type OptimizeResult, type PolicyBest, type PolicyName } from "./models";
 
+const MAX_BASE_HP = 30_000;
+
 type Normalized = Required<Omit<OptimizeConfig, "policies" | "resume_from" | "improved_maxhp_level" | "target_mp" | "hp_cap">> & Pick<OptimizeConfig, "policies" | "resume_from" | "improved_maxhp_level" | "target_mp" | "hp_cap">;
 function normalize(config: OptimizeConfig): Normalized {
   return { ...config, job: config.job ?? "thief", quest_equip_hp: config.quest_equip_hp ?? 0, hp_mode: config.hp_mode ?? "avg", max_level: config.max_level ?? 200, mw_percent: config.mw_percent ?? 0.1, mw_from_level: config.mw_from_level ?? 10, int_gear_after_reset: config.int_gear_after_reset ?? 50, extra_mp_threshold: config.extra_mp_threshold ?? getJobProfile(config.job ?? "thief").defaultExtraMpThreshold(), target_base_int_min: config.target_base_int_min ?? 4, target_base_int_max: config.target_base_int_max ?? 999, target_base_int_step: config.target_base_int_step ?? 10, mp_wash_end_min: config.mp_wash_end_min ?? 31, top_n: config.top_n ?? 5 };
@@ -70,7 +72,7 @@ export function optimize(input: OptimizeConfig): OptimizeResult {
   let continued_to_200_plan: CandidateResult["plan"] | undefined;
   let resetLevelMethod2Hp: number | undefined;
   if (winner) {
-    if (config.max_level >= 200) continued_to_200_hp = Math.min(30_000, winner.final_display_hp);
+    if (config.max_level >= 200) continued_to_200_hp = Math.min(MAX_BASE_HP + config.quest_equip_hp, winner.final_display_hp);
     else {
       const finalState = winner.plan.at(-1);
       const continuation = simulate({
@@ -79,7 +81,7 @@ export function optimize(input: OptimizeConfig): OptimizeResult {
         job: config.job, mp_wash_end: 31,
         extra_mp_threshold: config.extra_mp_threshold, quest_equip_hp: config.quest_equip_hp,
         hp_mode: config.hp_mode, max_level: 200, auto_method2: true,
-        hp_cap: Math.max(1, 30_000 - config.quest_equip_hp),
+        hp_cap: MAX_BASE_HP,
         mw_percent: config.mw_percent, mw_from_level: config.mw_from_level,
         int_gear_after_reset: config.int_gear_after_reset,
         resume_from: {
@@ -99,7 +101,7 @@ export function optimize(input: OptimizeConfig): OptimizeResult {
         job: config.job, mp_wash_end: winner.mp_wash_end,
         extra_mp_threshold: config.extra_mp_threshold, quest_equip_hp: config.quest_equip_hp,
         hp_mode: config.hp_mode, max_level: config.int_reset_level, auto_method2: false,
-        hp_cap: Math.max(1, 30_000 - config.quest_equip_hp),
+        hp_cap: MAX_BASE_HP,
         mw_percent: config.mw_percent, mw_from_level: config.mw_from_level,
         int_gear_after_reset: config.int_gear_after_reset, resume_from: config.resume_from,
       });
@@ -109,7 +111,7 @@ export function optimize(input: OptimizeConfig): OptimizeResult {
       const skill = makeSkillTracker(profile, config.improved_maxhp_level);
       skill.seedForResume(config.int_reset_level, profile.jobAdvances);
       const method2Hp = profile.method2Hp(config.hp_mode, skill);
-      const capBaseHp = Math.max(1, 30_000 - config.quest_equip_hp);
+      const capBaseHp = MAX_BASE_HP;
       const affordableBeforeHpCap = Math.max(0, Math.ceil((extraMpAtReset - 1e-9) / profile.mpRemovedPerApr));
       const hpSpace = Math.max(0, capBaseHp - resetSnapshot.final_base_hp);
       const washesToHpCap = method2Hp > 0 ? Math.ceil(hpSpace / method2Hp) : 0;
