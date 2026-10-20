@@ -5,6 +5,10 @@ a separate browser calculator in `web/`, for MapleRoyals HP washing APR
 optimization (Thief A–D comparison; other jobs Policy D / Method 2). Windows
 users can build a shareable `.exe` folder with PyInstaller.
 
+## Web calculator
+
+Use the browser version at [https://mapleroyals-hp-washing.pages.dev/](https://mapleroyals-hp-washing.pages.dev/).
+
 ## Requirements
 
 - Python 3.11+
