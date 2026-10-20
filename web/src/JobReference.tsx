@@ -1,4 +1,5 @@
 import { JOB_PROFILES, type GainRange, type JobId, type JobProfile } from "./core/jobs";
+import { translateTree, type Language } from "./i18n";
 
 const jobOrder: JobId[] = ["fighter", "page", "spearman", "bowman", "thief", "brawler", "gunslinger", "beginner"];
 const jobNames: Record<JobId, string> = {
@@ -29,9 +30,9 @@ function advancesText(profile: JobProfile): string {
   }).join("；");
 }
 
-export function JobReference() {
+export function JobReference({ language = "zh" }: { language?: Language }) {
   const profiles = jobOrder.map((job) => JOB_PROFILES[job]);
-  return <section className="page-card job-reference-page">
+  return translateTree(<section className="page-card job-reference-page">
     <div className="section-heading"><div><p className="eyebrow">Job reference</p><h2>職業洗血與成長數值</h2><p className="subheading">數值直接取自計算器使用的職業公式。範圍依 HP 模式不同而變；平均值模式會取範圍中點。</p></div></div>
     <div className="guide-note"><b>每 APR 增加 HP 怎麼看</b><p>Method 1：先用 Fresh AP 加 HP，再用 APR 洗血，把 AP 點回其他能力值；表格列出這次操作增加的 HP。Method 2：不需要 Fresh AP，直接用 APR 扣 MP 換 HP。兩種方式都會消耗 1 APR，扣除該職業表列的 MP。</p><p>MP wash 是消耗 1 APR 將 AP 點入 MP；每點增加的 MP 為表列職業範圍，再加上 ⌊base INT ÷ 10⌋。最小 MP 是洗血時不可低於的 base MP。</p></div>
     <div className="reference-table-wrap"><table className="reference-table">
@@ -42,5 +43,5 @@ export function JobReference() {
     <p className="field-note">此表顯示計算器目前採用的轉職 HP／MP 固定值；3、4 轉的 AP 加成已列入。</p>
     <div className="reference-table-wrap"><table className="reference-advance-table"><thead><tr><th>職業</th><th>轉職等級與額外 HP／MP／AP</th></tr></thead><tbody>{profiles.map((profile) => <tr key={profile.job}><th scope="row">{jobNames[profile.job]}</th><td>{advancesText(profile)}</td></tr>)}</tbody></table></div>
     <p className="field-note">升級 MP 的實際增加量 = 表列職業基礎範圍 + ⌊總 INT ÷ 10⌋；總 INT 會計入裝備 INT 與 Maple Warrior。Improve MaxHP 技能效果會依技能等級套用，升級 HP 加成與洗血 HP 加成分別列出。</p>
-  </section>;
+  </section>, language);
 }

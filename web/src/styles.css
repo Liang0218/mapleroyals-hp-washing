@@ -19,6 +19,9 @@ button:disabled { opacity: .55; cursor: not-allowed; }
 .eyebrow { margin: 0 0 .25rem; color: #91bf94; font-size: .75rem; font-weight: 800; letter-spacing: .11em; text-transform: uppercase; }
 h1 { margin: 0; font-size: clamp(1.35rem, 3vw, 2rem); } h2, h3, h4, p { margin-top: 0; }
 .settings-actions, .button-row { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
+.language-switch { display: inline-flex; flex: 0 0 auto; gap: .2rem; padding: .2rem; border: 1px solid #425749; border-radius: .65rem; background: #19231d; }
+.language-switch button { padding: .38rem .72rem; color: #b9c6bc; background: transparent; border-color: transparent; }
+.language-switch button.language-active { color: #132017; background: #a8d6a5; }
 .quiet { color: #e9eee9; background: #26352c; border-color: #4c6353; }
 .tabbar { display: flex; gap: .25rem; overflow-x: auto; border-bottom: 1px solid #38483d; margin: .7rem 0 1.2rem; }
 .tab { flex: 0 0 auto; color: #b9c6bc; background: transparent; border: 0; border-bottom: 3px solid transparent; border-radius: .35rem .35rem 0 0; padding: .8rem 1rem; }
