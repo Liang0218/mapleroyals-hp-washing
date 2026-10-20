@@ -8,11 +8,12 @@ type Normalized = Required<Omit<OptimizeConfig, "policies" | "resume_from" | "im
 function normalize(config: OptimizeConfig): Normalized {
   return { ...config, job: config.job ?? "thief", quest_equip_hp: config.quest_equip_hp ?? 0, hp_mode: config.hp_mode ?? "avg", max_level: config.max_level ?? 200, mw_percent: config.mw_percent ?? 0.1, mw_from_level: config.mw_from_level ?? 10, int_gear_after_reset: config.int_gear_after_reset ?? 50, extra_mp_threshold: config.extra_mp_threshold ?? getJobProfile(config.job ?? "thief").defaultExtraMpThreshold(), target_base_int_min: config.target_base_int_min ?? 4, target_base_int_max: config.target_base_int_max ?? 999, target_base_int_step: config.target_base_int_step ?? 10, mp_wash_end_min: config.mp_wash_end_min ?? 31, top_n: config.top_n ?? 5 };
 }
-function candidate(config: Normalized, policy: PolicyName, targetBaseInt: number, mpWashEnd: number, earlyMpWashLevel?: number, protectTargetMp = false): CandidateResult {
-  const result = simulate({ policy, target_base_int: targetBaseInt, target_hp: config.target_hp, target_mp: protectTargetMp ? config.target_mp : undefined, int_reset_level: config.int_reset_level, int_gear: config.int_gear, job: config.job, mp_wash_end: mpWashEnd, extra_mp_threshold: config.extra_mp_threshold, quest_equip_hp: config.quest_equip_hp, hp_mode: config.hp_mode, max_level: config.max_level, auto_method2: true, mw_percent: config.mw_percent, mw_from_level: config.mw_from_level, int_gear_after_reset: config.int_gear_after_reset, resume_from: config.resume_from, improved_maxhp_level: config.improved_maxhp_level, early_mp_wash_level: earlyMpWashLevel });
+type ResumeCleanAllocation = { intAp: number; mpWashes: number; hpWashes: number; order: "mp_hp" | "hp_mp" };
+function candidate(config: Normalized, policy: PolicyName, targetBaseInt: number, mpWashEnd: number, earlyMpWashLevel?: number, protectTargetMp = false, allocation?: ResumeCleanAllocation): CandidateResult {
+  const result = simulate({ policy, target_base_int: targetBaseInt, target_hp: config.target_hp, target_mp: protectTargetMp ? config.target_mp : undefined, int_reset_level: config.int_reset_level, int_gear: config.int_gear, job: config.job, mp_wash_end: mpWashEnd, extra_mp_threshold: config.extra_mp_threshold, quest_equip_hp: config.quest_equip_hp, hp_mode: config.hp_mode, max_level: config.max_level, auto_method2: true, mw_percent: config.mw_percent, mw_from_level: config.mw_from_level, int_gear_after_reset: config.int_gear_after_reset, resume_from: config.resume_from, improved_maxhp_level: config.improved_maxhp_level, early_mp_wash_level: earlyMpWashLevel, resume_clean_int_ap: allocation?.intAp, resume_clean_mp_washes: allocation?.mpWashes, resume_clean_hp_washes: allocation?.hpWashes, resume_clean_wash_order: allocation?.order });
   const mpWarning = "⚠ base MP 超過 30,000；建議提早做 Method 2。";
   if (config.target_mp !== undefined) for (const row of result.plan) if (row.base_mp > 30_000 && !row.notes.includes(mpWarning)) row.notes = `${row.notes} ${mpWarning}`.trim();
-  return { ...result, target_mp: config.target_mp, early_mp_wash_level: earlyMpWashLevel, reached_target: result.final_display_hp >= config.target_hp && (config.target_mp === undefined || result.final_base_mp >= config.target_mp) };
+  return { ...result, target_mp: config.target_mp, early_mp_wash_level: earlyMpWashLevel, resume_clean_int_ap: allocation?.intAp, resume_clean_mp_washes: allocation?.mpWashes, resume_clean_hp_washes: allocation?.hpWashes, resume_clean_wash_order: allocation?.order, reached_target: result.final_display_hp >= config.target_hp && (config.target_mp === undefined || result.final_base_mp >= config.target_mp) };
 }
 function ints(from: number, to: number, step: number): number[] { const values: number[] = []; for (let value = from; value <= to; value += step) values.push(value); if (values.at(-1) !== to) values.push(to); return values; }
 function intBounds(config: Normalized): [number, number] { if (!config.resume_from) return [config.target_base_int_min, config.target_base_int_max]; if (config.resume_from.int_reset_done) { const fixed = Math.max(config.target_base_int_min, config.resume_from.base_int_peak ?? config.resume_from.base_int, 4); return [fixed, fixed]; } const low = Math.max(config.target_base_int_min, config.resume_from.base_int); return [low, Math.max(low, config.target_base_int_max)]; }
@@ -24,8 +25,70 @@ function sortKey(candidate: CandidateResult): (number | string)[] {
   return [1, hpShortfall, mpShortfall, totalApr(candidate.apr), candidate.target_base_int, candidate.base_int_peak, candidate.mp_wash_end, candidate.int_reached_level, candidate.policy];
 }
 function compare(left: CandidateResult, right: CandidateResult): number { const a = sortKey(left); const b = sortKey(right); for (let index = 0; index < a.length; index += 1) { if (a[index] < b[index]) return -1; if (a[index] > b[index]) return 1; } return 0; }
-function unique(items: CandidateResult[]): CandidateResult[] { const seen = new Set<string>(); return items.filter((item) => { const key = `${item.policy}:${item.target_base_int}:${item.mp_wash_end}:${item.extra_mp_threshold}:${item.early_mp_wash_level ?? ""}`; if (seen.has(key)) return false; seen.add(key); return true; }); }
+function unique(items: CandidateResult[]): CandidateResult[] { const seen = new Set<string>(); return items.filter((item) => { const key = `${item.policy}:${item.target_base_int}:${item.mp_wash_end}:${item.extra_mp_threshold}:${item.early_mp_wash_level ?? ""}:${item.resume_clean_int_ap ?? ""}:${item.resume_clean_mp_washes ?? ""}:${item.resume_clean_hp_washes ?? ""}:${item.resume_clean_wash_order ?? ""}`; if (seen.has(key)) return false; seen.add(key); return true; }); }
 function search(config: Normalized, policy: PolicyName, intStep: number, mpStep: number): CandidateResult[] { const [low, high] = intBounds(config); return ints(low, high, intStep).flatMap((baseInt) => mpEnds(config, mpStep).map((end) => candidate(config, policy, baseInt, end))); }
+function allocationGrid(limit: number, step: number): number[] { return [...new Set([...ints(0, limit, step), limit])]; }
+function optimizeResumeCleanAp(config: Normalized, policy: PolicyName, existing: CandidateResult[]): CandidateResult[] {
+  const total = config.resume_from?.fresh_ap ?? 0;
+  if (!config.resume_from || total <= 5) return [];
+  const seeds: CandidateResult[] = [];
+  const seen = new Set<string>();
+  for (const seed of [...existing].sort(compare)) {
+    const key = `${seed.target_base_int}:${seed.mp_wash_end}`;
+    if (seen.has(key)) continue;
+    seen.add(key); seeds.push(seed);
+    if (seeds.length >= 5) break;
+  }
+  if (seeds.length) {
+    const anchor = seeds[0]!;
+    const [low, high] = intBounds(config);
+    const reachableHigh = Math.min(high, config.resume_from.base_int + total);
+    const targetValues = allocationGrid(reachableHigh - low, config.target_base_int_step).map((offset) => low + offset);
+    if (!targetValues.includes(reachableHigh)) targetValues.push(reachableHigh);
+    const endValues = [...new Set(seeds.map((seed) => seed.mp_wash_end))].slice(0, 2);
+    for (const targetBaseInt of targetValues) for (const mpWashEnd of endValues) seeds.push({ ...anchor, target_base_int: targetBaseInt, mp_wash_end: mpWashEnd });
+  }
+  const evaluate = (seed: CandidateResult, mpWashes: number, hpWashes: number, order: "mp_hp" | "hp_mp") => {
+    if (mpWashes + hpWashes > total) return undefined;
+    const intNeed = Math.max(0, seed.target_base_int - config.resume_from!.base_int);
+    const intAp = Math.min(intNeed, total - mpWashes - hpWashes);
+    return candidate(config, policy, seed.target_base_int, seed.mp_wash_end, seed.early_mp_wash_level, config.target_mp !== undefined, { intAp, mpWashes, hpWashes, order });
+  };
+  const coarse: CandidateResult[] = [];
+  for (const seed of seeds) for (const mpWashes of allocationGrid(total, 50)) for (const hpWashes of allocationGrid(total - mpWashes, 50)) {
+    for (const order of ["mp_hp", "hp_mp"] as const) {
+      const result = evaluate(seed, mpWashes, hpWashes, order);
+      if (result) coarse.push(result);
+    }
+  }
+  coarse.sort(compare);
+  const refined: CandidateResult[] = [];
+  const local: CandidateResult[] = [];
+  for (const seed of coarse.slice(0, 3)) {
+    const mpCenter = seed.resume_clean_mp_washes ?? 0;
+    const hpCenter = seed.resume_clean_hp_washes ?? 0;
+    for (const mpWashes of ints(Math.max(0, mpCenter - 25), Math.min(total, mpCenter + 25), 5)) {
+      for (const hpWashes of ints(Math.max(0, hpCenter - 25), Math.min(total - mpWashes, hpCenter + 25), 5)) {
+        for (const order of ["mp_hp", "hp_mp"] as const) {
+          const result = evaluate(seed, mpWashes, hpWashes, order);
+          if (result) local.push(result);
+        }
+      }
+    }
+  }
+  local.sort(compare);
+  for (const seed of local.slice(0, 3)) {
+    for (const mpWashes of ints(Math.max(0, (seed.resume_clean_mp_washes ?? 0) - 4), Math.min(total, (seed.resume_clean_mp_washes ?? 0) + 4), 1)) {
+      for (const hpWashes of ints(Math.max(0, (seed.resume_clean_hp_washes ?? 0) - 4), Math.min(total - mpWashes, (seed.resume_clean_hp_washes ?? 0) + 4), 1)) {
+        for (const order of ["mp_hp", "hp_mp"] as const) {
+          const result = evaluate(seed, mpWashes, hpWashes, order);
+          if (result) refined.push(result);
+        }
+      }
+    }
+  }
+  return [...coarse, ...local, ...refined];
+}
 function policyBest(config: Normalized, policy: PolicyName): PolicyBest {
   const [low, high] = intBounds(config);
   const refine = (coarse: CandidateResult[], earlyMpWashLevel?: number, allMpEnds = false) => {
@@ -34,6 +97,7 @@ function policyBest(config: Normalized, policy: PolicyName): PolicyBest {
   };
   const coarse = search(config, policy, 40, 10);
   let candidates = unique([...coarse, ...refine([...coarse])]);
+  candidates = unique([...candidates, ...optimizeResumeCleanAp(config, policy, candidates)]);
   if ((config.target_mp !== undefined || !candidates.some((item) => item.reached_target)) && policy === "int_only_plain" && config.job !== "thief") {
     const startLevel = Math.max(31, config.resume_from?.level ?? 31);
     // Early MP5 repeats from the selected start level until returned AP reaches

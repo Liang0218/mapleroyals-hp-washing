@@ -13,7 +13,7 @@ const pyRound = (value: number): number => {
   return floor % 2 === 0 ? floor : floor + 1;
 };
 
-type NormalizedConfig = Required<Omit<SimulateConfig, "resume_from" | "improved_maxhp_level" | "target_mp" | "hp_cap" | "early_mp_wash_level">> & Pick<SimulateConfig, "resume_from" | "improved_maxhp_level" | "target_mp" | "hp_cap" | "early_mp_wash_level">;
+type NormalizedConfig = Required<Omit<SimulateConfig, "resume_from" | "improved_maxhp_level" | "target_mp" | "hp_cap" | "early_mp_wash_level" | "resume_clean_int_ap" | "resume_clean_mp_washes" | "resume_clean_hp_washes" | "resume_clean_wash_order">> & Pick<SimulateConfig, "resume_from" | "improved_maxhp_level" | "target_mp" | "hp_cap" | "early_mp_wash_level" | "resume_clean_int_ap" | "resume_clean_mp_washes" | "resume_clean_hp_washes" | "resume_clean_wash_order">;
 
 class State {
   level = 1; base_str = STARTING_STR; base_dex = STARTING_DEX; base_int = STARTING_INT; base_luk = STARTING_LUK;
@@ -59,7 +59,10 @@ export function simulate(input: SimulateConfig): SimulateResult {
   let startLoop = 2;
   if (config.resume_from) {
     seedResume(state, config); state.plan.push(row(state, "RESUME", { apr_spent: state.resume_wash_apr, fresh_ap_int: state.resume_wash_int, ...primaryFields(state, state.resume_wash_apr - state.resume_wash_int), notes: [`接續 Lv${state.level}`, state.resume_wash_apr > 0 ? `待洗回 AP ${state.resume_wash_apr} 點 → ${allocationSummary(state, state.resume_wash_int, state.resume_wash_apr - state.resume_wash_int)}` : "", state.level_fresh_ap > 0 ? `本等剩餘 AP ${state.level_fresh_ap} 點由下一列分配` : ""].filter(Boolean).join("；") }));
-    markIntReached(state, config); execute(state, decide(state, config), config); markIntReached(state, config); maybeReset(state, config); startLoop = state.level + 1;
+    markIntReached(state, config);
+    if (config.resume_clean_int_ap !== undefined || config.resume_clean_mp_washes !== undefined || config.resume_clean_hp_washes !== undefined) executeResumeCleanApPlan(state, config);
+    else if (state.level_fresh_ap > 0) execute(state, decide(state, config), config);
+    markIntReached(state, config); maybeReset(state, config); startLoop = state.level + 1;
   } else { applyStartingAp(state, config); markIntReached(state, config); }
   for (let level = startLoop; level <= config.max_level; level += 1) { levelUp(state, level, config); execute(state, decide(state, config), config); markIntReached(state, config); maybeReset(state, config); }
   if (config.auto_method2) method2TopUp(state, config);
@@ -88,6 +91,24 @@ function seedResume(state: State, config: NormalizedConfig): void {
   state.resume_wash_apr = resume.unwashed_ap ?? 0;
   if (state.resume_wash_apr) [state.resume_wash_int] = dump(state, config, state.resume_wash_apr);
   if (state.profile.maxhpSkill) state.skill.seedForResume(state.level, state.profile.jobAdvances);
+}
+function executeResumeCleanApPlan(state: State, config: NormalizedConfig): void {
+  const total = state.level_fresh_ap;
+  const directInt = config.resume_clean_int_ap ?? 0;
+  const mpWashes = config.resume_clean_mp_washes ?? 0;
+  const hpWashes = config.resume_clean_hp_washes ?? 0;
+  if (Math.min(directInt, mpWashes, hpWashes) < 0 || directInt + mpWashes + hpWashes > total) throw new Error("resume clean AP allocation exceeds available AP");
+  const [directIntDone, directPrimary] = dump(state, config, directInt);
+  if (directInt) state.plan.push(row(state, directIntDone ? "INT5" : primaryAction(state), { fresh_ap_int: directIntDone, ...primaryFields(state, directPrimary), notes: `接續乾淨 AP：INT ${directIntDone} ${primaryStatLabel(state)} ${directPrimary}` }));
+  const remaining = total - directInt - mpWashes - hpWashes;
+  const actions: Array<["mp" | "hp", number]> = [["mp", mpWashes], ["hp", hpWashes]];
+  if (config.resume_clean_wash_order === "hp_mp") actions.reverse();
+  for (const [kind, count] of actions) {
+    if (count <= 0) continue;
+    if (kind === "mp") mpWash(state, config, count);
+    else method1(state, config, count);
+  }
+  if (remaining) { addPrimary(state, remaining); state.plan.push(row(state, primaryAction(state), { ...primaryFields(state, remaining), notes: `接續乾淨 AP：${primaryStatLabel(state)} ${remaining}` })); }
 }
 function markIntReached(state: State, config: NormalizedConfig): void { if (state.int_reached_level === 0 && state.base_int >= config.target_base_int) state.int_reached_level = state.level; }
 function applyStartingAp(state: State, config: NormalizedConfig): void { const toInt = Math.min(STARTING_FRESH_AP, Math.max(0, config.target_base_int - state.base_int)); const toPrimary = STARTING_FRESH_AP - toInt; state.base_int += toInt; addPrimary(state, toPrimary); state.noteInt(); state.plan.push(row(state, "BUILD", { fresh_ap_int: toInt, ...primaryFields(state, toPrimary), notes: `初始 AP 分配：INT ${toInt}、${primaryStatLabel(state)} ${toPrimary}` })); }

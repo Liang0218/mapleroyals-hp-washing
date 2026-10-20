@@ -7,6 +7,7 @@ import pytest
 from hp_wash_thief.cli import main
 from hp_wash_thief.core.api import optimize, simulate
 from hp_wash_thief.core.formulas import extra_mp, min_mp
+from hp_wash_thief.core.gear import parse_int_gear
 from hp_wash_thief.core.models import (
     Action,
     HpMode,
@@ -207,3 +208,39 @@ def test_resume_extra_mp_matches_formula(example_gear):
         level=level, base_hp=15000, extra_mp=emp, base_int=320
     )
     assert extra_mp(resume.base_mp, level) == pytest.approx(emp)
+
+
+def test_optimizer_allocates_banked_clean_resume_ap_to_washes():
+    gear = parse_int_gear([{"from_level": 1, "to_level": 200, "int_gear": 0}])
+    common = dict(
+        target_hp=21000,
+        target_mp=3000,
+        int_reset_level=155,
+        int_gear=gear,
+        job="thief",
+        policies=[PolicyName.INT_ONLY_PLAIN],
+        target_base_int_min=355,
+        target_base_int_max=425,
+        target_base_int_step=10,
+        mp_wash_end_min=121,
+        top_n=3,
+    )
+    snapshots = (
+        ResumeFrom(level=120, base_hp=8701, base_mp=4869, base_int=355, base_luk=4, base_dex=25, base_str=4, fresh_ap=262),
+        ResumeFrom(level=120, base_hp=8701, base_mp=4869, base_int=405, base_luk=4, base_dex=25, base_str=4, fresh_ap=212),
+    )
+    for resume in snapshots:
+        winner = optimize(OptimizeConfig(**common, resume_from=resume)).winner
+        assert winner is not None and winner.reached_target
+        assert winner.resume_clean_mp_washes is not None
+        assert winner.resume_clean_hp_washes is not None
+        assert winner.resume_clean_mp_washes + winner.resume_clean_hp_washes > 0
+        # The clean AP bank is eligible for Thief Method 1, just like fresh AP
+        # earned on later levels; it must be compared across the full plan.
+        assert winner.resume_clean_hp_washes > 0
+        resume_level_washes = [
+            row for row in winner.plan
+            if row.level == resume.level and (row.fresh_ap_mp or row.fresh_ap_hp)
+        ]
+        assert resume_level_washes
+        assert sum(row.fresh_ap_hp for row in resume_level_washes) > 0

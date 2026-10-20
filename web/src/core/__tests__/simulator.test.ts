@@ -65,6 +65,20 @@ describe("Python calculation-core parity: simulator and optimizer", () => {
     expect(result.apr.mp_wash_count + result.apr.method1_hp_wash_count + result.apr.method2_hp_wash_count + result.apr.int_reset_apr).toBe(876);
   });
 
+  it("optimizes banked clean resume AP as HP or MP washes", () => {
+    const config = { target_hp: 21000, target_mp: 3000, int_reset_level: 155, int_gear: [{ from_level: 1, to_level: 200, int_gear: 0 }], job: "thief", policies: ["int_only_plain" as const], target_base_int_min: 355, target_base_int_max: 425, target_base_int_step: 10, mp_wash_end_min: 121, top_n: 3 };
+    for (const resume_from of [
+      { level: 120, base_hp: 8701, base_mp: 4869, base_int: 355, base_luk: 4, base_dex: 25, base_str: 4, fresh_ap: 262 },
+      { level: 120, base_hp: 8701, base_mp: 4869, base_int: 405, base_luk: 4, base_dex: 25, base_str: 4, fresh_ap: 212 },
+    ]) {
+      const winner = optimize({ ...config, resume_from }).winner!;
+      expect(winner.reached_target).toBe(true);
+      expect((winner.resume_clean_mp_washes ?? 0) + (winner.resume_clean_hp_washes ?? 0)).toBeGreaterThan(0);
+      expect(winner.resume_clean_hp_washes ?? 0).toBeGreaterThan(0);
+      expect(winner.plan.some((row) => row.level === 120 && row.fresh_ap_hp > 0)).toBe(true);
+    }
+  });
+
   it("counts HP and MP AP awaiting washback in the resumed APR total", () => {
     const result = simulate({ policy: "mp_wash_shortfall", target_base_int: 324, target_hp: 22000, int_reset_level: 155, int_gear: exampleGear, mp_wash_end: 120, int_gear_after_reset: 50, resume_from: { level: 90, base_hp: 14000, base_mp: 2208, base_int: 320, unwashed_ap: 5 } });
     expect(result.apr.resume_wash_apr).toBe(5);

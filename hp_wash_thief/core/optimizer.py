@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import Iterable, Optional
 
 from hp_wash_thief.core import formulas as F
@@ -81,6 +82,111 @@ def _optimize_policy(config: OptimizeConfig, policy: PolicyName) -> PolicyBest:
         if key not in seen:
             seen.add(key)
             fine_results.append(cand)
+
+    if config.resume_from is not None and (config.resume_from.fresh_ap or 0) > F.FRESH_AP_PER_LEVEL:
+        clean_ap = config.resume_from.fresh_ap or 0
+        # Keep several distinct INT/end-level finalists from the normal search,
+        # then optimize the accumulated clean AP against each full continuation.
+        resume_seeds: list[CandidateResult] = []
+        seen_seed_params: set[tuple[int, int]] = set()
+        for seed in sorted(fine_results, key=_candidate_sort_key):
+            identity = (seed.target_base_int, seed.mp_wash_end)
+            if identity in seen_seed_params:
+                continue
+            seen_seed_params.add(identity)
+            resume_seeds.append(seed)
+            if len(resume_seeds) >= max(4, config.top_n):
+                break
+        if resume_seeds:
+            anchor = resume_seeds[0]
+            int_lo, int_hi = _int_search_bounds(config)
+            ap_reachable_hi = min(int_hi, config.resume_from.base_int + clean_ap)
+            target_values = list(range(int_lo, ap_reachable_hi + 1, config.target_base_int_step))
+            if ap_reachable_hi not in target_values:
+                target_values.append(ap_reachable_hi)
+            end_values = list(dict.fromkeys(seed.mp_wash_end for seed in resume_seeds))[:2]
+            for target_value in target_values:
+                for end_value in end_values:
+                    resume_seeds.append(
+                        replace(anchor, target_base_int=target_value, mp_wash_end=end_value)
+                    )
+
+        allocated: list[CandidateResult] = []
+        for seed in resume_seeds:
+            int_need = max(0, seed.target_base_int - config.resume_from.base_int)
+            for mp_washes in _allocation_grid(clean_ap, 50):
+                for hp_washes in _allocation_grid(clean_ap - mp_washes, 50):
+                    int_points = min(int_need, clean_ap - mp_washes - hp_washes)
+                    for order in ("mp_hp", "hp_mp"):
+                        allocated.append(
+                            _run(
+                                config,
+                                policy,
+                                target_base_int=seed.target_base_int,
+                                mp_wash_end=seed.mp_wash_end,
+                                extra_mp_threshold=seed.extra_mp_threshold,
+                                protect_target_mp=config.target_mp is not None,
+                                resume_clean_int_ap=int_points,
+                                resume_clean_mp_washes=mp_washes,
+                                resume_clean_hp_washes=hp_washes,
+                                resume_clean_wash_order=order,
+                            )
+                        )
+        allocated.sort(key=_candidate_sort_key)
+        refined: list[CandidateResult] = []
+        for seed in allocated[:3]:
+            for mp_washes in _neighbors(seed.resume_clean_mp_washes or 0, low=0, high=clean_ap, step=5, radius=5):
+                for hp_washes in _neighbors(
+                    seed.resume_clean_hp_washes or 0,
+                    low=0,
+                    high=max(0, clean_ap - mp_washes),
+                    step=5,
+                    radius=5,
+                ):
+                    if mp_washes + hp_washes > clean_ap:
+                        continue
+                    int_points = min(
+                        max(0, seed.target_base_int - config.resume_from.base_int),
+                        clean_ap - mp_washes - hp_washes,
+                    )
+                    for order in ("mp_hp", "hp_mp"):
+                        refined.append(
+                            _run(
+                                config,
+                                policy,
+                                target_base_int=seed.target_base_int,
+                                mp_wash_end=seed.mp_wash_end,
+                                extra_mp_threshold=seed.extra_mp_threshold,
+                                protect_target_mp=config.target_mp is not None,
+                                resume_clean_int_ap=int_points,
+                                resume_clean_mp_washes=mp_washes,
+                                resume_clean_hp_washes=hp_washes,
+                                resume_clean_wash_order=order,
+                            )
+                        )
+        refined.sort(key=_candidate_sort_key)
+        for seed in refined[:3]:
+            for mp_washes in _neighbors(seed.resume_clean_mp_washes or 0, low=0, high=clean_ap, step=1, radius=4):
+                for hp_washes in _neighbors(seed.resume_clean_hp_washes or 0, low=0, high=max(0, clean_ap - mp_washes), step=1, radius=4):
+                    if mp_washes + hp_washes > clean_ap:
+                        continue
+                    int_points = min(max(0, seed.target_base_int - config.resume_from.base_int), clean_ap - mp_washes - hp_washes)
+                    for order in ("mp_hp", "hp_mp"):
+                        refined.append(
+                            _run(
+                                config, policy,
+                                target_base_int=seed.target_base_int,
+                                mp_wash_end=seed.mp_wash_end,
+                                extra_mp_threshold=seed.extra_mp_threshold,
+                                protect_target_mp=config.target_mp is not None,
+                                resume_clean_int_ap=int_points,
+                                resume_clean_mp_washes=mp_washes,
+                                resume_clean_hp_washes=hp_washes,
+                                resume_clean_wash_order=order,
+                            )
+                        )
+        fine_results.extend(allocated)
+        fine_results.extend(refined)
 
     # If normal non-Thief INT stacking cannot meet both goals, test recurring
     # early MP5 washing from each possible start level. Returned AP goes to INT
@@ -296,6 +402,10 @@ def _run(
     extra_mp_threshold: int,
     early_mp_wash_level: Optional[int] = None,
     protect_target_mp: bool = False,
+    resume_clean_int_ap: Optional[int] = None,
+    resume_clean_mp_washes: Optional[int] = None,
+    resume_clean_hp_washes: Optional[int] = None,
+    resume_clean_wash_order: str = "mp_hp",
 ) -> CandidateResult:
     sim = simulate(
         SimulateConfig(
@@ -318,6 +428,10 @@ def _run(
             improved_maxhp_level=config.improved_maxhp_level,
             target_mp=config.target_mp if protect_target_mp else None,
             early_mp_wash_level=early_mp_wash_level,
+            resume_clean_int_ap=resume_clean_int_ap,
+            resume_clean_mp_washes=resume_clean_mp_washes,
+            resume_clean_hp_washes=resume_clean_hp_washes,
+            resume_clean_wash_order=resume_clean_wash_order,
         )
     )
     candidate = CandidateResult.from_simulate(sim)
@@ -329,7 +443,19 @@ def _run(
         and (config.target_mp is None or candidate.final_base_mp >= config.target_mp)
     )
     candidate.early_mp_wash_level = early_mp_wash_level
+    candidate.resume_clean_int_ap = resume_clean_int_ap
+    candidate.resume_clean_mp_washes = resume_clean_mp_washes
+    candidate.resume_clean_hp_washes = resume_clean_hp_washes
+    candidate.resume_clean_wash_order = resume_clean_wash_order if resume_clean_mp_washes is not None else None
     return candidate
+
+
+def _allocation_grid(limit: int, step: int) -> list[int]:
+    """Coarse AP allocation grid, always including both endpoints."""
+    values = list(range(0, max(0, limit) + 1, step))
+    if not values or values[-1] != limit:
+        values.append(limit)
+    return values
 
 
 def _annotate_mp_over_cap(plan) -> None:
@@ -357,6 +483,10 @@ def _param_key(c: CandidateResult) -> tuple:
         c.mp_wash_end,
         c.extra_mp_threshold,
         c.early_mp_wash_level,
+        c.resume_clean_int_ap,
+        c.resume_clean_mp_washes,
+        c.resume_clean_hp_washes,
+        c.resume_clean_wash_order,
     )
 
 

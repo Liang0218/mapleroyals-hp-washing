@@ -250,6 +250,11 @@ class SimulateConfig:
     target_mp: Optional[int] = None
     # For non-Thief fallback optimization: one selected early level for MP5.
     early_mp_wash_level: Optional[int] = None
+    # Optimizer-selected allocation of clean AP banked at a resume level.
+    resume_clean_int_ap: Optional[int] = None
+    resume_clean_mp_washes: Optional[int] = None
+    resume_clean_hp_washes: Optional[int] = None
+    resume_clean_wash_order: str = "mp_hp"
 
     def __post_init__(self) -> None:
         from hp_wash_thief.core.jobs import get_job_profile
@@ -339,6 +344,10 @@ class CandidateResult:
     target_mp: Optional[int] = None
     target_hp: Optional[int] = None
     early_mp_wash_level: Optional[int] = None
+    resume_clean_int_ap: Optional[int] = None
+    resume_clean_mp_washes: Optional[int] = None
+    resume_clean_hp_washes: Optional[int] = None
+    resume_clean_wash_order: Optional[str] = None
 
     @property
     def total_apr(self) -> int:

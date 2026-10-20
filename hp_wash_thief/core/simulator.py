@@ -97,8 +97,11 @@ def simulate(config: SimulateConfig) -> SimulateResult:
         state = _seed_from_resume(config.resume_from, config, profile, skill)
         _append_resume_marker(state, config)
         _maybe_mark_int_reached(state, config)
-        action = _decide_action(state, config)
-        _execute_action(state, action, config)
+        if config.resume_clean_int_ap is not None or config.resume_clean_mp_washes is not None or config.resume_clean_hp_washes is not None:
+            _execute_resume_clean_ap_plan(state, config)
+        elif state.level_fresh_ap:
+            action = _decide_action(state, config)
+            _execute_action(state, action, config)
         _maybe_mark_int_reached(state, config)
         _maybe_reset_int(state, config)
         start_loop = state.level + 1
@@ -270,7 +273,8 @@ def _append_resume_marker(state: CharacterState, config: SimulateConfig) -> None
             apr_spent=state.resume_wash_apr,
             fresh_ap_int=state.resume_wash_int,
             **_primary_fresh_fields(
-                state.profile, state.resume_wash_apr - state.resume_wash_int
+                state.profile,
+                state.resume_wash_apr - state.resume_wash_int,
             ),
             notes=(
                 f"中途接續：Lv{state.level}｜INT {state.base_int}｜"
@@ -280,6 +284,63 @@ def _append_resume_marker(state: CharacterState, config: SimulateConfig) -> None
             ),
         )
     )
+
+
+def _execute_resume_clean_ap_plan(state: CharacterState, config: SimulateConfig) -> None:
+    """Apply an optimizer-selected split of clean AP accumulated at resume."""
+    total = state.level_fresh_ap
+    direct_int = config.resume_clean_int_ap or 0
+    mp_washes = config.resume_clean_mp_washes or 0
+    hp_washes = config.resume_clean_hp_washes or 0
+    if min(direct_int, mp_washes, hp_washes) < 0 or direct_int + mp_washes + hp_washes > total:
+        raise ValueError("resume clean AP allocation exceeds available AP")
+    if config.resume_clean_wash_order not in {"mp_hp", "hp_mp"}:
+        raise ValueError("resume_clean_wash_order must be mp_hp or hp_mp")
+
+    direct_int_done, direct_primary = _dump_points(state, config, direct_int)
+    if direct_int:
+        state.plan.append(
+            LevelPlanRow(
+                level=state.level,
+                action=Action.INT5 if direct_int_done else _primary_dump_action(state.profile),
+                base_int=state.base_int,
+                base_luk=state.base_luk,
+                base_hp=int(round(state.base_hp)),
+                base_mp=int(round(state.base_mp)),
+                extra_mp=int(round(state.extra_mp())),
+                fresh_ap_int=direct_int_done,
+                apr_spent=0,
+                notes=f"接續乾淨 AP：INT {direct_int_done} {_primary_name(state.profile)} {direct_primary}",
+                **_primary_fresh_fields(state.profile, direct_primary),
+            )
+        )
+
+    remaining = total - direct_int - mp_washes - hp_washes
+    actions = [("mp", mp_washes), ("hp", hp_washes)]
+    if config.resume_clean_wash_order == "hp_mp":
+        actions.reverse()
+    for kind, count in actions:
+        if count <= 0:
+            continue
+        if kind == "mp":
+            _mp_wash(state, config, fresh_ap=count, mp_washes=count)
+        else:
+            _hp_wash_method1(state, config, fresh_ap=count, hp_washes=count)
+    if remaining:
+        _add_primary(state, remaining)
+        state.plan.append(
+            LevelPlanRow(
+                level=state.level,
+                action=_primary_dump_action(state.profile),
+                base_int=state.base_int,
+                base_luk=state.base_luk,
+                base_hp=int(round(state.base_hp)),
+                base_mp=int(round(state.base_mp)),
+                extra_mp=int(round(state.extra_mp())),
+                **_primary_fresh_fields(state.profile, remaining),
+                notes=f"接續乾淨 AP：{_primary_name(state.profile)} {remaining}",
+            )
+        )
 
 
 def _maybe_mark_int_reached(state: CharacterState, config: SimulateConfig) -> None:
