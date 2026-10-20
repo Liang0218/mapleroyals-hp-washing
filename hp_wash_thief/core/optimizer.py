@@ -188,16 +188,21 @@ def _optimize_policy(config: OptimizeConfig, policy: PolicyName) -> PolicyBest:
         fine_results.extend(allocated)
         fine_results.extend(refined)
 
-    # If normal non-Thief INT stacking cannot meet both goals, test recurring
-    # early MP5 washing from each possible start level. Returned AP goes to INT
-    # until target INT is reached; the normal strategy then resumes. Candidate
-    # APR includes all later Method 1/2 washes, so feasible plans are compared
-    # by their full cost.
-    if (
-        (config.target_mp is not None or not any(c.reached_target for c in fine_results))
-        and policy is PolicyName.INT_ONLY_PLAIN
-        and config.job != "thief"
-    ):
+    # When the normal strategy cannot meet both goals, test early MP5 washing
+    # from each possible start level. Returned AP goes to INT until target INT
+    # is reached; the normal strategy then resumes. Thieves A/B already start
+    # with Method 1 when MP allows, so this search also evaluates how many of
+    # those early Method 1 levels should be followed by MP wash into INT.
+    early_mp_fallback = (
+        config.target_mp is not None or not any(c.reached_target for c in fine_results)
+    ) and (
+        (policy is PolicyName.INT_ONLY_PLAIN and config.job != "thief")
+        or (config.job == "thief" and policy in {
+            PolicyName.MP_WASH_SHORTFALL,
+            PolicyName.INT_DUMP_SHORTFALL,
+        })
+    )
+    if early_mp_fallback:
         start_level = max(31, config.resume_from.level if config.resume_from else 31)
         early_candidates: list[CandidateResult] = []
         finalist_limit = max(8, config.top_n)
@@ -258,6 +263,41 @@ def _optimize_policy(config: OptimizeConfig, policy: PolicyName) -> PolicyBest:
                     search_all_mp_wash_ends=True,
                 )
             )
+        if config.job == "thief" and policy in {
+            PolicyName.MP_WASH_SHORTFALL,
+            PolicyName.INT_DUMP_SHORTFALL,
+        }:
+            # Also try hybrid early levels: a selected share of AP goes to MP
+            # wash and the remainder to Method 1. Search near the best pure
+            # fallback schedules, then rank every hybrid by its full APR cost.
+            hybrid_seeds = _unique_params(
+                sorted(early_candidates, key=_candidate_sort_key)[:finalist_limit]
+            )
+            for seed in hybrid_seeds:
+                seed_level = seed.early_mp_wash_level or start_level
+                for mp_points in range(1, 5):
+                    for wash_level in _neighbors(
+                        seed_level,
+                        low=start_level,
+                        high=config.int_reset_level - 1,
+                        step=1,
+                        radius=20,
+                    ):
+                        for protect_target_mp in (
+                            (False, True) if config.target_mp is not None else (False,)
+                        ):
+                            early_candidates.append(
+                                _run(
+                                    config,
+                                    policy,
+                                    target_base_int=seed.target_base_int,
+                                    mp_wash_end=seed.mp_wash_end,
+                                    extra_mp_threshold=seed.extra_mp_threshold,
+                                    early_mp_wash_level=wash_level,
+                                    early_mp_wash_points=mp_points,
+                                    protect_target_mp=protect_target_mp,
+                                )
+                            )
         seen_early = {_param_key(c) for c in fine_results}
         for cand in early_candidates:
             key = _param_key(cand)
@@ -362,6 +402,7 @@ def _refine_around(
     seed: CandidateResult,
     *,
     early_mp_wash_level: Optional[int] = None,
+    early_mp_wash_points: Optional[int] = None,
     search_all_mp_wash_ends: bool = False,
 ) -> Iterable[CandidateResult]:
     int_lo, int_hi = _int_search_bounds(config)
@@ -390,6 +431,7 @@ def _refine_around(
                 mp_wash_end=mp_wash_end,
                 extra_mp_threshold=threshold,
                 early_mp_wash_level=early_mp_wash_level,
+                early_mp_wash_points=early_mp_wash_points,
             )
 
 
@@ -401,6 +443,7 @@ def _run(
     mp_wash_end: int,
     extra_mp_threshold: int,
     early_mp_wash_level: Optional[int] = None,
+    early_mp_wash_points: Optional[int] = None,
     protect_target_mp: bool = False,
     resume_clean_int_ap: Optional[int] = None,
     resume_clean_mp_washes: Optional[int] = None,
@@ -428,6 +471,7 @@ def _run(
             improved_maxhp_level=config.improved_maxhp_level,
             target_mp=config.target_mp if protect_target_mp else None,
             early_mp_wash_level=early_mp_wash_level,
+            early_mp_wash_points=early_mp_wash_points,
             resume_clean_int_ap=resume_clean_int_ap,
             resume_clean_mp_washes=resume_clean_mp_washes,
             resume_clean_hp_washes=resume_clean_hp_washes,
@@ -443,6 +487,7 @@ def _run(
         and (config.target_mp is None or candidate.final_base_mp >= config.target_mp)
     )
     candidate.early_mp_wash_level = early_mp_wash_level
+    candidate.early_mp_wash_points = early_mp_wash_points
     candidate.resume_clean_int_ap = resume_clean_int_ap
     candidate.resume_clean_mp_washes = resume_clean_mp_washes
     candidate.resume_clean_hp_washes = resume_clean_hp_washes
@@ -483,6 +528,7 @@ def _param_key(c: CandidateResult) -> tuple:
         c.mp_wash_end,
         c.extra_mp_threshold,
         c.early_mp_wash_level,
+        c.early_mp_wash_points,
         c.resume_clean_int_ap,
         c.resume_clean_mp_washes,
         c.resume_clean_hp_washes,

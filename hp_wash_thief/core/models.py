@@ -248,8 +248,11 @@ class SimulateConfig:
     improved_maxhp_level: Optional[int] = None
     # Optional base MP floor at max level; None = wash Extra MP to near min_mp.
     target_mp: Optional[int] = None
-    # For non-Thief fallback optimization: one selected early level for MP5.
+    # Optional early MP5 start; returned AP goes into INT until its target lands.
     early_mp_wash_level: Optional[int] = None
+    # Hybrid early levels: this many fresh AP are reserved for MP wash, with
+    # the remaining fresh AP available for Method 1 HP washes.
+    early_mp_wash_points: Optional[int] = None
     # Optimizer-selected allocation of clean AP banked at a resume level.
     resume_clean_int_ap: Optional[int] = None
     resume_clean_mp_washes: Optional[int] = None
@@ -344,6 +347,7 @@ class CandidateResult:
     target_mp: Optional[int] = None
     target_hp: Optional[int] = None
     early_mp_wash_level: Optional[int] = None
+    early_mp_wash_points: Optional[int] = None
     resume_clean_int_ap: Optional[int] = None
     resume_clean_mp_washes: Optional[int] = None
     resume_clean_hp_washes: Optional[int] = None

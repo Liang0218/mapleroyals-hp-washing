@@ -249,6 +249,107 @@ def test_early_mp5_search_pairs_higher_int_targets_with_later_starts():
     assert result.winner.final_display_hp >= 30000
 
 
+def test_thief_b_search_uses_early_mp_wash_after_method1_when_hp_and_mp_are_high(example_gear):
+    result = optimize(
+        OptimizeConfig(
+            target_hp=27000,
+            target_mp=12000,
+            int_reset_level=155,
+            int_gear=example_gear,
+            policies=[PolicyName.INT_DUMP_SHORTFALL],
+            target_base_int_min=360,
+            target_base_int_max=360,
+            target_base_int_step=40,
+            mp_wash_end_min=100,
+            int_gear_after_reset=50,
+            top_n=3,
+        )
+    )
+
+    candidate = result.winner
+    assert candidate is not None
+    assert candidate.reached_target
+    assert candidate.early_mp_wash_level is not None
+    assert candidate.final_display_hp >= 27000
+    assert candidate.final_base_mp >= 12000
+
+    early_method1 = [
+        row for row in candidate.plan
+        if row.level < candidate.early_mp_wash_level and row.fresh_ap_hp > 0
+    ]
+    early_mp_washes = [
+        row for row in candidate.plan
+        if candidate.early_mp_wash_level <= row.level < candidate.int_reached_level
+        and row.fresh_ap_mp > 0
+    ]
+    assert early_method1
+    assert early_mp_washes
+    assert all("INT" in row.notes for row in early_mp_washes)
+
+
+def test_thief_b_search_can_mix_early_mp_and_method1_washes(example_gear):
+    result = optimize(
+        OptimizeConfig(
+            target_hp=29000,
+            target_mp=26000,
+            int_reset_level=200,
+            int_gear=example_gear,
+            policies=[PolicyName.INT_DUMP_SHORTFALL],
+            target_base_int_min=280,
+            target_base_int_max=760,
+            target_base_int_step=40,
+            mp_wash_end_min=100,
+            int_gear_after_reset=50,
+            top_n=3,
+        )
+    )
+
+    candidate = result.winner
+    assert candidate is not None
+    assert candidate.reached_target
+    assert candidate.early_mp_wash_level is not None
+    assert candidate.early_mp_wash_points == 3
+    assert candidate.total_apr == 2208
+    assert candidate.final_display_hp >= 29000
+    assert candidate.final_base_mp >= 26000
+    mixed_rows = [
+        row for row in candidate.plan
+        if row.fresh_ap_mp > 0 and row.fresh_ap_hp > 0
+    ]
+    assert mixed_rows
+    assert all(row.apr_spent == row.fresh_ap_mp + row.fresh_ap_hp for row in mixed_rows)
+
+
+def test_thief_ab_can_reach_29k_hp_and_mp_at_reset_170(example_gear):
+    result = optimize(
+        OptimizeConfig(
+            target_hp=29000,
+            target_mp=29000,
+            int_reset_level=170,
+            max_level=200,
+            int_gear=example_gear,
+            policies=[PolicyName.MP_WASH_SHORTFALL, PolicyName.INT_DUMP_SHORTFALL],
+            target_base_int_min=280,
+            target_base_int_max=760,
+            target_base_int_step=40,
+            mp_wash_end_min=100,
+            top_n=3,
+        )
+    )
+
+    candidate = result.winner
+    assert candidate is not None
+    assert candidate.reached_target
+    assert candidate.final_display_hp >= 29000
+    assert candidate.final_base_mp >= 29000
+    assert candidate.early_mp_wash_level is not None
+    assert candidate.total_apr == 2475
+    assert any(
+        row.level < candidate.early_mp_wash_level and row.fresh_ap_hp > 0
+        for row in candidate.plan
+    )
+
+
 def test_optimize_skips_forced_mp_wash_to_50_when_unneeded():
     """Easy HP must not keep MP-washing through the old min 50 after INT lands."""
     result = optimize(

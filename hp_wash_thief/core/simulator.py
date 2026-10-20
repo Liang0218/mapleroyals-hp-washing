@@ -441,12 +441,13 @@ def _decide_action(state: CharacterState, config: SimulateConfig) -> Action:
     if level <= 30:
         return Action.BUILD
     if _in_early_phase(state, config):
+        # Start recurring MP5 washes at the selected level. Each wash returns
+        # its AP into INT; once the target INT is reached, the regular policy
+        # takes over automatically. The optimizer uses this as a fallback for
+        # non-Thief INT-only and Thief A/B high HP/MP searches.
+        if config.early_mp_wash_level is not None and level >= config.early_mp_wash_level:
+            return Action.MP5
         if config.policy is PolicyName.INT_ONLY_PLAIN:
-            # Start recurring MP5 washes at the selected level. Each wash returns
-            # its APR into INT; once the target INT is reached, the regular
-            # post-INT strategy takes over automatically.
-            if config.early_mp_wash_level is not None and level >= config.early_mp_wash_level:
-                return Action.MP5
             return Action.BUILD if level <= 30 else Action.INT5
         return choose_early_action(
             config.policy,
@@ -509,6 +510,14 @@ def _execute_action(state: CharacterState, action: Action, config: SimulateConfi
         _hp_wash_method1(state, config, fresh_ap=fresh_ap, hp_washes=hp_washes)
         return
     if action in MP_ACTIONS or action is Action.MP5:
+        if (
+            config.early_mp_wash_points is not None
+            and config.early_mp_wash_level is not None
+            and state.level >= config.early_mp_wash_level
+            and _in_early_phase(state, config)
+        ):
+            _hybrid_early_wash(state, config, fresh_ap=fresh_ap)
+            return
         mp_washes = planned_mp_washes(
             action,
             base_int=state.base_int,
@@ -527,6 +536,74 @@ def _execute_action(state: CharacterState, action: Action, config: SimulateConfi
         _dump_fresh_ap_to_primary_only(state, config, points=fresh_ap, action=action)
         return
     raise ValueError(f"unsupported action: {action}")
+
+
+def _hybrid_early_wash(
+    state: CharacterState, config: SimulateConfig, *, fresh_ap: int
+) -> None:
+    """Spend some early fresh AP on MP wash, then use the rest for Method 1."""
+    assert state.profile is not None
+    mp_budget = min(max(0, config.early_mp_wash_points or 0), fresh_ap)
+    mp_done = hp_done = returned_int = 0
+    mp_removed = state.profile.mp_removed_per_apr
+
+    for _ in range(mp_budget):
+        gain = state.profile.fresh_ap_mp(state.base_int, config.hp_mode)
+        state.base_mp += gain
+        if state.extra_mp() <= 1e-9:
+            state.base_mp -= gain
+            break
+        state.base_mp -= mp_removed
+        to_int, _ = _assign_wash_points(state, config, 1)
+        returned_int += to_int
+        mp_done += 1
+        state.mp_wash_count += 1
+
+    # Any AP not used for MP wash is available for Method 1 at this same level.
+    hp_budget = fresh_ap - mp_done
+    hp_gain_total = 0.0
+    for _ in range(hp_budget):
+        if not state.can_remove_mp(1, mp_floor=config.target_mp):
+            break
+        gain = state.profile.method1_hp(config.hp_mode, skill=state.skill)
+        state.base_hp += gain
+        hp_gain_total += gain
+        state.base_mp -= mp_removed
+        to_int, _ = _assign_wash_points(state, config, 1)
+        returned_int += to_int
+        hp_done += 1
+        state.method1_hp_wash_count += 1
+
+    unwashed_ap = fresh_ap - mp_done - hp_done
+    direct_int, direct_primary = _dump_points(state, config, unwashed_ap)
+    pri_fields = _primary_fresh_fields(state.profile, direct_primary)
+    if mp_done:
+        action = Action.MP5
+    elif hp_done:
+        action = Action.HP5
+    else:
+        action = Action.INT5
+    state.plan.append(
+        LevelPlanRow(
+            level=state.level,
+            action=action,
+            base_int=state.base_int,
+            base_luk=state.base_luk,
+            base_hp=int(round(state.base_hp)),
+            base_mp=int(round(state.base_mp)),
+            extra_mp=int(round(state.extra_mp())),
+            fresh_ap_int=direct_int,
+            fresh_ap_hp=hp_done,
+            fresh_ap_mp=mp_done,
+            apr_spent=mp_done + hp_done,
+            notes=(
+                f"混合 early：MP wash {mp_done} 次、Method1 {hp_done} 次 "
+                f"（+{hp_gain_total:.1f} HP）；wash 回收 AP 投入 INT {returned_int}，"
+                f"未洗 AP 點 INT {direct_int}"
+            ),
+            **pri_fields,
+        )
+    )
 
 
 def _try_one_hp_wash(state: CharacterState, config: SimulateConfig) -> float:

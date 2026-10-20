@@ -1,0 +1,41 @@
+{
+  "description": "Current solution quality baseline for representative existing test inputs. Update only after reviewing an intentional model change.",
+  "scenarios": {
+    "simulate_mp_wash_shortfall": {
+      "reached_target": true,
+      "final_display_hp": 25008,
+      "final_base_mp": 8791,
+      "total_apr": 1579
+    },
+    "simulate_int_dump_shortfall": {
+      "reached_target": true,
+      "final_display_hp": 25016,
+      "final_base_mp": 8399,
+      "total_apr": 1570
+    },
+    "simulate_mp_wash_hardcore": {
+      "reached_target": true,
+      "final_display_hp": 25002,
+      "final_base_mp": 8916,
+      "total_apr": 1581
+    },
+    "simulate_int_only_plain": {
+      "reached_target": true,
+      "final_display_hp": 25002,
+      "final_base_mp": 8075,
+      "total_apr": 1597
+    },
+    "optimize_ab_27000": {
+      "reached_target": true,
+      "final_display_hp": 27012,
+      "final_base_mp": 3035,
+      "total_apr": 1487
+    },
+    "optimize_abcd_25000": {
+      "reached_target": true,
+      "final_display_hp": 25008,
+      "final_base_mp": 3111,
+      "total_apr": 1324
+    }
+  }
+}

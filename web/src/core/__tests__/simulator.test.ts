@@ -189,6 +189,39 @@ describe("Python calculation-core parity: simulator and optimizer", () => {
     expect(result.winner?.final_display_hp).toBeGreaterThanOrEqual(30000);
   });
 
+  it("finds the mixed early MP wash and Method 1 Thief 29000/29000 plan", () => {
+    const result = optimize({
+      target_hp: 29000, target_mp: 29000, int_reset_level: 170, max_level: 200,
+      int_gear: exampleGear, job: "thief",
+      policies: ["mp_wash_shortfall", "int_dump_shortfall"],
+      target_base_int_min: 280, target_base_int_max: 760, target_base_int_step: 40,
+      mp_wash_end_min: 100, int_gear_after_reset: 50,
+    });
+    expect(result.winner?.reached_target).toBe(true);
+    expect(result.winner?.final_display_hp).toBeGreaterThanOrEqual(29000);
+    expect(result.winner?.final_base_mp).toBeGreaterThanOrEqual(29000);
+    expect(result.winner?.early_mp_wash_level).toBeDefined();
+    expect(result.winner!.apr.mp_wash_count + result.winner!.apr.method1_hp_wash_count + result.winner!.apr.method2_hp_wash_count + result.winner!.apr.int_reset_apr).toBe(2475);
+    const hybrid = simulate({
+      policy: "mp_wash_shortfall", target_base_int: 680, target_hp: 29000,
+      int_reset_level: 170, int_gear: exampleGear, job: "thief", max_level: 200,
+      mp_wash_end: 170, early_mp_wash_level: 55, early_mp_wash_points: 3,
+    });
+    expect(hybrid.plan.some((row) => row.level === 55 && row.fresh_ap_mp > 0 && row.fresh_ap_hp > 0)).toBe(true);
+  });
+
+  it("finds a feasible C greedy plan when protecting the 29000 MP target", () => {
+    const result = optimize({
+      target_hp: 29000, target_mp: 29000, int_reset_level: 170, max_level: 200,
+      int_gear: exampleGear, job: "thief", policies: ["mp_wash_hardcore"],
+      target_base_int_min: 280, target_base_int_max: 760, target_base_int_step: 40,
+      mp_wash_end_min: 100, int_gear_after_reset: 50,
+    });
+    expect(result.winner?.reached_target).toBe(true);
+    expect(result.winner?.final_display_hp).toBeGreaterThanOrEqual(29000);
+    expect(result.winner?.final_base_mp).toBeGreaterThanOrEqual(29000);
+  });
+
   it("marks base MP over 30000 without scheduling extra Method 2 washes", () => {
     const result = simulate({
       policy: "int_only_plain", target_base_int: 4, target_hp: 5000,

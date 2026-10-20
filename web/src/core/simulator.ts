@@ -13,7 +13,7 @@ const pyRound = (value: number): number => {
   return floor % 2 === 0 ? floor : floor + 1;
 };
 
-type NormalizedConfig = Required<Omit<SimulateConfig, "resume_from" | "improved_maxhp_level" | "target_mp" | "hp_cap" | "early_mp_wash_level" | "resume_clean_int_ap" | "resume_clean_mp_washes" | "resume_clean_hp_washes" | "resume_clean_wash_order">> & Pick<SimulateConfig, "resume_from" | "improved_maxhp_level" | "target_mp" | "hp_cap" | "early_mp_wash_level" | "resume_clean_int_ap" | "resume_clean_mp_washes" | "resume_clean_hp_washes" | "resume_clean_wash_order">;
+type NormalizedConfig = Required<Omit<SimulateConfig, "resume_from" | "improved_maxhp_level" | "target_mp" | "hp_cap" | "early_mp_wash_level" | "early_mp_wash_points" | "resume_clean_int_ap" | "resume_clean_mp_washes" | "resume_clean_hp_washes" | "resume_clean_wash_order">> & Pick<SimulateConfig, "resume_from" | "improved_maxhp_level" | "target_mp" | "hp_cap" | "early_mp_wash_level" | "early_mp_wash_points" | "resume_clean_int_ap" | "resume_clean_mp_washes" | "resume_clean_hp_washes" | "resume_clean_wash_order">;
 
 class State {
   level = 1; base_str = STARTING_STR; base_dex = STARTING_DEX; base_int = STARTING_INT; base_luk = STARTING_LUK;
@@ -134,7 +134,8 @@ function decide(state: State, config: NormalizedConfig): Action {
   if (!state.int_reset_done && state.level < config.int_reset_level && state.base_int < config.target_base_int) {
     // Start recurring MP5 washes at the selected level. Each wash returns its
     // APR into INT; regular post-INT behavior resumes once target INT is reached.
-    if (config.policy === "int_only_plain") return config.early_mp_wash_level !== undefined && state.level >= config.early_mp_wash_level ? "MP5" : "INT5";
+    if (config.early_mp_wash_level !== undefined && state.level >= config.early_mp_wash_level) return "MP5";
+    if (config.policy === "int_only_plain") return "INT5";
     return chooseEarlyAction(config.policy, state.extraMp(), config.extra_mp_threshold);
   }
   if (state.level <= config.mp_wash_end) return "MP5";
@@ -167,6 +168,34 @@ function method1(state: State, config: NormalizedConfig, requested: number): voi
   const washAllocation = allocationSummary(state, toInt, toPrimary); const remainingAllocation = allocationSummary(state, leftInt, leftPrimary);
   const notes = [done ? `乾淨 AP ${done} 點 → HP +${formatAmount(hpGained)}` : "", washAllocation ? `洗回 ${done} 點 AP（MP -${formatAmount(done * state.profile.mpRemovedPerApr)}）→ ${washAllocation}` : "", remainingAllocation ? `剩餘 AP → ${remainingAllocation}` : ""].filter(Boolean).join("；");
   state.plan.push(row(state, done ? (`HP${Math.min(5, done)}` as Action) : leftInt ? "INT5" : primaryAction(state), { fresh_ap_hp: done, fresh_ap_int: leftInt, apr_spent: done, ...primaryFields(state, leftPrimary), notes }));
+}
+function hybridEarlyWash(state: State, config: NormalizedConfig): void {
+  let mpDone = 0; let hpDone = 0; let toInt = 0; let hpGained = 0; let mpNet = 0;
+  const mpBudget = Math.min(Math.max(0, config.early_mp_wash_points ?? 0), state.level_fresh_ap);
+  for (let index = 0; index < mpBudget; index += 1) {
+    const gain = state.profile.freshApMp(state.base_int, config.hp_mode); state.base_mp += gain;
+    if (state.extraMp() <= 1e-9) { state.base_mp -= gain; break; }
+    state.base_mp -= state.profile.mpRemovedPerApr; mpNet += gain - state.profile.mpRemovedPerApr;
+    toInt += assignWash(state, config, 1)[0]; mpDone += 1; state.mp_wash_count += 1;
+  }
+  for (let index = 0; index < state.level_fresh_ap - mpDone; index += 1) {
+    if (!state.canRemoveMp(1, config.target_mp)) break;
+    const hp = state.profile.method1Hp(config.hp_mode, state.skill);
+    state.base_hp += hp; hpGained += hp; state.base_mp -= state.profile.mpRemovedPerApr;
+    toInt += assignWash(state, config, 1)[0]; hpDone += 1; state.method1_hp_wash_count += 1;
+  }
+  const unwashed = state.level_fresh_ap - mpDone - hpDone;
+  const [leftInt, leftPrimary] = dump(state, config, unwashed);
+  const notes = [
+    mpDone ? `混合 early：MP wash ${mpDone} AP，MP 淨增加 ${formatAmount(mpNet)}` : "",
+    hpDone ? `Method 1 ${hpDone} AP，HP +${formatAmount(hpGained)}、MP -${formatAmount(hpDone * state.profile.mpRemovedPerApr)}` : "",
+    toInt ? `洗回 AP 點入 INT ${toInt}` : "",
+    unwashed ? `剩餘 AP 點入 ${allocationSummary(state, leftInt, leftPrimary)}` : "",
+  ].filter(Boolean).join("；");
+  state.plan.push(row(state, mpDone ? "MP5" : hpDone ? "HP5" : "INT5", {
+    fresh_ap_mp: mpDone, fresh_ap_hp: hpDone, fresh_ap_int: leftInt,
+    ...primaryFields(state, leftPrimary), apr_spent: mpDone + hpDone, notes,
+  }));
 }
 function mpWash(state: State, config: NormalizedConfig, requested: number): void {
   let done = 0; let toInt = 0; let toPrimary = 0; let mpNet = 0;
@@ -207,7 +236,10 @@ function execute(state: State, action: Action, config: NormalizedConfig): void {
   if (action === "BUILD") return build(state, config);
   if (action === "HARDCORE_GREEDY") return greedy(state, config);
   if (action.startsWith("HP")) return method1(state, config, method1WashesAffordable(state.extraMp(), state.level_fresh_ap, state.profile.mpRemovedPerApr));
-  if (action.startsWith("MP")) return mpWash(state, config, mpWashesAffordable(state.base_int, state.base_mp, state.level, state.level_fresh_ap, config.hp_mode, config.job));
+  if (action.startsWith("MP")) {
+    if (config.early_mp_wash_points !== undefined && config.early_mp_wash_level !== undefined && state.level >= config.early_mp_wash_level && !state.int_reset_done && state.level < config.int_reset_level && state.base_int < config.target_base_int) return hybridEarlyWash(state, config);
+    return mpWash(state, config, mpWashesAffordable(state.base_int, state.base_mp, state.level, state.level_fresh_ap, config.hp_mode, config.job));
+  }
   if (action === "INT5") { const [toInt, toPrimary] = dump(state, config, state.level_fresh_ap); state.plan.push(row(state, toInt ? "INT5" : primaryAction(state), { fresh_ap_int: toInt, ...primaryFields(state, toPrimary), notes: `本等 AP 分配：${allocationSummary(state, toInt, toPrimary)}` })); return; }
   if (action === "LUK5" || action === "STR5" || action === "DEX5") { addPrimary(state, state.level_fresh_ap); state.plan.push(row(state, action, { ...primaryFields(state, state.level_fresh_ap), notes: `本等 AP 分配：${primaryStatLabel(state)} ${state.level_fresh_ap}` })); }
 }

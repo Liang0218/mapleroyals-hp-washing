@@ -66,6 +66,7 @@ export interface SimulateConfig {
   improved_maxhp_level?: number;
   target_mp?: number;
   early_mp_wash_level?: number;
+  early_mp_wash_points?: number;
   resume_clean_int_ap?: number;
   resume_clean_mp_washes?: number;
   resume_clean_hp_washes?: number;
@@ -143,7 +144,7 @@ export interface SimulateResult {
   target_mp?: number;
 }
 
-export interface CandidateResult extends SimulateResult { early_mp_wash_level?: number; resume_clean_int_ap?: number; resume_clean_mp_washes?: number; resume_clean_hp_washes?: number; resume_clean_wash_order?: "mp_hp" | "hp_mp" }
+export interface CandidateResult extends SimulateResult { early_mp_wash_level?: number; early_mp_wash_points?: number; target_mp_protected?: boolean; resume_clean_int_ap?: number; resume_clean_mp_washes?: number; resume_clean_hp_washes?: number; resume_clean_wash_order?: "mp_hp" | "hp_mp" }
 
 export interface PolicyBest { policy: PolicyName; best?: CandidateResult; top: CandidateResult[]; }
 export interface ComparisonResult {
