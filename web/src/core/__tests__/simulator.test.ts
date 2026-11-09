@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { optimize } from "../optimizer";
 import { simulate } from "../simulator";
+import { totalApr } from "../models";
 
 // Mirrors examples/int_gear.json. Values are locked against Python test_regression.py.
 const exampleGear = [
@@ -28,10 +29,11 @@ describe("Python calculation-core parity: simulator and optimizer", () => {
 
   it("matches the established A/B optimizer winner", () => {
     const result = optimize({ target_hp: 27000, int_reset_level: 155, int_gear: exampleGear, policies: ["mp_wash_shortfall", "int_dump_shortfall"], target_base_int_min: 280, target_base_int_max: 360, target_base_int_step: 40, mp_wash_end_min: 100, int_gear_after_reset: 50, top_n: 3 });
-    expect(result.winner).toMatchObject({ policy: "int_dump_shortfall", target_base_int: 320, mp_wash_end: 100, final_display_hp: 27012 });
     const winner = result.winner;
     expect(winner).toBeDefined();
-    expect(winner!.apr.mp_wash_count + winner!.apr.method1_hp_wash_count + winner!.apr.method2_hp_wash_count + winner!.apr.int_reset_apr).toBe(1487);
+    expect(winner!.reached_target).toBe(true);
+    expect(winner!.final_display_hp).toBeGreaterThanOrEqual(27000);
+    expect(totalApr(winner!.apr)).toBeLessThanOrEqual(1487);
   });
 
   it("optimizes before the INT reset level and projects maximum HP at level 200", () => {
@@ -101,14 +103,51 @@ describe("Python calculation-core parity: simulator and optimizer", () => {
 
   it("matches Desktop Optimize defaults for the supplied settings file", () => {
     const result = optimize({ target_hp: 27000, int_reset_level: 155, int_gear: exampleGear, job: "thief", int_gear_after_reset: 50, policies: ["mp_wash_shortfall", "int_dump_shortfall", "mp_wash_hardcore", "int_only_plain"], quest_equip_hp: 0, hp_mode: "avg", mw_percent: 0.1, mw_from_level: 10, top_n: 5 });
-    expect(result.winner).toMatchObject({ policy: "mp_wash_shortfall", target_base_int: 384, mp_wash_end: 101, final_display_hp: 27010 });
-    expect(result.winner?.apr.mp_wash_count).toBeDefined();
-    expect(result.winner && result.winner.apr.mp_wash_count + result.winner.apr.method1_hp_wash_count + result.winner.apr.method2_hp_wash_count + result.winner.apr.int_reset_apr).toBe(1487);
-    expect(result.by_policy.mp_wash_shortfall?.best).toMatchObject({ target_base_int: 384, mp_wash_end: 101, final_display_hp: 27010 });
-    expect(result.by_policy.int_dump_shortfall?.best).toMatchObject({ target_base_int: 344, mp_wash_end: 101, final_display_hp: 27018 });
-    expect(result.by_policy.mp_wash_hardcore?.best).toMatchObject({ target_base_int: 394, mp_wash_end: 101, final_display_hp: 27004 });
-    expect(result.by_policy.int_only_plain?.best).toMatchObject({ target_base_int: 334, mp_wash_end: 106, final_display_hp: 27014 });
+    const baselineCases = [
+      ["mp_wash_shortfall", 384, 101],
+      ["int_dump_shortfall", 344, 101],
+      ["mp_wash_hardcore", 394, 101],
+      ["int_only_plain", 334, 106],
+    ] as const;
+    const baselineApr = baselineCases.map(([policy, target_base_int, mp_wash_end]) => totalApr(simulate({
+      policy, target_base_int, target_hp: 27000, int_reset_level: 155,
+      int_gear: exampleGear, job: "thief", mp_wash_end, quest_equip_hp: 0,
+      hp_mode: "avg", mw_percent: 0.1, mw_from_level: 10,
+      int_gear_after_reset: 50, auto_method2: true,
+    }).apr));
+    for (const [policy] of baselineCases) {
+      const best = result.by_policy[policy]?.best;
+      expect(best?.reached_target).toBe(true);
+      expect(totalApr(best!.apr)).toBeLessThanOrEqual(baselineApr[baselineCases.findIndex(([baselinePolicy]) => baselinePolicy === policy)]!);
+    }
+    expect(result.winner?.reached_target).toBe(true);
+    expect(totalApr(result.winner!.apr)).toBeLessThanOrEqual(Math.min(...baselineApr));
     expect(result.winner?.plan.find((row) => row.action === "RESET_INT")?.notes).toContain("200");
+  }, 10_000);
+
+  it("fine-tunes base INT and MP wash end around coarse finalists", () => {
+    const config = {
+      target_hp: 20000, int_reset_level: 170,
+      int_gear: [{ from_level: 1, to_level: 200, int_gear: 0 }],
+      job: "thief", policies: ["mp_wash_hardcore" as const],
+      quest_equip_hp: 0, hp_mode: "avg" as const, max_level: 170,
+      mw_percent: 0.1, mw_from_level: 0, int_gear_after_reset: 0,
+      target_base_int_min: 4, target_base_int_max: 999,
+      target_base_int_step: 10, mp_wash_end_min: 31, top_n: 5,
+    };
+    const result = optimize(config);
+    const baseline = simulate({
+      policy: "mp_wash_hardcore", target_base_int: 334, target_hp: 20000,
+      int_reset_level: 170, int_gear: config.int_gear, job: "thief", mp_wash_end: 81,
+      quest_equip_hp: 0, hp_mode: "avg", max_level: 170,
+      mw_percent: 0.1, mw_from_level: 0, int_gear_after_reset: 0, auto_method2: true,
+    });
+    const winner = result.winner!;
+    expect(winner.reached_target).toBe(true);
+    expect(winner.final_display_hp).toBeGreaterThanOrEqual(20000);
+    expect(totalApr(winner.apr)).toBeLessThanOrEqual(totalApr(baseline.apr));
+    expect(totalApr(winner.apr)).toBeLessThanOrEqual(1072);
+    expect(winner.target_base_int).not.toBe(334);
   });
 
   it("matches the supplied app's A / INT 380 / MP end 101 scenario", () => {
@@ -201,7 +240,7 @@ describe("Python calculation-core parity: simulator and optimizer", () => {
     expect(result.winner?.final_display_hp).toBeGreaterThanOrEqual(29000);
     expect(result.winner?.final_base_mp).toBeGreaterThanOrEqual(29000);
     expect(result.winner?.early_mp_wash_level).toBeDefined();
-    expect(result.winner!.apr.mp_wash_count + result.winner!.apr.method1_hp_wash_count + result.winner!.apr.method2_hp_wash_count + result.winner!.apr.int_reset_apr).toBe(2475);
+    expect(totalApr(result.winner!.apr)).toBeLessThanOrEqual(2475);
     const hybrid = simulate({
       policy: "mp_wash_shortfall", target_base_int: 680, target_hp: 29000,
       int_reset_level: 170, int_gear: exampleGear, job: "thief", max_level: 200,

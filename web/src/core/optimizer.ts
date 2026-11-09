@@ -3,6 +3,9 @@ import { simulate } from "./simulator";
 import { totalApr, type CandidateResult, type ComparisonResult, type OptimizeConfig, type OptimizeResult, type PolicyBest, type PolicyName } from "./models";
 
 const MAX_BASE_HP = 30_000;
+const FINAL_REFINE_INT_RADIUS = 15;
+const FINAL_REFINE_MP_END_RADIUS = 10;
+const FINAL_REFINE_SEED_LIMIT = 5;
 
 type Normalized = Required<Omit<OptimizeConfig, "policies" | "resume_from" | "improved_maxhp_level" | "target_mp" | "hp_cap">> & Pick<OptimizeConfig, "policies" | "resume_from" | "improved_maxhp_level" | "target_mp" | "hp_cap">;
 function normalize(config: OptimizeConfig): Normalized {
@@ -89,6 +92,40 @@ function optimizeResumeCleanAp(config: Normalized, policy: PolicyName, existing:
   }
   return [...coarse, ...local, ...refined];
 }
+function refineFinalists(config: Normalized, policy: PolicyName, candidates: CandidateResult[]): CandidateResult[] {
+  const [low, high] = intBounds(config);
+  const validMpEnds = mpEnds(config, 1);
+  const seeds = unique([...candidates].sort(compare)).slice(0, FINAL_REFINE_SEED_LIMIT);
+  const refined: CandidateResult[] = [];
+  for (const seed of seeds) {
+    const intValues = ints(Math.max(low, seed.target_base_int - FINAL_REFINE_INT_RADIUS), Math.min(high, seed.target_base_int + FINAL_REFINE_INT_RADIUS), 1);
+    const mpEndValues = validMpEnds.filter((end) => Math.abs(end - seed.mp_wash_end) <= FINAL_REFINE_MP_END_RADIUS);
+    const hasResumeCleanAllocation = seed.resume_clean_int_ap !== undefined
+      || seed.resume_clean_mp_washes !== undefined
+      || seed.resume_clean_hp_washes !== undefined;
+    const allocation = hasResumeCleanAllocation ? {
+      intAp: seed.resume_clean_int_ap ?? 0,
+      mpWashes: seed.resume_clean_mp_washes ?? 0,
+      hpWashes: seed.resume_clean_hp_washes ?? 0,
+      order: seed.resume_clean_wash_order ?? "mp_hp" as const,
+    } : undefined;
+    for (const baseInt of intValues) {
+      for (const mpWashEnd of mpEndValues) {
+        refined.push(candidate(
+          config,
+          policy,
+          baseInt,
+          mpWashEnd,
+          seed.early_mp_wash_level,
+          seed.target_mp_protected,
+          allocation,
+          seed.early_mp_wash_points,
+        ));
+      }
+    }
+  }
+  return refined;
+}
 function policyBest(config: Normalized, policy: PolicyName): PolicyBest {
   const [low, high] = intBounds(config);
   const refine = (coarse: CandidateResult[], earlyMpWashLevel?: number, allMpEnds = false, protectTargetMp = false) => {
@@ -140,6 +177,10 @@ function policyBest(config: Normalized, policy: PolicyName): PolicyBest {
     }
     candidates = unique([...candidates, ...early]);
   }
+  // Keep every coarse candidate, then add an exact local sweep around the best
+  // finalists. The extra pass can improve the result without discarding any
+  // result found by the existing search.
+  candidates = unique([...candidates, ...refineFinalists(config, policy, candidates)]);
   candidates.sort(compare); const feasible = candidates.filter((item) => item.reached_target); const top = (feasible.length ? feasible : candidates).slice(0, config.top_n); return { policy, best: top[0], top };
 }
 function comparison(byPolicy: Partial<Record<PolicyName, PolicyBest>>): ComparisonResult {
