@@ -121,9 +121,40 @@ test("an invalid input is reported on its field and focused", async ({ page }) =
   await openTab(page, "最佳化");
   await page.locator("#field-targetHp").fill("0");
   await page.getByRole("button", { name: "執行最佳化" }).click();
-  await expect(page.getByRole("alert")).toContainText("目標 HP");
+  await expect(page.getByRole("alert")).toContainText("標紅的欄位");
+  await expect(page.locator("#field-targetHp-error")).toContainText("目標 HP");
   await expect(page.locator("#field-targetHp")).toHaveAttribute("aria-invalid", "true");
   await expect(page.locator("#field-targetHp")).toBeFocused();
+
+  // Fixing the value clears the error right away, before running again.
+  await page.locator("#field-targetHp").fill("27000");
+  await expect(page.locator("#field-targetHp-error")).toHaveCount(0);
+  await expect(page.locator("#field-targetHp")).not.toHaveAttribute("aria-invalid", "true");
+  await expect(page.getByRole("alert")).toHaveCount(0);
+});
+
+test("an out-of-range value is flagged when leaving the field", async ({ page }) => {
+  await openTab(page, "最佳化");
+  await page.locator("#field-resetLevel").fill("500");
+  await page.locator("#field-targetHp").focus();
+  await expect(page.locator("#field-resetLevel-error")).toContainText("超出範圍");
+  await page.locator("#field-resetLevel").fill("155");
+  await expect(page.locator("#field-resetLevel-error")).toHaveCount(0);
+});
+
+test("the run bar never covers the form", async ({ page }) => {
+  await openTab(page, "最佳化");
+  const position = await page.locator(".runbar").evaluate((element) => getComputedStyle(element).position);
+  expect(position).toBe("static");
+});
+
+test("an opened plan band shows all its levels without an inner scroll box", async ({ page }) => {
+  await runOptimizeToResult(page);
+  const band = page.locator("#plan-view details.plan-step").nth(1);
+  await band.locator("summary").click();
+  const box = band.locator(".plan");
+  const scrolls = await box.evaluate((element) => element.scrollHeight > element.clientHeight + 1);
+  expect(scrolls).toBe(false);
 });
 
 test("tabs move with the arrow keys", async ({ page }) => {

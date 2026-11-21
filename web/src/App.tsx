@@ -93,13 +93,21 @@ const fieldId = (field: ErrorField) => `field-${field.replace(".", "-")}`;
 
 type FieldProps = {
   name: ErrorField | string; label: string; value: string | number; onChange: (value: string) => void;
-  invalid?: ErrorField; min?: number; max?: number; step?: number | string; hint?: string;
+  invalid?: ErrorField; message?: string; min?: number; max?: number; step?: number | string; hint?: string;
 };
-function Field({ name, label, value, onChange, invalid, min, max, step, hint }: FieldProps) {
+function Field({ name, label, value, onChange, invalid, message, min, max, step, hint }: FieldProps) {
   const id = fieldId(name as ErrorField);
+  // Range check on leaving the field, so a bad value shows before Run is pressed.
+  const [outOfRange, setOutOfRange] = useState(false);
   const isInvalid = invalid === name;
-  const describedBy = [hint ? `${id}-hint` : "", isInvalid ? "form-error" : ""].filter(Boolean).join(" ") || undefined;
-  return <label>{label}<input id={id} type="number" inputMode="decimal" min={min} max={max} step={step} value={value} aria-invalid={isInvalid || undefined} aria-describedby={describedBy} onChange={(event) => onChange(event.target.value)} />{hint && <small id={`${id}-hint`} className="field-hint">{hint}</small>}</label>;
+  const rangeText = min !== undefined && max !== undefined ? `${min}–${max}` : min !== undefined ? `≥ ${min}` : `≤ ${max}`;
+  const shown = isInvalid ? message : outOfRange ? `超出範圍（${rangeText}）` : undefined;
+  const describedBy = [hint ? `${id}-hint` : "", shown ? `${id}-error` : ""].filter(Boolean).join(" ") || undefined;
+  return <label>{label}<input id={id} type="number" inputMode="decimal" min={min} max={max} step={step} value={value} aria-invalid={isInvalid || outOfRange || undefined} aria-describedby={describedBy}
+    onChange={(event) => { if (outOfRange && event.target.validity.valid) setOutOfRange(false); onChange(event.target.value); }}
+    onBlur={(event) => setOutOfRange(event.target.validity.rangeUnderflow || event.target.validity.rangeOverflow)} />
+    {hint && <small id={`${id}-hint`} className="field-hint">{hint}</small>}
+    {shown && <small id={`${id}-error`} className="field-error">{shown}</small>}</label>;
 }
 
 export function App() {
@@ -165,12 +173,15 @@ export function App() {
     requestAnimationFrame(() => (document.getElementById(fieldId(field)) ?? document.getElementById("form-error"))?.focus());
   }, [failure]);
 
+  // Editing the field an error points at clears that error.
+  function clearErrorFor(fields: string[]) { if (invalid && fields.includes(invalid)) setFailure(undefined); }
   function updateConfig(patch: Partial<CalculatorConfig>) {
+    if (!("resume" in patch)) clearErrorFor(Object.keys(patch));
     setCache((previous) => tab === "simulate"
       ? { ...previous, simulate: { ...previous.simulate, ...patch } }
       : { ...previous, optimize: { ...previous.optimize, ...patch } });
   }
-  function updateResume(patch: Partial<ResumeFields>) { updateConfig({ resume: { ...config.resume, ...patch } }); }
+  function updateResume(patch: Partial<ResumeFields>) { clearErrorFor(Object.keys(patch).map((key) => `resume.${key}`)); updateConfig({ resume: { ...config.resume, ...patch } }); }
   function openInSimulate(request: SimulateRequest) {
     setCache((previous) => ({ ...previous, tab: "simulate", simulate: { ...previous.optimize, autoMethod2: previous.simulate.autoMethod2, policy: request.policy, targetInt: request.targetInt, mpWashEnd: request.mpWashEnd } }));
     setFailure(undefined); setResult(undefined);
@@ -279,12 +290,12 @@ export function App() {
     </section>,
 
     equipment: () => <section className="page-card equipment-page">
-      <div className="section-heading"><div><h2>裝備設定</h2><p className="subheading">每種裝備槽取最高 INT；Ring 最多計入四件。下表會即時預覽各等級可用的總 INT。</p></div><div className="button-row"><input ref={equipmentInput} className="visually-hidden" type="file" accept="application/json,.json" tabIndex={-1} aria-hidden="true" onChange={(event) => { void importEquipment(event.target.files?.[0]); event.target.value = ""; }} /><button className="quiet" type="button" onClick={restoreDefaults}>還原預設</button><button className="quiet" type="button" onClick={() => equipmentInput.current?.click()}>載入智力裝備設定</button><button className="quiet" type="button" onClick={() => downloadText("int-equipment-settings.json", `${JSON.stringify(equipment, null, 2)}\n`, "application/json;charset=utf-8")}>儲存智力裝備設定</button></div></div>
+      <div className="section-heading"><div><h2>裝備設定</h2><p className="subheading">每種裝備槽取最高 INT；Ring 最多計入四件。下表會即時預覽各等級可用的總 INT。</p></div><div className="button-row"><input ref={equipmentInput} className="visually-hidden" type="file" accept="application/json,.json" tabIndex={-1} aria-hidden="true" onChange={(event) => { void importEquipment(event.target.files?.[0]); event.target.value = ""; }} /><button className="link-button" type="button" onClick={restoreDefaults}>還原預設</button><button className="quiet" type="button" onClick={() => equipmentInput.current?.click()}>載入智力裝備設定</button><button className="quiet" type="button" onClick={() => downloadText("int-equipment-settings.json", `${JSON.stringify(equipment, null, 2)}\n`, "application/json;charset=utf-8")}>儲存智力裝備設定</button></div></div>
       {errorBox}
       <div className="equipment-toolbar"><button type="button" onClick={addEquipment}>新增裝備</button><span className="equipment-auto-note">編輯裝備清單後，最佳化與模擬會依各自設定的洗回 INT 等級自動套用。</span></div>
       {undo && <div className="undo-bar" role="status"><span>{undo.message}</span><button type="button" className="quiet" onClick={revertEquipment}>復原</button></div>}
       <div className="equipment-layout"><div className="equipment-table-wrap"><table className="equipment-table"><thead><tr><th scope="col">裝備名稱</th><th scope="col">類型</th><th scope="col">INT</th><th scope="col">穿戴等級</th><th scope="col"><span className="visually-hidden">移除</span></th></tr></thead><tbody>{equipment.map((item, index) => <tr key={index}><td><input aria-label={`Equipment ${index + 1} name`} value={item.name} onChange={(event) => updateEquipment(index, { name: event.target.value })} /></td><td><select aria-label={`Equipment ${index + 1} type`} value={item.type} onChange={(event) => updateEquipment(index, { type: event.target.value as EquipmentItem["type"] })}>{EQUIPMENT_TYPES.map((type) => <option key={type}>{type}</option>)}</select></td><td><input aria-label={`Equipment ${index + 1} INT`} type="number" min="0" value={item.int} onChange={(event) => updateEquipment(index, { int: Number(event.target.value) })} /></td><td><input aria-label={`Equipment ${index + 1} level`} type="number" min="1" max="200" value={item.equip_level} onChange={(event) => updateEquipment(index, { equip_level: Number(event.target.value) })} /></td><td><button className="remove" type="button" aria-label={`Remove equipment ${index + 1}${item.name ? ` (${item.name})` : ""}`} onClick={() => removeEquipment(index)}>移除</button></td></tr>)}</tbody></table></div>
-        <aside className="gear-preview"><h3>INT 裝備預覽</h3><p>洗回後升等裝備 INT：{optimizeConfig.gearAfterReset}</p>{gearPreview.length ? <table><thead><tr><th scope="col">等級</th><th scope="col">裝備 INT</th></tr></thead><tbody>{gearPreview.map((segment) => <tr key={segment.from_level}><td>{segment.from_level}–{segment.to_level}</td><td>{segment.int_gear}</td></tr>)}</tbody></table> : <p className="error">請檢查裝備名稱、INT 與裝備等級。</p>}</aside></div>
+        <aside className="gear-preview"><h3>INT 裝備預覽</h3><p>洗回 INT 前：依左邊裝備表，各等級如下。</p><p>洗回 INT 後：{optimizeConfig.gearAfterReset}（在最佳化的「進階設定」修改）</p>{gearPreview.length ? <table><thead><tr><th scope="col">等級</th><th scope="col">裝備 INT</th></tr></thead><tbody>{gearPreview.map((segment) => <tr key={segment.from_level}><td>{segment.from_level}–{segment.to_level}</td><td>{segment.int_gear}</td></tr>)}</tbody></table> : <p className="error">請檢查裝備名稱、INT 與裝備等級。</p>}</aside></div>
     </section>,
 
     "job-reference": () => <JobReference language={language} />,
@@ -303,24 +314,24 @@ export function App() {
       <div className="calc-layout"><div className="calc-form">
 
       <fieldset className="form-section"><legend>目標與職業</legend><div className="fields">
-        <label>職業<select id={fieldId("job")} value={config.job} aria-invalid={invalid === "job" || undefined} onChange={(event) => updateConfig({ job: event.target.value })}>{jobs.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-        <Field name="targetHp" invalid={invalid} min={1} step={1} label="目標 HP" value={config.targetHp} onChange={(value) => updateConfig({ targetHp: Number(value) })} />
-        <label>目標 MP（留空則洗到最低）<input id={fieldId("targetMp")} type="number" inputMode="numeric" min={0} step={1} value={config.targetMp} aria-invalid={invalid === "targetMp" || undefined} onChange={(event) => updateConfig({ targetMp: event.target.value })} /></label>
-        <label>目標等級（留空則表示 200 等）<input id={fieldId("targetLevel")} type="number" inputMode="numeric" min={31} max={200} step={1} value={config.targetLevel} aria-invalid={invalid === "targetLevel" || undefined} onChange={(event) => updateConfig({ targetLevel: event.target.value })} /></label>
-        <Field name="resetLevel" invalid={invalid} min={2} max={200} step={1} label="洗回 INT 等級" value={config.resetLevel} onChange={(value) => updateConfig({ resetLevel: Number(value) })} />
+        <label>職業<select id={fieldId("job")} value={config.job} aria-invalid={invalid === "job" || undefined} onChange={(event) => updateConfig({ job: event.target.value })}>{jobs.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>{invalid === "job" && <small className="field-error">{userError?.message}</small>}</label>
+        <Field name="targetHp" invalid={invalid} message={userError?.message} min={1} step={1} label="目標 HP" value={config.targetHp} onChange={(value) => updateConfig({ targetHp: Number(value) })} />
+        <label>目標 MP（留空則洗到最低）<input id={fieldId("targetMp")} type="number" inputMode="numeric" min={0} step={1} value={config.targetMp} aria-invalid={invalid === "targetMp" || undefined} onChange={(event) => updateConfig({ targetMp: event.target.value })} />{invalid === "targetMp" && <small className="field-error">{userError?.message}</small>}</label>
+        <label>目標等級（留空＝200）<input id={fieldId("targetLevel")} type="number" inputMode="numeric" min={31} max={200} step={1} value={config.targetLevel} aria-invalid={invalid === "targetLevel" || undefined} onChange={(event) => updateConfig({ targetLevel: event.target.value })} />{invalid === "targetLevel" && <small className="field-error">{userError?.message}</small>}</label>
+        <Field name="resetLevel" invalid={invalid} message={userError?.message} min={2} max={200} step={1} label="洗回 INT 等級" value={config.resetLevel} onChange={(value) => updateConfig({ resetLevel: Number(value) })} />
       </div><p className="field-note gear-summary"><span className="gear-chips"><span className="gear-label">裝備 INT</span>{gearPreview.length ? gearPreview.map((segment) => <span className="gear-chip" key={segment.from_level}>Lv {segment.from_level}–{segment.to_level} INT <b>+{segment.int_gear}</b></span>) : <span>尚未設定</span>}</span><button type="button" className="link-button" onClick={() => changeTab("equipment")}>編輯裝備</button></p></fieldset>
 
       {isOptimize
         ? optimizeConfig.job === "thief" && <fieldset className="form-section"><legend>最佳化比較策略</legend><label className="checkbox-field"><input type="checkbox" checked={optimizeConfig.compareThiefPolicyC} onChange={(event) => updateConfig({ compareThiefPolicyC: event.target.checked })} />比較 Policy C（Hardcore greedy）</label><p className="field-note">Policy C 會逐 AP 嘗試洗血與洗 MP，策略較繁瑣，搜尋也較耗時。關閉後只比較 A／B／D，可縮短最佳化時間。</p></fieldset>
         : <fieldset className="form-section"><legend>模擬參數</legend><div className="fields">
-          <label>Policy<select id={fieldId("policy")} value={effectivePolicy} aria-describedby="policy-hint" aria-invalid={invalid === "policy" || undefined} onChange={(event) => updateConfig({ policy: event.target.value as PolicyName })}>{profile.policies.map((value) => <option key={value} value={value}>{policyLabels[value]}</option>)}</select><small id="policy-hint" className="field-hint">{policyHints[effectivePolicy]}</small></label>
-          <Field name="targetInt" invalid={invalid} min={4} step={1} label="目標 base INT" value={config.targetInt} onChange={(value) => updateConfig({ targetInt: Number(value) })} />
-          <Field name="mpWashEnd" invalid={invalid} min={31} max={200} step={1} label="MP wash 結束等級" value={config.mpWashEnd} onChange={(value) => updateConfig({ mpWashEnd: Number(value) })} />
+          <label>Policy<select id={fieldId("policy")} value={effectivePolicy} aria-describedby="policy-hint" aria-invalid={invalid === "policy" || undefined} onChange={(event) => updateConfig({ policy: event.target.value as PolicyName })}>{profile.policies.map((value) => <option key={value} value={value}>{policyLabels[value]}</option>)}</select><small id="policy-hint" className="field-hint">{policyHints[effectivePolicy]}</small>{invalid === "policy" && <small className="field-error">{userError?.message}</small>}</label>
+          <Field name="targetInt" invalid={invalid} message={userError?.message} min={4} step={1} label="目標 base INT" value={config.targetInt} onChange={(value) => updateConfig({ targetInt: Number(value) })} />
+          <Field name="mpWashEnd" invalid={invalid} message={userError?.message} min={31} max={200} step={1} label="MP wash 結束等級" value={config.mpWashEnd} onChange={(value) => updateConfig({ mpWashEnd: Number(value) })} />
           <label className="checkbox-field"><input type="checkbox" checked={config.autoMethod2} onChange={(event) => updateConfig({ autoMethod2: event.target.checked })} />自動以 Method 2 補足目標 HP</label>
         </div></fieldset>}
 
       <details className="disclosure" open={advancedOpen} onToggle={(event) => setAdvancedOpen(event.currentTarget.open)}><summary>進階設定<span>裝備 INT、HP 計算方式與 Maple Warrior</span></summary><div className="fields disclosure-body">
-        <Field name="gearAfterReset" invalid={invalid} min={0} step={1} label="洗回後升等裝備 INT" value={config.gearAfterReset} onChange={(value) => updateConfig({ gearAfterReset: Number(value) })} />
+        <Field name="gearAfterReset" invalid={invalid} message={userError?.message} min={0} step={1} label="洗回後升等裝備 INT" value={config.gearAfterReset} onChange={(value) => updateConfig({ gearAfterReset: Number(value) })} />
         <Field name="questHp" min={0} step={1} label="任務／裝備 HP" value={config.questHp} onChange={(value) => updateConfig({ questHp: Number(value) })} />
         <label>HP 模式<select value={config.hpMode} onChange={(event) => updateConfig({ hpMode: event.target.value as HpMode })}><option value="avg">平均 avg</option><option value="min">最低 min</option><option value="max">最高 max</option></select></label>
         <Field name="mwPercent" min={0} max={1} step="0.01" label="Maple Warrior 比例" hint="填 0.1 代表 10%" value={config.mwPercent} onChange={(value) => updateConfig({ mwPercent: Number(value) })} />
@@ -328,15 +339,16 @@ export function App() {
       </div></details>
 
       <details className="disclosure" open={resumeOpen} onToggle={(event) => setResumeOpen(event.currentTarget.open)}><summary>中途接續 Resume<span>從已經在練的角色接著算</span></summary><div className="disclosure-body"><label className="checkbox-field resume-toggle"><input type="checkbox" checked={config.resumeEnabled} onChange={(event) => updateConfig({ resumeEnabled: event.target.checked })} />從目前角色狀態接續計算，APR 只統計接下來使用的 APR</label>{config.resumeEnabled && <div className="fields resume-fields">
-        <Field name="resume.level" invalid={invalid} min={1} max={200} step={1} label="目前等級" value={config.resume.level} onChange={(level) => updateResume({ level })} /><Field name="resume.baseHp" invalid={invalid} min={1} step={1} label="base HP" value={config.resume.baseHp} onChange={(baseHp) => updateResume({ baseHp })} />
-        <Field name="resume.baseMp" invalid={invalid} min={0} step={1} label="base MP" value={config.resume.baseMp} onChange={(baseMp) => updateResume({ baseMp })} />
-        <Field name="resume.baseInt" invalid={invalid} min={4} step={1} label="base INT" value={config.resume.baseInt} onChange={(baseInt) => updateResume({ baseInt })} /><Field name="baseStr" min={4} step={1} label="base STR" value={config.resume.baseStr} onChange={(baseStr) => updateResume({ baseStr })} />
+        <Field name="resume.level" invalid={invalid} message={userError?.message} min={1} max={200} step={1} label="目前等級" value={config.resume.level} onChange={(level) => updateResume({ level })} /><Field name="resume.baseHp" invalid={invalid} message={userError?.message} min={1} step={1} label="base HP" value={config.resume.baseHp} onChange={(baseHp) => updateResume({ baseHp })} />
+        <Field name="resume.baseMp" invalid={invalid} message={userError?.message} min={0} step={1} label="base MP" value={config.resume.baseMp} onChange={(baseMp) => updateResume({ baseMp })} />
+        <Field name="resume.baseInt" invalid={invalid} message={userError?.message} min={4} step={1} label="base INT" value={config.resume.baseInt} onChange={(baseInt) => updateResume({ baseInt })} /><Field name="baseStr" min={4} step={1} label="base STR" value={config.resume.baseStr} onChange={(baseStr) => updateResume({ baseStr })} />
         <Field name="baseDex" min={4} step={1} label="base DEX" value={config.resume.baseDex} onChange={(baseDex) => updateResume({ baseDex })} /><Field name="baseLuk" min={4} step={1} label="base LUK" value={config.resume.baseLuk} onChange={(baseLuk) => updateResume({ baseLuk })} />
         <Field name="freshAp" min={0} step={1} label="本等尚未點的 AP" value={config.resume.freshAp} onChange={(freshAp) => updateResume({ freshAp })} />
         <Field name="unwashedAp" min={0} step={1} label="尚未洗回的 HP／MP AP" value={config.resume.unwashedAp} onChange={(unwashedAp) => updateResume({ unwashedAp })} />
         <label className="checkbox-field"><input type="checkbox" checked={config.resume.intResetDone} onChange={(event) => updateResume({ intResetDone: event.target.checked })} />INT 已洗回 4，之後不再點 INT</label>
       </div>}</div></details>
 
+      {userError && <div className="error-box" id="form-error" role="alert" tabIndex={-1}><p>{userError.field && userError.field !== "equipment" ? "請修正標紅的欄位後再執行。" : userError.message}</p>{userError.field === "equipment" && <button type="button" className="quiet" onClick={() => changeTab("equipment")}>前往裝備頁</button>}</div>}
       <div className="runbar">
         {!busy && <p className="runbar-note">{otherRunning ? (running === "optimize" ? "最佳化計算中，完成後才能執行模擬。" : "模擬計算中，完成後才能執行最佳化。") : "完成後可在結果區下載逐級計畫 CSV。"}</p>}
         <div className="run-actions">
@@ -344,13 +356,12 @@ export function App() {
           {busy && <button type="button" className="quiet" onClick={() => cancelRun.current?.()}>取消</button>}
         </div>
       </div>
-      {errorBox}
       </div>
       <div className="calc-results" aria-live="polite">
         {busy ? <p className="results-empty">{isOptimize ? "正在搜尋 base INT 與 MP wash 組合，請稍候。" : "正在逐級模擬，請稍候。"}<br /><span className="elapsed" aria-live="off">已經過 {elapsed} 秒</span></p>
           : tab === "simulate" && result ? <SimulationResult result={result} language={language} stale={stale} />
           : isOptimize && optimized ? <OptimizationResult result={optimized} language={language} stale={stale} onSimulate={openInSimulate} />
-          : <p className="results-empty">{isOptimize ? "填好左邊的目標後按「執行最佳化」，結果會顯示在這裡。" : "填好左邊的設定後按「執行模擬」，結果會顯示在這裡。"}</p>}
+          : <p className="results-empty">{isOptimize ? "填好目標後按「執行最佳化」，結果會顯示在這裡。" : "填好設定後按「執行模擬」，結果會顯示在這裡。"}</p>}
       </div></div>
     </form>;
   }
@@ -494,7 +505,7 @@ function PlanKey({ title, rows, file, language, summary }: { title: string; rows
   const bands = planBands(rows);
   return translateTree(<section className="plan-view" id="plan-view">
     <div className="result-heading"><div><h4 className="section-plate">{title}（{rows.length} 列）</h4>{summary && <p className="plan-summary">{summary}</p>}</div><button type="button" className="quiet" onClick={() => downloadText(file, planCsv(rows), "text/csv;charset=utf-8")}>下載 CSV</button></div>
-    <p className="plan-hint">依等級順序照做；點一列展開該段每一級的動作。</p>
+    <p className="plan-hint">依等級順序照做；點一列展開該段每一級的動作。Extra MP 是目前 MP 超出洗血下限的量，負數表示還不能洗血。</p>
     <div className="plan-sections">
       <div className="plan-axis" aria-hidden="true"><span>Lv 1</span><span>Lv 200</span></div>
       {bands.map((band) => <details className="plan-step" id={band.id} key={band.id}><summary>
@@ -570,7 +581,7 @@ function OptimizationResult({ result, language, stale, onSimulate }: { result: O
             <b>{apr.toLocaleString()} APR {itemLetter !== fewestLetter && <span className="apr-delta">{delta >= 0 ? `+${delta.toLocaleString()}` : delta.toLocaleString()}</span>}</b>
             <span className={candidate.reached_target ? "status-success" : "status-failure"}><Mark reached={candidate.reached_target} /> {candidate.reached_target ? "已達標" : "未達標"}</span>
             <small>INT {candidate.target_base_int}{" · MP wash 到 Lv "}{candidate.mp_wash_end}{" · HP "}{candidate.final_display_hp.toLocaleString()}{candidate.target_mp === undefined ? "" : ` · MP ${candidate.final_base_mp.toLocaleString()} / ${candidate.target_mp.toLocaleString()}`}</small>
-            <span className="card-cue">{isShown ? "正在上方顯示" : "查看計畫"}</span>
+            {isShown && <span className="card-cue">正在上方顯示</span>}
           </button>
           <button type="button" className="link-button" onClick={() => toSimulate(candidate)}>在模擬中開啟</button>
         </article>;
