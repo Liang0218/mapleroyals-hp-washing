@@ -106,7 +106,7 @@ export function App() {
   const [cache, setCache] = useState<AppCache>(readCache);
   const [language, setLanguage] = useState<Language>(readLanguage);
   const [theme, setTheme] = useState<Theme>(readTheme);
-  const [ranWith, setRanWith] = useState<string>();
+  const [ranWith, setRanWith] = useState<Partial<Record<"optimize" | "simulate", string>>>({});
   const [result, setResult] = useState<SimulateResult>();
   const [optimized, setOptimized] = useState<OptimizeResult>();
   const [failure, setFailure] = useState<Failure>();
@@ -152,7 +152,8 @@ export function App() {
 
   // A result is stale once the inputs it was computed from change.
   const inputSignature = JSON.stringify([tab, config, equipment]);
-  const stale = ranWith !== undefined && ranWith !== inputSignature;
+  const calcKind = tab === "simulate" ? "simulate" : "optimize";
+  const stale = ranWith[calcKind] !== undefined && ranWith[calcKind] !== inputSignature;
 
   // Move focus to the field an error points at, opening its group first.
   useEffect(() => {
@@ -232,9 +233,10 @@ export function App() {
       finish();
       const data = event.data;
       if (!data.ok) { if (kind === "optimize") setOptimized(undefined); else setResult(undefined); setFailure({ error: new Error(data.message), tab: kind }); return; }
-      if (kind === "optimize") { setResult(undefined); setOptimized(data.result as OptimizeResult); }
-      else { setOptimized(undefined); setResult(data.result as SimulateResult); }
-      setRanWith(signature);
+      // Each calculator keeps its own last result; running one never clears the other.
+      if (kind === "optimize") setOptimized(data.result as OptimizeResult);
+      else setResult(data.result as SimulateResult);
+      setRanWith((previous) => ({ ...previous, [kind]: signature }));
     };
     worker.onerror = (event) => { event.preventDefault(); finish(); setFailure({ error: new Error(event.message), tab: kind }); };
     worker.postMessage(request);
@@ -306,7 +308,7 @@ export function App() {
         <label>目標 MP（留空則洗到最低）<input id={fieldId("targetMp")} type="number" inputMode="numeric" min={0} step={1} value={config.targetMp} aria-invalid={invalid === "targetMp" || undefined} onChange={(event) => updateConfig({ targetMp: event.target.value })} /></label>
         <label>目標等級（留空則表示 200 等）<input id={fieldId("targetLevel")} type="number" inputMode="numeric" min={31} max={200} step={1} value={config.targetLevel} aria-invalid={invalid === "targetLevel" || undefined} onChange={(event) => updateConfig({ targetLevel: event.target.value })} /></label>
         <Field name="resetLevel" invalid={invalid} min={2} max={200} step={1} label="洗回 INT 等級" value={config.resetLevel} onChange={(value) => updateConfig({ resetLevel: Number(value) })} />
-      </div><p className="field-note gear-summary"><span className="gear-chips"><span className="gear-label">裝備 INT</span>{gearPreview.length ? gearPreview.map((segment) => <span className="gear-chip" key={segment.from_level}>Lv {segment.from_level}–{segment.to_level} <b>{segment.int_gear}</b></span>) : <span>尚未設定</span>}</span><button type="button" className="link-button" onClick={() => changeTab("equipment")}>編輯裝備</button></p></fieldset>
+      </div><p className="field-note gear-summary"><span className="gear-chips"><span className="gear-label">裝備 INT</span>{gearPreview.length ? gearPreview.map((segment) => <span className="gear-chip" key={segment.from_level}>Lv {segment.from_level}–{segment.to_level} INT <b>+{segment.int_gear}</b></span>) : <span>尚未設定</span>}</span><button type="button" className="link-button" onClick={() => changeTab("equipment")}>編輯裝備</button></p></fieldset>
 
       {isOptimize
         ? optimizeConfig.job === "thief" && <fieldset className="form-section"><legend>最佳化比較策略</legend><label className="checkbox-field"><input type="checkbox" checked={optimizeConfig.compareThiefPolicyC} onChange={(event) => updateConfig({ compareThiefPolicyC: event.target.checked })} />比較 Policy C（Hardcore greedy）</label><p className="field-note">Policy C 會逐 AP 嘗試洗血與洗 MP，策略較繁瑣，搜尋也較耗時。關閉後只比較 A／B／D，可縮短最佳化時間。</p></fieldset>
@@ -375,26 +377,30 @@ type PlanRow = SimulateResult["plan"][number];
 type SpecimenProps = {
   code: string; headline: string; reached: boolean; hpReached: boolean; mpReached: boolean; stale: boolean;
   targetHp: number; finalHp: number; targetMp?: number; finalMp: number;
-  figures: Array<[string, string]>; extras: Array<[string, string]>;
+  figures: Array<[string, string]>; extras: Array<[string, string]>; note?: ReactNode; language: Language;
 };
 
 /** Drawn state mark: filled = reached, hollow = not reached. */
 function Mark({ reached }: { reached: boolean }) { return <span className={`mark ${reached ? "mark-filled" : "mark-hollow"}`} aria-hidden="true" />; }
 
+// Child components render their own copy, so each one runs it through translateTree itself:
+// the caller's translateTree only sees the JSX it was handed, never what a component returns.
+
 /** The result as a specimen label: the answer first, its proof underneath. */
-function Specimen({ code, headline, reached, hpReached, mpReached, stale, targetHp, finalHp, targetMp, finalMp, figures, extras }: SpecimenProps) {
+function Specimen({ code, headline, reached, hpReached, mpReached, stale, targetHp, finalHp, targetMp, finalMp, figures, extras, note, language }: SpecimenProps) {
   const outcome = reached ? "已達成目標" : hpReached && !mpReached ? "無法同時達標 — HP 已達標，MP 未達標" : "無法達成 — 最接近結果";
   const mpDetail = targetMp === undefined ? "未設定 MP 目標" : `MP 目標 ${targetMp.toLocaleString()}，實際 ${finalMp.toLocaleString()}${mpReached ? "（達標）" : "（未達標）"}`;
   // Scale the ruler to whichever is larger so both overshoot and shortfall stay visible.
   const scale = Math.max(targetHp, finalHp, 1) * 1.08;
   const ticks = [0.25, 0.5, 0.75];
-  return <div className={`specimen ${stale ? "is-stale" : ""}`}>
+  return translateTree(<div className={`specimen ${stale ? "is-stale" : ""}`}>
     <span className="specimen-tag">No. {code}</span>
     <div className="specimen-head">
       <h3>{headline}</h3>
       <span className={`stamp ${reached ? "stamp-reached" : "stamp-missed"}`} role="status"><Mark reached={reached} /> {outcome}</span>
     </div>
     {stale && <p className="stale-note">設定已變更，這是舊的結果；請重新執行。</p>}
+    {note}
     <div className="ruler" role="img" aria-label={`HP ${finalHp.toLocaleString()} / ${targetHp.toLocaleString()}`}>
       <div className="ruler-fill" style={{ width: `${(finalHp / scale) * 100}%` }} />
       {ticks.map((tick) => <span key={tick} className="ruler-tick" style={{ left: `${tick * 100}%` }} />)}
@@ -403,94 +409,65 @@ function Specimen({ code, headline, reached, hpReached, mpReached, stale, target
     <p className="capacity-caption">HP 目標 {targetHp.toLocaleString()}（{hpReached ? "達標" : "未達標"}）；{mpDetail}</p>
     <dl className="figures">{figures.map(([value, label]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>
     {extras.length > 0 && <dl className="extras">{extras.map(([value, label]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>}
-  </div>;
+  </div>, language);
 }
 
-const keySteps: Array<[(row: PlanRow) => boolean, string]> = [
-  [(row) => /^HP[1-5]$/.test(row.action), "Extra MP 足夠 → Method 1 洗血"],
-  [(row) => /^MP[1-5]$/.test(row.action), "Extra MP 不足 → 先 MP wash"],
-  [(row) => row.action === "HARDCORE_GREEDY", "逐 AP 嘗試洗血與洗 MP"],
-  [(row) => row.action === "M2", "Method 2 用 APR 換 HP"],
+/** The moves a plan can make, in the player's words. Index -1 is AP allocation and other moves. */
+const moves: Array<[(row: PlanRow) => boolean, string]> = [
+  [(row) => /^HP[1-5]$/.test(row.action), "Method 1 洗血"],
+  [(row) => /^MP[1-5]$/.test(row.action), "MP wash"],
+  [(row) => row.action === "HARDCORE_GREEDY", "逐 AP 洗血或洗 MP"],
+  [(row) => row.action === "M2", "Method 2 換 HP"],
   [(row) => row.action === "RESET_INT", "把 INT 洗回 4"],
 ];
-type PlanStep = { code: string; text: string; from: number; to: number; apr: number; rows: PlanRow[]; within?: string; alternates: string[] };
-
-/** Splits a plan into the key's steps, in level order; overlapping either/or moves share a number as a/b, and a one-level move inside another step's range says so. */
-function planSteps(rows: PlanRow[]): { steps: PlanStep[]; other: PlanRow[] } {
-  const matched = new Set<PlanRow>();
-  const found = keySteps.map(([match, text]) => {
-    const hits = rows.filter(match);
-    hits.forEach((row) => matched.add(row));
-    if (!hits.length) return undefined;
-    const levels = hits.map((row) => row.level);
-    return { text, from: Math.min(...levels), to: Math.max(...levels), apr: hits.reduce((sum, row) => sum + row.apr_spent, 0), rows: hits };
-  }).filter((step) => step !== undefined).sort((a, b) => a.from - b.from || a.to - b.to);
-  const groups: Array<typeof found> = [];
-  for (const step of found) {
-    const last = groups.at(-1);
-    if (last && step.from <= Math.max(...last.map((item) => item.to)) && step.to > step.from) last.push(step);
-    else groups.push([step]);
-  }
-  const numbered = groups.flatMap((group, index) => group.map((step, sub) => ({ ...step, code: group.length > 1 ? `${index + 1}${"abcdef"[sub]}` : String(index + 1) })));
-  const steps = numbered.map((step) => {
-    const host = numbered.find((other) => other !== step && other.to > other.from && step.from >= other.from && step.to <= other.to && step.from !== other.from);
-    const partners = step.to > step.from ? numbered.filter((other) => other !== step && other.code.charAt(0) === step.code.charAt(0) && other.code !== step.code && /[a-f]$/.test(step.code)).map((other) => other.code) : [];
-    return { ...step, within: host?.code, alternates: partners };
-  });
-  return { steps, other: rows.filter((row) => !matched.has(row)) };
-}
-const levelRange = (from: number, to: number) => `Lv ${from === to ? from : `${from}–${to}`}`;
-const MAX_LEVEL = 200;
-
-type PlanBand = { id: string; from: number; to: number; title: string; codes: string[]; events: string[]; rows: PlanRow[]; apr: number };
-/** Which key step a row belongs to: the index into keySteps, or -1 for allocation and other moves. */
-const rowCategory = (row: PlanRow) => keySteps.findIndex(([match]) => match(row));
-const RESET_CATEGORY = 4;
-const M2_CATEGORY = 3;
+const rowMove = (row: PlanRow) => moves.findIndex(([match]) => match(row));
+const RESET_MOVE = 4;
+const M2_MOVE = 3;
 const PURE_RUN = 5;
+const MAX_LEVEL = 200;
+const levelRange = (from: number, to: number) => `Lv ${from === to ? from : `${from}–${to}`}`;
+
+type PlanBand = { id: string; number: number; from: number; to: number; title: string; resets: number[]; rows: PlanRow[]; apr: number };
 /**
  * Cuts the plan into continuous level bands by what each level actually does:
- * a run of one move lasting PURE_RUN+ levels stands alone, shorter runs that alternate merge into one
- * "交替" band, Method 2 always stands alone, and a one-off INT reset is noted inside its band.
+ * a run of one move lasting PURE_RUN+ levels stands alone, shorter alternating runs merge into one band,
+ * Method 2 always stands alone, and a one-off INT reset is noted inside its band.
  */
-function planBands(rows: PlanRow[], steps: PlanStep[]): PlanBand[] {
+function planBands(rows: PlanRow[]): PlanBand[] {
   if (!rows.length) return [];
   const sorted = [...rows].sort((a, b) => a.level - b.level);
-  // Runs of the same move, ignoring INT resets (they are noted as events, not cut points).
-  type Run = { cats: Set<number>; from: number; to: number; pure: boolean };
+  type Run = { moves: Set<number>; from: number; to: number; pure: boolean };
   const runs: Run[] = [];
   for (const row of sorted) {
-    const cat = rowCategory(row);
-    if (cat === RESET_CATEGORY) continue;
+    const move = rowMove(row);
+    if (move === RESET_MOVE) continue;
     const last = runs.at(-1);
-    if (last && last.cats.size === 1 && last.cats.has(cat)) last.to = row.level;
-    else runs.push({ cats: new Set([cat]), from: row.level, to: row.level, pure: true });
+    if (last && last.moves.size === 1 && last.moves.has(move)) last.to = row.level;
+    else runs.push({ moves: new Set([move]), from: row.level, to: row.level, pure: true });
   }
-  // Merge short neighbouring runs into alternating bands; long runs and Method 2 stay on their own.
   const merged: Run[] = [];
   for (const run of runs) {
-    const cat = [...run.cats][0];
-    const standsAlone = cat === M2_CATEGORY || run.to - run.from + 1 >= PURE_RUN;
+    const move = [...run.moves][0];
+    const standsAlone = move === M2_MOVE || run.to - run.from + 1 >= PURE_RUN;
     const last = merged.at(-1);
-    if (!standsAlone && last && !last.pure) { run.cats.forEach((value) => last.cats.add(value)); last.to = run.to; continue; }
-    if (!standsAlone && last && last.pure && !last.cats.has(M2_CATEGORY) && last.to - last.from + 1 < PURE_RUN) {
-      run.cats.forEach((value) => last.cats.add(value)); last.to = run.to; last.pure = false; continue;
+    if (!standsAlone && last && !last.pure) { run.moves.forEach((value) => last.moves.add(value)); last.to = run.to; continue; }
+    if (!standsAlone && last && last.pure && !last.moves.has(M2_MOVE) && last.to - last.from + 1 < PURE_RUN) {
+      run.moves.forEach((value) => last.moves.add(value)); last.to = run.to; last.pure = false; continue;
     }
-    merged.push({ ...run, cats: new Set(run.cats), pure: standsAlone || run.cats.size === 1 });
+    merged.push({ ...run, moves: new Set(run.moves), pure: standsAlone || run.moves.size === 1 });
   }
-  // A short pure run wedged between two others (e.g. one MP wash inside a Method 1 stretch) is not its own phase:
-  // fold it, with its neighbours when they share a move, into one alternating band.
+  // A short pure run wedged between two others is not its own phase: fold it into an alternating band.
   for (let index = 1; index < merged.length; index += 1) {
     const band = merged[index];
-    const isShort = band.to - band.from + 1 < PURE_RUN && band.pure && !band.cats.has(M2_CATEGORY);
+    const isShort = band.to - band.from + 1 < PURE_RUN && band.pure && !band.moves.has(M2_MOVE);
     if (!isShort || index + 1 >= merged.length) continue;
     const previous = merged[index - 1];
     const next = merged[index + 1];
-    if (previous.cats.has(M2_CATEGORY) || previous.cats.has(-1) && previous.pure) continue;
-    band.cats.forEach((value) => previous.cats.add(value));
+    if (previous.moves.has(M2_MOVE) || (previous.moves.has(-1) && previous.pure)) continue;
+    band.moves.forEach((value) => previous.moves.add(value));
     previous.to = band.to; previous.pure = false;
     merged.splice(index, 1);
-    const sameAsPrevious = [...next.cats].every((value) => previous.cats.has(value)) && !next.cats.has(M2_CATEGORY);
+    const sameAsPrevious = [...next.moves].every((value) => previous.moves.has(value)) && !next.moves.has(M2_MOVE);
     if (sameAsPrevious && next.to - next.from + 1 < PURE_RUN * 3) { previous.to = next.to; merged.splice(index, 1); }
     index -= 1;
   }
@@ -498,57 +475,37 @@ function planBands(rows: PlanRow[], steps: PlanStep[]): PlanBand[] {
   for (let index = 1; index < merged.length; index += 1) {
     const previous = merged[index - 1];
     const band = merged[index];
-    const sameMoves = band.cats.size === previous.cats.size && [...band.cats].every((value) => previous.cats.has(value));
+    const sameMoves = band.moves.size === previous.moves.size && [...band.moves].every((value) => previous.moves.has(value));
     if (!previous.pure && !band.pure && sameMoves) { previous.to = band.to; merged.splice(index, 1); index -= 1; }
   }
-  // Close gaps so bands tile the level range, then attach rows and one-off resets.
-  const stepFor = (cat: number) => steps.find((step) => step.text === keySteps[cat]?.[1]);
   return merged.map((band, index) => {
     const from = index === 0 ? sorted[0].level : band.from;
     const to = index + 1 < merged.length ? merged[index + 1].from - 1 : sorted.at(-1)!.level;
     const bandRows = sorted.filter((row) => row.level >= from && row.level <= to);
-    const cats = [...band.cats].filter((cat) => cat !== -1).sort((a, b) => a - b);
-    const bandSteps = cats.map(stepFor).filter((step) => step !== undefined);
-    const resets = bandRows.filter((row) => rowCategory(row) === RESET_CATEGORY);
-    const resetStep = stepFor(RESET_CATEGORY);
-    const parts = bandSteps.map((step) => bandSteps.length > 1 || band.cats.has(-1) ? step.text.split("→ ").pop() : step.text);
-    if (band.cats.has(-1) && bandSteps.length > 0) parts.push("配點");
-    const title = bandSteps.length === 0 ? "配點" : parts.length === 1 ? parts[0]! : `${parts.join("、")} 交替`;
-    return {
-      id: `band-${from}`, from, to, title, codes: bandSteps.map((step) => step.code),
-      events: resets.length && resetStep ? [`${resetStep.code} · Lv ${resets.map((row) => row.level).join("、")} ${resetStep.text}`] : [],
-      rows: bandRows, apr: bandRows.reduce((sum, row) => sum + row.apr_spent, 0),
-    };
+    const named = [...band.moves].filter((move) => move !== -1).sort((a, b) => a - b).map((move) => moves[move][1]);
+    if (band.moves.has(-1) && named.length) named.push("配點");
+    const title = named.length === 0 ? "配點" : named.length === 1 ? named[0] : `${named.join("、")} 交替`;
+    return { id: `band-${from}`, number: index + 1, from, to, title, resets: bandRows.filter((row) => rowMove(row) === RESET_MOVE).map((row) => row.level), rows: bandRows, apr: bandRows.reduce((sum, row) => sum + row.apr_spent, 0) };
   }).filter((band) => band.rows.length > 0);
 }
-const bandFor = (bands: PlanBand[], level: number) => bands.find((band) => level >= band.from && level <= band.to);
 
-/** Field-guide key: which move the plan makes, over which levels, at what APR cost, drawn on a level track. */
-function PlanKey({ steps, bands }: { steps: PlanStep[]; bands: PlanBand[] }) {
-  if (!steps.length) return null;
-  return <section className="plan-key"><h4 className="section-plate">檢索表：這份計畫每一級怎麼點</h4><table><thead><tr><th scope="col"><span className="visually-hidden">代號</span></th><th scope="col">動作</th><th scope="col">等級</th><th scope="col" className="key-track-head"><span className="visually-hidden">等級時間軸</span><span aria-hidden="true">Lv 1</span><span aria-hidden="true">200</span></th><th scope="col">APR</th></tr></thead><tbody>{steps.map((step) => <tr key={step.code}>
-    <td className="key-code"><a href={`#${bandFor(bands, step.from)?.id ?? ""}`}>{step.code}</a></td>
-    <td>{step.text}{step.within && <span className="key-within">（第 {step.within} 步進行中）</span>}{step.alternates.length > 0 && <span className="key-within">（與 {step.alternates.join("、")} 依 Extra MP 交替）</span>}</td>
-    <td>{levelRange(step.from, step.to)}</td>
-    <td className="key-track" aria-hidden="true"><span className={step.from === step.to ? "key-band is-point" : "key-band"} style={{ left: `${((step.from - 1) / (MAX_LEVEL - 1)) * 100}%`, width: step.from === step.to ? undefined : `${((step.to - step.from) / (MAX_LEVEL - 1)) * 100}%` }} /></td>
-    <td>{step.apr.toLocaleString()}</td>
-  </tr>)}</tbody></table></section>;
-}
-
-/** The level-by-level plan in continuous level bands; each band opens on demand. */
-function PlanSections({ title, rows, file, language, summary }: { title: string; rows: PlanRow[]; file: string; language: Language; summary?: string }) {
-  const bands = planBands(rows, planSteps(rows).steps);
-  return <section className="plan-view" id="plan-view">
+/** The plan as a field-guide key: one row per continuous level band, drawn on a level track; each row opens to its levels. */
+function PlanKey({ title, rows, file, language, summary }: { title: string; rows: PlanRow[]; file: string; language: Language; summary?: string }) {
+  const bands = planBands(rows);
+  return translateTree(<section className="plan-view" id="plan-view">
     <div className="result-heading"><div><h4 className="section-plate">{title}（{rows.length} 列）</h4>{summary && <p className="plan-summary">{summary}</p>}</div><button type="button" className="quiet" onClick={() => downloadText(file, planCsv(rows), "text/csv;charset=utf-8")}>下載 CSV</button></div>
+    <p className="plan-hint">依等級順序照做；點一列展開該段每一級的動作。</p>
     <div className="plan-sections">
+      <div className="plan-axis" aria-hidden="true"><span>Lv 1</span><span>Lv 200</span></div>
       {bands.map((band) => <details className="plan-step" id={band.id} key={band.id}><summary>
+        <span className="key-code">{band.number}</span>
         <span className="plan-step-range-lead">{levelRange(band.from, band.to)}</span>
-        <span className="plan-step-text">{band.codes.length > 0 && <span className="key-code">{band.codes.join("／")} </span>}{band.title}{band.events.length > 0 && <span className="plan-step-events">含 {band.events.join("；")}</span>}</span>
-        <span className="plan-step-range">{band.rows.length} 列</span>
+        <span className="plan-step-text">{band.title}{band.resets.length > 0 && <span className="plan-step-events">Lv {band.resets.join("、")} 時把 INT 洗回 4</span>}</span>
+        <span className="key-track" aria-hidden="true"><span className="key-band" style={{ left: `${((band.from - 1) / (MAX_LEVEL - 1)) * 100}%`, width: `${(Math.max(band.to - band.from, 0.6) / (MAX_LEVEL - 1)) * 100}%` }} />{band.resets.map((level) => <span key={level} className="key-band is-point" style={{ left: `${((level - 1) / (MAX_LEVEL - 1)) * 100}%` }} />)}</span>
         <span className="plan-step-apr">{band.apr.toLocaleString()} APR</span>
       </summary><PlanTable language={language} rows={band.rows} /></details>)}
     </div>
-  </section>;
+  </section>, language);
 }
 
 const policyLetter = (policy: PolicyName) => policyLabels[policy].split(" ")[0];
@@ -556,16 +513,16 @@ const policyTitle = (policy: PolicyName) => `Policy ${policyLetter(policy)} · $
 // How much in-game work a policy asks for: plain INT is simplest, per-AP greedy washing the most tedious.
 const policyEffort: Record<PolicyName, number> = { int_only_plain: 1, int_dump_shortfall: 2, mp_wash_shortfall: 2, mp_wash_hardcore: 3 };
 type SimulateRequest = { policy: PolicyName; targetInt: number; mpWashEnd: number };
+const headlineFor = (candidate: { policy: PolicyName; target_base_int: number; mp_wash_end: number }) => `Policy ${policyLetter(candidate.policy)} · base INT ${candidate.target_base_int} · MP wash 到 Lv ${candidate.mp_wash_end}`;
+const codeFor = (candidate: { policy: PolicyName; target_base_int: number; mp_wash_end: number }) => `${policyLetter(candidate.policy)}·${candidate.target_base_int}·${candidate.mp_wash_end}`;
 
 function SimulationResult({ result, language, stale }: { result: SimulateResult; language: Language; stale: boolean }) {
   const hpReached = result.final_display_hp >= result.target_hp;
   const mpReached = result.target_mp === undefined || result.final_base_mp >= result.target_mp;
-  const steps = planSteps(result.plan).steps;
   return translateTree(<section className="result-panel"><h3 className="visually-hidden">模擬結果</h3>
-    <div className="result-lead"><Specimen code={`${policyLetter(result.policy)}·${result.target_base_int}·${result.mp_wash_end}`} headline={`Policy ${policyLetter(result.policy)} · base INT ${result.target_base_int} · MP wash 到 Lv ${result.mp_wash_end}`} reached={result.reached_target} hpReached={hpReached} mpReached={mpReached} stale={stale} targetHp={result.target_hp} finalHp={result.final_display_hp} targetMp={result.target_mp} finalMp={result.final_base_mp}
+    <div className="result-lead"><Specimen language={language} code={codeFor(result)} headline={headlineFor(result)} reached={result.reached_target} hpReached={hpReached} mpReached={mpReached} stale={stale} targetHp={result.target_hp} finalHp={result.final_display_hp} targetMp={result.target_mp} finalMp={result.final_base_mp}
       figures={[[totalApr(result.apr).toLocaleString(), "總 APR"], [result.final_display_hp.toLocaleString(), "最終 HP"], [result.final_base_mp.toLocaleString(), "最終 base MP"], [String(result.int_reached_level || "—"), "INT 達標等級"]]} extras={[[policyTitle(result.policy), "策略"]]} />
-    <PlanKey steps={steps} bands={planBands(result.plan, steps)} /></div>
-    <PlanSections title="逐級計畫" rows={result.plan} file="plan.csv" language={language} /></section>, language);
+    <PlanKey title="逐級計畫" rows={result.plan} file="plan.csv" language={language} /></div></section>, language);
 }
 function OptimizationResult({ result, language, stale, onSimulate }: { result: OptimizeResult; language: Language; stale: boolean; onSimulate: (request: SimulateRequest) => void }) {
   const [selected, setSelected] = useState<string>();
@@ -573,50 +530,52 @@ function OptimizationResult({ result, language, stale, onSimulate }: { result: O
   if (!winner) return translateTree(<section className="result-panel"><h3>沒有可用候選計畫</h3><p className="subheading">請放寬目標 HP／MP，或調整洗回 INT 等級後再試一次。</p></section>, language);
   const policies = ([["A", result.comparison.policy_a], ["B", result.comparison.policy_b], ["C", result.comparison.policy_c], ["D", result.comparison.policy_d]] as Array<[string, OptimizeResult["comparison"]["policy_a"]]>)
     .filter((item): item is [string, NonNullable<typeof item[1]>] => item[1] !== undefined);
-  const hpReached = winner.final_display_hp >= winner.target_hp;
-  const mpReached = winner.target_mp === undefined || winner.final_base_mp >= winner.target_mp;
-  const fullPlan = result.continued_to_200_plan ? [...winner.plan, ...result.continued_to_200_plan] : winner.plan;
-  const letter = policyLetter(winner.policy);
-  const winnerApr = totalApr(winner.apr);
-  // A simpler policy that reaches the target within 1% (at least 10 APR) of the winner is worth naming.
-  const tolerance = Math.max(10, Math.round(winnerApr * 0.01));
+  const fewestLetter = policyLetter(winner.policy);
+  const fewestApr = totalApr(winner.apr);
+  // A simpler policy that reaches the target within 1% (at least 10 APR) of the fewest-APR plan is the one to recommend.
+  const tolerance = Math.max(10, Math.round(fewestApr * 0.01));
   const simplerEntry = policies
-    .filter(([, candidate]) => candidate.reached_target && policyEffort[candidate.policy] < policyEffort[winner.policy] && totalApr(candidate.apr) - winnerApr <= tolerance)
+    .filter(([, candidate]) => candidate.reached_target && policyEffort[candidate.policy] < policyEffort[winner.policy] && totalApr(candidate.apr) - fewestApr <= tolerance)
     .sort(([, a], [, b]) => policyEffort[a.policy] - policyEffort[b.policy] || totalApr(a.apr) - totalApr(b.apr))[0];
-  const shownLetter = selected && policies.some(([itemLetter]) => itemLetter === selected) ? selected : letter;
-  const shown = policies.find(([itemLetter]) => itemLetter === shownLetter)?.[1] ?? winner;
-  const shownIsWinner = shownLetter === letter;
-  const shownPlan = shownIsWinner ? fullPlan : shown.plan;
+  const [recommendedLetter, recommended] = simplerEntry ?? [fewestLetter, winner];
+  const recommendedIsFewest = recommendedLetter === fewestLetter;
+  const recommendedApr = totalApr(recommended.apr);
+  const hpReached = recommended.final_display_hp >= recommended.target_hp;
+  const mpReached = recommended.target_mp === undefined || recommended.final_base_mp >= recommended.target_mp;
+  const planFor = (itemLetter: string, candidate: typeof winner) => itemLetter === fewestLetter && result.continued_to_200_plan ? [...winner.plan, ...result.continued_to_200_plan] : candidate.plan;
+  const shownLetter = selected && policies.some(([itemLetter]) => itemLetter === selected) ? selected : recommendedLetter;
+  const shown = policies.find(([itemLetter]) => itemLetter === shownLetter)?.[1] ?? recommended;
   const showPolicy = (itemLetter: string) => { setSelected(itemLetter); requestAnimationFrame(() => document.getElementById("plan-view")?.scrollIntoView({ behavior: "smooth", block: "start" })); };
   const toSimulate = (candidate: { policy: PolicyName; target_base_int: number; mp_wash_end: number }) => onSimulate({ policy: candidate.policy, targetInt: candidate.target_base_int, mpWashEnd: candidate.mp_wash_end });
-  const winnerSteps = planSteps(winner.plan).steps;
-  const extras: Array<[string, string]> = [[policyTitle(winner.policy), "優勝策略"]];
-  if (result.continued_to_200_hp !== undefined && result.continued_to_200_hp !== winner.final_display_hp) extras.push([result.continued_to_200_hp.toLocaleString(), "繼續到 200 等最高 HP"]);
+  const extras: Array<[string, string]> = [[policyTitle(recommended.policy), recommendedIsFewest ? "優勝策略" : "建議照做"]];
+  if (recommendedIsFewest && result.continued_to_200_hp !== undefined && result.continued_to_200_hp !== winner.final_display_hp) extras.push([result.continued_to_200_hp.toLocaleString(), "繼續到 200 等最高 HP"]);
+  const fewestNote = recommendedIsFewest ? undefined : <p className="fewest-note">理論最少是 {policyTitle(winner.policy)}：{fewestApr.toLocaleString()} APR，只少 {(recommendedApr - fewestApr).toLocaleString()} APR，但要逐 AP 操作。<button type="button" className="link-button" onClick={() => showPolicy(fewestLetter)}>查看理論最少的計畫</button></p>;
   return translateTree(<section className="result-panel"><h3 className="visually-hidden">最佳化結果</h3>
-    <div className="result-lead"><Specimen code={`${letter}·${winner.target_base_int}·${winner.mp_wash_end}`} headline={`Policy ${letter} · base INT ${winner.target_base_int} · MP wash 到 Lv ${winner.mp_wash_end}`} reached={winner.reached_target} hpReached={hpReached} mpReached={mpReached} stale={stale} targetHp={winner.target_hp} finalHp={winner.final_display_hp} targetMp={winner.target_mp} finalMp={winner.final_base_mp}
-      figures={[[winnerApr.toLocaleString(), "總 APR"], [winner.final_display_hp.toLocaleString(), "最終 HP"], [winner.final_base_mp.toLocaleString(), "最終 base MP"], [String(winner.plan.at(-1)?.level ?? ""), "目標等級"]]}
-      extras={extras} />
-    <div className="specimen-actions"><button type="button" className="quiet" onClick={() => toSimulate(winner)}>在模擬中開啟</button><span className="field-hint">帶入策略、base INT 與 MP wash 結束等級，再微調。</span></div>
-    {simplerEntry && <div className="simpler-note" role="note"><b>較簡單的替代方案：{policyTitle(simplerEntry[1].policy)}</b><span>只多 {(totalApr(simplerEntry[1].apr) - winnerApr).toLocaleString()} APR（共 {totalApr(simplerEntry[1].apr).toLocaleString()}），在遊戲中操作簡單得多。</span><button type="button" className="quiet" onClick={() => showPolicy(simplerEntry[0])}>查看這個計畫</button></div>}
-    <PlanKey steps={winnerSteps} bands={planBands(fullPlan, planSteps(fullPlan).steps)} />
-    <section className="comparison"><div className="result-heading"><h4 className="section-plate">策略比較</h4><span className="plate-note">{winner.target_mp === undefined ? "未設 MP 目標 · " : ""}點選卡片在下方查看該策略的計畫</span></div>
-    <div className="comparison-grid">{policies.map(([itemLetter, candidate]) => {
-      const apr = totalApr(candidate.apr);
-      const delta = apr - winnerApr;
-      const isShown = itemLetter === shownLetter;
-      return <article className={`${candidate.reached_target ? "reachable" : "unreachable"}${itemLetter === letter ? " is-winner" : ""}${isShown ? " is-shown" : ""}`} key={itemLetter}>
-        {itemLetter === letter && <span className="winner-tag">優勝</span>}
-        <button type="button" className="card-select" aria-pressed={isShown} onClick={() => showPolicy(itemLetter)}>
-          <span className="policy-name">{policyTitle(candidate.policy)}</span>
-          <b>{apr.toLocaleString()} APR {itemLetter !== letter && <span className="apr-delta">{delta >= 0 ? `+${delta.toLocaleString()}` : delta.toLocaleString()}</span>}</b>
-          <span className={candidate.reached_target ? "status-success" : "status-failure"}><Mark reached={candidate.reached_target} /> {candidate.reached_target ? "已達標" : "未達標"}</span>
-          <small>INT {candidate.target_base_int}{" · MP wash 到 Lv "}{candidate.mp_wash_end}{" · HP "}{candidate.final_display_hp.toLocaleString()}{candidate.target_mp === undefined ? "" : ` · MP ${candidate.final_base_mp.toLocaleString()} / ${candidate.target_mp.toLocaleString()}`}</small>
-          <span className="card-cue">{isShown ? "正在下方顯示" : "查看計畫"}</span>
-        </button>
-        <button type="button" className="link-button" onClick={() => toSimulate(candidate)}>在模擬中開啟</button>
-      </article>;
-    })}</div></section></div>
-    <PlanSections title={shownIsWinner ? `優勝計畫 · ${policyTitle(winner.policy)}` : `${policyTitle(shown.policy)} 計畫`} summary={`總 APR ${totalApr(shown.apr).toLocaleString()} · base INT ${shown.target_base_int} · MP wash 到 Lv ${shown.mp_wash_end} · 最終 HP ${shown.final_display_hp.toLocaleString()}`} rows={shownPlan} file={`plan-policy-${shownLetter.toLowerCase()}.csv`} language={language} /></section>, language);
+    <div className="result-lead">
+      <Specimen language={language} code={codeFor(recommended)} headline={headlineFor(recommended)} reached={recommended.reached_target} hpReached={hpReached} mpReached={mpReached} stale={stale} targetHp={recommended.target_hp} finalHp={recommended.final_display_hp} targetMp={recommended.target_mp} finalMp={recommended.final_base_mp}
+        figures={[[recommendedApr.toLocaleString(), "總 APR"], [recommended.final_display_hp.toLocaleString(), "最終 HP"], [recommended.final_base_mp.toLocaleString(), "最終 base MP"], [String(recommended.plan.at(-1)?.level ?? ""), "目標等級"]]}
+        extras={extras} note={fewestNote} />
+      <div className="specimen-actions"><button type="button" className="quiet" onClick={() => toSimulate(recommended)}>在模擬中開啟</button><span className="field-hint">帶入策略、base INT 與 MP wash 結束等級，再微調。</span></div>
+      <PlanKey title={shownLetter === recommendedLetter ? `${recommendedIsFewest ? "優勝計畫" : "建議計畫"} · ${policyTitle(shown.policy)}` : `${policyTitle(shown.policy)} 計畫`} summary={`總 APR ${totalApr(shown.apr).toLocaleString()} · base INT ${shown.target_base_int} · MP wash 到 Lv ${shown.mp_wash_end} · 最終 HP ${shown.final_display_hp.toLocaleString()}`} rows={planFor(shownLetter, shown)} file={`plan-policy-${shownLetter.toLowerCase()}.csv`} language={language} />
+      <section className="comparison"><div className="result-heading"><h4 className="section-plate">策略比較</h4><span className="plate-note">{winner.target_mp === undefined ? "未設 MP 目標 · " : ""}點選卡片在上方查看該策略的計畫</span></div>
+      <div className="comparison-grid">{policies.map(([itemLetter, candidate]) => {
+        const apr = totalApr(candidate.apr);
+        const delta = apr - fewestApr;
+        const isShown = itemLetter === shownLetter;
+        const tag = itemLetter === recommendedLetter ? (recommendedIsFewest ? "優勝" : "建議") : itemLetter === fewestLetter ? "理論最少" : undefined;
+        return <article className={`${candidate.reached_target ? "reachable" : "unreachable"}${itemLetter === recommendedLetter ? " is-winner" : ""}${isShown ? " is-shown" : ""}`} key={itemLetter}>
+          {tag && <span className={itemLetter === recommendedLetter ? "winner-tag" : "winner-tag is-fewest"}>{tag}</span>}
+          <button type="button" className="card-select" aria-pressed={isShown} onClick={() => showPolicy(itemLetter)}>
+            <span className="policy-name">{policyTitle(candidate.policy)}</span>
+            <b>{apr.toLocaleString()} APR {itemLetter !== fewestLetter && <span className="apr-delta">{delta >= 0 ? `+${delta.toLocaleString()}` : delta.toLocaleString()}</span>}</b>
+            <span className={candidate.reached_target ? "status-success" : "status-failure"}><Mark reached={candidate.reached_target} /> {candidate.reached_target ? "已達標" : "未達標"}</span>
+            <small>INT {candidate.target_base_int}{" · MP wash 到 Lv "}{candidate.mp_wash_end}{" · HP "}{candidate.final_display_hp.toLocaleString()}{candidate.target_mp === undefined ? "" : ` · MP ${candidate.final_base_mp.toLocaleString()} / ${candidate.target_mp.toLocaleString()}`}</small>
+            <span className="card-cue">{isShown ? "正在上方顯示" : "查看計畫"}</span>
+          </button>
+          <button type="button" className="link-button" onClick={() => toSimulate(candidate)}>在模擬中開啟</button>
+        </article>;
+      })}</div></section>
+    </div></section>, language);
 }
 
 /** Plan action codes in the player's words; the code itself stays in the tooltip. */

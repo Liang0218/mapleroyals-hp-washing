@@ -97,6 +97,26 @@ test("open in Simulate carries the policy and numbers over", async ({ page }) =>
   await expect(page.locator("#field-policy option:checked")).toContainText(`${letter} —`);
 });
 
+test("in English the whole result panel is English", async ({ page }) => {
+  await runOptimizeToResult(page);
+  await page.getByRole("button", { name: "EN" }).click();
+  await expect(page.getByRole("tab", { name: "Optimize", exact: true })).toBeVisible();
+  await page.locator("#plan-view details.plan-step").first().evaluate((element) => { (element as HTMLDetailsElement).open = true; });
+  const text = await page.locator(".result-panel").innerText();
+  const cjk = text.match(/[㐀-鿿（-？、。]+/g) ?? [];
+  expect(cjk, `Chinese left in the English result: ${cjk.slice(0, 10).join(" | ")}`).toEqual([]);
+});
+
+test("each calculator keeps its own result", async ({ page }) => {
+  await openTab(page, "模擬");
+  await page.getByRole("button", { name: "執行模擬" }).click();
+  await expect(page.locator(".specimen-tag")).toContainText("No.", { timeout: 90_000 });
+  const simulated = await page.locator(".specimen-head h3").textContent();
+  await runOptimizeToResult(page);
+  await openTab(page, "模擬");
+  await expect(page.locator(".specimen-head h3")).toHaveText(simulated ?? "");
+});
+
 test("an invalid input is reported on its field and focused", async ({ page }) => {
   await openTab(page, "最佳化");
   await page.locator("#field-targetHp").fill("0");

@@ -233,9 +233,9 @@ td:last-child { min-width: 180px; white-space: normal; }
 /* Plan filed under the key's steps */
 .plan-sections { display: grid; border-top: 1px solid var(--ink); }
 .plan-step { border-bottom: 1px solid var(--rule); background: var(--label); }
-.plan-step > summary { display: grid; grid-template-columns: 7.5rem minmax(0, 1fr) auto auto; align-items: baseline; gap: .4rem 1rem; padding: .7rem 1rem; cursor: pointer; list-style: none; font-variant-numeric: tabular-nums; }
+.plan-step > summary { display: grid; grid-template-columns: 1.6rem 6.5rem minmax(0, 1fr) minmax(8rem, 22%) 6rem .5rem; column-gap: 1rem; align-items: baseline; gap: .4rem 1rem; padding: .7rem 1rem; cursor: pointer; list-style: none; font-variant-numeric: tabular-nums; }
 .plan-step > summary::-webkit-details-marker { display: none; }
-.plan-step > summary::after { content: ""; grid-column: 5; width: .5rem; height: .5rem; border-right: 2px solid var(--ink-3); border-bottom: 2px solid var(--ink-3); transform: rotate(-45deg); transition: transform .15s ease-out; }
+.plan-step > summary::after { content: ""; grid-column: 6; grid-row: 1; width: .5rem; height: .5rem; border-right: 2px solid var(--ink-3); border-bottom: 2px solid var(--ink-3); transform: rotate(-45deg); transition: transform .15s ease-out; }
 .plan-step[open] > summary::after { transform: rotate(45deg); }
 .plan-step > summary:hover { background: var(--row-hover); }
 .plan-step-text { font-weight: 700; }
@@ -247,7 +247,7 @@ td:last-child { min-width: 180px; white-space: normal; }
 .key-code a:hover { text-decoration: underline; }
 
 /* Comparison cards */
-.comparison .result-heading { margin-top: .2rem; }
+.comparison .result-heading { margin-top: .2rem; margin-bottom: 1.1rem; }
 .plate-note { color: var(--ink-3); font-size: .84rem; }
 .policy-name { color: var(--ink-3); font-size: .82rem; }
 .apr-delta { margin-left: .35rem; color: var(--ink-3); font-size: .82rem; font-weight: 700; }
@@ -282,7 +282,7 @@ td:last-child { min-width: 180px; white-space: normal; }
 .plan-step-events { display: block; margin-top: .15rem; color: var(--ochre-ink); font-size: .8rem; font-weight: 600; }
 .plan-summary { margin: .3rem 0 0; color: var(--ink-2); font-size: .88rem; font-variant-numeric: tabular-nums; }
 .plan-view { scroll-margin-top: 1rem; }
-.comparison-grid article { gap: .35rem; }
+.comparison-grid article { position: relative; gap: .35rem; }
 .card-select { display: grid; gap: .2rem; min-height: 0; padding: 0; border: 0; color: inherit; background: none; font-weight: inherit; text-align: left; }
 .card-select:hover:not(:disabled) { background: none; }
 .card-select:hover .card-cue { text-decoration: underline; }
@@ -293,6 +293,24 @@ td:last-child { min-width: 180px; white-space: normal; }
 .gear-label { margin-right: .2rem; font-weight: 700; color: var(--ink-2); }
 .gear-chip { padding: .05rem .4rem; border: 1px solid var(--rule); background: var(--sheet); font-size: .8rem; white-space: nowrap; }
 .gear-chip b { font-weight: 800; color: var(--ink); }
+
+/* Merged plan key: band rows with a level track */
+.plan-hint { margin: .2rem 0 .6rem; color: var(--ink-3); font-size: .84rem; }
+.plan-axis { display: grid; grid-template-columns: 1.6rem 6.5rem minmax(0, 1fr) minmax(8rem, 22%) 6rem .5rem; column-gap: 1rem; padding: 0 1rem .25rem; color: var(--ink-3); font-size: .72rem; font-weight: 600; }
+.plan-axis span { grid-column: 4; grid-row: 1; }
+.plan-axis span:first-child { justify-self: start; }
+.plan-axis span:last-child { justify-self: end; }
+.plan-step .key-track { position: relative; align-self: center; height: .8rem; }
+.plan-step .key-track::before { left: 0; right: 0; }
+.plan-step .key-band { margin-left: 0; max-width: 100%; }
+.plan-step .key-band.is-point { margin-left: -.3rem; }
+.plan-step-apr { text-align: right; }
+.fewest-note { margin: .6rem 0 0; padding: .5rem .7rem; background: var(--ochre-tint); color: var(--ochre-ink); font-size: .88rem; }
+.fewest-note .link-button { margin-left: .4rem; font-size: .86rem; }
+.comparison-grid .winner-tag.is-fewest { color: var(--ink); background: var(--well); border: 1px solid var(--rule-strong); }
+.apr-delta { font-size: .92rem; color: var(--ink-2); }
+fieldset { min-width: 0; }
+.stamp-reached { border-color: currentColor; }
 @media (max-width: 1100px) {
   .calc-layout { grid-template-columns: 1fr; }
   .calc-results > .results-empty, .result-lead { grid-column: 1; grid-row: auto; }
@@ -310,10 +328,16 @@ td:last-child { min-width: 180px; white-space: normal; }
   .plan-key table { font-size: .84rem; }
   .plan-key th, .plan-key td { padding-inline: .35rem; }
   .key-code { width: 1.8rem; }
-  .plan-step > summary { grid-template-columns: minmax(0, 1fr) auto; }
-  .plan-step-range-lead { grid-column: 1; }
-  .plan-step-text { grid-column: 1 / -1; }
-  .plan-step-range { grid-column: 1; }
+  .plan-step > summary { grid-template-columns: 1.6rem minmax(0, 1fr) auto; }
+  .plan-step-range-lead { grid-column: 2; }
+  .plan-step-text { grid-column: 2 / -1; grid-row: 2; }
+  .plan-step-apr { grid-column: 3; grid-row: 1; }
+  .plan-step .key-track, .plan-axis { display: none; }
+  .plan-step > summary::after { grid-column: 3; grid-row: 2; justify-self: end; }
+  .runbar { position: static; }
+  .result-heading { flex-wrap: wrap; }
+  .plan-step-apr { padding-right: 1rem; }
+  .tab { min-height: 2.3rem; padding: .35rem .55rem; font-size: .9rem; }
   .plan-step > summary::after { grid-column: 3; grid-row: 1; }
   .app-bar-row { flex-direction: column; align-items: flex-start; padding-block: .7rem .2rem; }
   .switches { justify-content: flex-start; }
