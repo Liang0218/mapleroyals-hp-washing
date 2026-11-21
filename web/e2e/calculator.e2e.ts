@@ -22,14 +22,14 @@ test("a running optimization stays on its own tab; the other calculator waits", 
   await page.getByRole("button", { name: "執行最佳化" }).click();
   const busyButton = page.locator(".run-button");
   await expect(busyButton).toHaveText(/計算中…/);
-  await expect(page.getByRole("button", { name: "取消" })).toBeVisible();
+  await expect(page.locator(".run-actions").getByRole("button", { name: "取消" })).toBeVisible();
 
   await openTab(page, "模擬");
   const simulateButton = page.locator(".run-button");
   await expect(simulateButton).toHaveText("執行模擬");
   await expect(simulateButton).toBeDisabled();
   await expect(page.getByText("最佳化計算中，完成後才能執行模擬。")).toBeVisible();
-  await expect(page.getByRole("button", { name: "取消" })).toHaveCount(0);
+  await expect(page.locator(".run-actions").getByRole("button", { name: "取消" })).toHaveCount(0);
   await expect(page.locator(".results-empty")).not.toContainText("正在");
 
   await openTab(page, "最佳化");
@@ -41,7 +41,7 @@ test("a running optimization stays on its own tab; the other calculator waits", 
 test("cancel stops the optimization and leaves no result", async ({ page }) => {
   await openTab(page, "最佳化");
   await page.getByRole("button", { name: "執行最佳化" }).click();
-  await page.getByRole("button", { name: "取消" }).click();
+  await page.locator(".run-actions").getByRole("button", { name: "取消" }).click();
   await expect(page.locator(".run-button")).toHaveText("執行最佳化");
   await expect(page.locator(".run-button")).toBeEnabled();
   await expect(page.locator(".specimen")).toHaveCount(0);
@@ -155,6 +155,27 @@ test("an opened plan band shows all its levels without an inner scroll box", asy
   const box = band.locator(".plan");
   const scrolls = await box.evaluate((element) => element.scrollHeight > element.clientHeight + 1);
   expect(scrolls).toBe(false);
+});
+
+test("unset gear INT is called out on the form and the result", async ({ page }) => {
+  await openTab(page, "最佳化");
+  await expect(page.locator(".calc-form .gear-warning")).toContainText("尚未設定裝備 INT");
+  await page.getByRole("button", { name: "執行最佳化" }).click();
+  await expect(page.locator(".specimen-tag")).toContainText("No.", { timeout: 90_000 });
+  await expect(page.locator(".calc-results > .gear-warning")).toBeVisible();
+});
+
+test("repeated levels merge into one line until show-all is on", async ({ page }) => {
+  await runOptimizeToResult(page);
+  const band = page.locator("#plan-view details.plan-step").first();
+  await band.locator("summary").click();
+  const levels = await band.locator(".plan-step-range-lead").textContent();
+  const [, from, to] = /Lv (\d+)(?:–(\d+))?/.exec(levels ?? "") ?? [];
+  const levelCount = Number(to ?? from) - Number(from) + 1;
+  const merged = await band.locator("tbody tr").count();
+  expect(merged).toBeLessThan(levelCount);
+  await page.getByLabel("顯示全部等級").check();
+  await expect(band.locator("tbody tr")).toHaveCount(levelCount);
 });
 
 test("tabs move with the arrow keys", async ({ page }) => {

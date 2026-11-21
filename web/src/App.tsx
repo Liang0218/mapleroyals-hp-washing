@@ -120,6 +120,7 @@ export function App() {
   const [failure, setFailure] = useState<Failure>();
   const [running, setRunning] = useState<"optimize" | "simulate">();
   const [elapsed, setElapsed] = useState(0);
+  const [lastDuration, setLastDuration] = useState<Partial<Record<"optimize" | "simulate", number>>>({});
   const cancelRun = useRef<(() => void) | undefined>(undefined);
   useEffect(() => () => cancelRun.current?.(), []);
   const [undo, setUndo] = useState<Undo>();
@@ -139,6 +140,11 @@ export function App() {
     try { return computeIntGearSegments(equipment, Math.max(1, optimizeConfig.resetLevel - 1)); }
     catch { return []; }
   }, [equipment, optimizeConfig.resetLevel]);
+  const formGear = useMemo(() => {
+    try { return computeIntGearSegments(equipment, Math.max(1, config.resetLevel - 1)); }
+    catch { return []; }
+  }, [equipment, config.resetLevel]);
+  const gearUnset = formGear.every((segment) => segment.int_gear === 0);
 
   useEffect(() => {
     try { localStorage.setItem(CACHE_KEY, JSON.stringify(cache)); }
@@ -245,6 +251,7 @@ export function App() {
       const data = event.data;
       if (!data.ok) { if (kind === "optimize") setOptimized(undefined); else setResult(undefined); setFailure({ error: new Error(data.message), tab: kind }); return; }
       // Each calculator keeps its own last result; running one never clears the other.
+      setLastDuration((previous) => ({ ...previous, [kind]: Math.max(1, Math.round((performance.now() - started) / 1000)) }));
       if (kind === "optimize") setOptimized(data.result as OptimizeResult);
       else setResult(data.result as SimulateResult);
       setRanWith((previous) => ({ ...previous, [kind]: signature }));
@@ -319,7 +326,7 @@ export function App() {
         <label>目標 MP（留空則洗到最低）<input id={fieldId("targetMp")} type="number" inputMode="numeric" min={0} step={1} value={config.targetMp} aria-invalid={invalid === "targetMp" || undefined} onChange={(event) => updateConfig({ targetMp: event.target.value })} />{invalid === "targetMp" && <small className="field-error">{userError?.message}</small>}</label>
         <label>目標等級（留空＝200）<input id={fieldId("targetLevel")} type="number" inputMode="numeric" min={31} max={200} step={1} value={config.targetLevel} aria-invalid={invalid === "targetLevel" || undefined} onChange={(event) => updateConfig({ targetLevel: event.target.value })} />{invalid === "targetLevel" && <small className="field-error">{userError?.message}</small>}</label>
         <Field name="resetLevel" invalid={invalid} message={userError?.message} min={2} max={200} step={1} label="洗回 INT 等級" value={config.resetLevel} onChange={(value) => updateConfig({ resetLevel: Number(value) })} />
-      </div><p className="field-note gear-summary"><span className="gear-chips"><span className="gear-label">裝備 INT</span>{gearPreview.length ? gearPreview.map((segment) => <span className="gear-chip" key={segment.from_level}>Lv {segment.from_level}–{segment.to_level} INT <b>+{segment.int_gear}</b></span>) : <span>尚未設定</span>}</span><button type="button" className="link-button" onClick={() => changeTab("equipment")}>編輯裝備</button></p></fieldset>
+      </div><p className="field-note gear-summary"><span className="gear-chips"><span className="gear-label">裝備 INT</span>{formGear.length ? formGear.map((segment) => <span className="gear-chip" key={segment.from_level}>Lv {segment.from_level}–{segment.to_level} INT <b>+{segment.int_gear}</b></span>) : <span>尚未設定</span>}</span><button type="button" className="link-button" onClick={() => changeTab("equipment")}>編輯裝備</button></p>{gearUnset && <p className="gear-warning">尚未設定裝備 INT，計算會當作沒有任何 INT 裝備，需要的 APR 可能偏高。</p>}</fieldset>
 
       {isOptimize
         ? optimizeConfig.job === "thief" && <fieldset className="form-section"><legend>最佳化比較策略</legend><label className="checkbox-field"><input type="checkbox" checked={optimizeConfig.compareThiefPolicyC} onChange={(event) => updateConfig({ compareThiefPolicyC: event.target.checked })} />比較 Policy C（Hardcore greedy）</label><p className="field-note">Policy C 會逐 AP 嘗試洗血與洗 MP，策略較繁瑣，搜尋也較耗時。關閉後只比較 A／B／D，可縮短最佳化時間。</p></fieldset>
@@ -348,7 +355,6 @@ export function App() {
         <label className="checkbox-field"><input type="checkbox" checked={config.resume.intResetDone} onChange={(event) => updateResume({ intResetDone: event.target.checked })} />INT 已洗回 4，之後不再點 INT</label>
       </div>}</div></details>
 
-      {userError && <div className="error-box" id="form-error" role="alert" tabIndex={-1}><p>{userError.field && userError.field !== "equipment" ? "請修正標紅的欄位後再執行。" : userError.message}</p>{userError.field === "equipment" && <button type="button" className="quiet" onClick={() => changeTab("equipment")}>前往裝備頁</button>}</div>}
       <div className="runbar">
         {!busy && <p className="runbar-note">{otherRunning ? (running === "optimize" ? "最佳化計算中，完成後才能執行模擬。" : "模擬計算中，完成後才能執行最佳化。") : "完成後可在結果區下載逐級計畫 CSV。"}</p>}
         <div className="run-actions">
@@ -358,7 +364,9 @@ export function App() {
       </div>
       </div>
       <div className="calc-results" aria-live="polite">
-        {busy ? <p className="results-empty">{isOptimize ? "正在搜尋 base INT 與 MP wash 組合，請稍候。" : "正在逐級模擬，請稍候。"}<br /><span className="elapsed" aria-live="off">已經過 {elapsed} 秒</span></p>
+        {userError && <div className="error-box" id="form-error" role="alert" tabIndex={-1}><p>{userError.field && userError.field !== "equipment" ? "請修正左邊標紅的欄位後再執行。" : userError.message}</p>{userError.field === "equipment" && <button type="button" className="quiet" onClick={() => changeTab("equipment")}>前往裝備頁</button>}</div>}
+        {!busy && gearUnset && (isOptimize ? optimized : result) && <p className="gear-warning">這份結果是在沒有任何 INT 裝備的情況下算的。<button type="button" className="link-button" onClick={() => changeTab("equipment")}>設定裝備</button></p>}
+        {busy ? <div className="results-empty results-busy"><p>{isOptimize ? "正在搜尋 base INT 與 MP wash 組合，請稍候。" : "正在逐級模擬，請稍候。"}</p><p className="elapsed" aria-live="off">已經過 {elapsed} 秒{lastDuration[calcKind] !== undefined && `（上次約 ${lastDuration[calcKind]} 秒）`}</p><button type="button" className="quiet" onClick={() => cancelRun.current?.()}>取消</button></div>
           : tab === "simulate" && result ? <SimulationResult result={result} language={language} stale={stale} />
           : isOptimize && optimized ? <OptimizationResult result={optimized} language={language} stale={stale} onSimulate={openInSimulate} />
           : <p className="results-empty">{isOptimize ? "填好目標後按「執行最佳化」，結果會顯示在這裡。" : "填好設定後按「執行模擬」，結果會顯示在這裡。"}</p>}
@@ -503,9 +511,10 @@ function planBands(rows: PlanRow[]): PlanBand[] {
 /** The plan as a field-guide key: one row per continuous level band, drawn on a level track; each row opens to its levels. */
 function PlanKey({ title, rows, file, language, summary }: { title: string; rows: PlanRow[]; file: string; language: Language; summary?: string }) {
   const bands = planBands(rows);
+  const [showAll, setShowAll] = useState(false);
   return translateTree(<section className="plan-view" id="plan-view">
     <div className="result-heading"><div><h4 className="section-plate">{title}（{rows.length} 列）</h4>{summary && <p className="plan-summary">{summary}</p>}</div><button type="button" className="quiet" onClick={() => downloadText(file, planCsv(rows), "text/csv;charset=utf-8")}>下載 CSV</button></div>
-    <p className="plan-hint">依等級順序照做；點一列展開該段每一級的動作。Extra MP 是目前 MP 超出洗血下限的量，負數表示還不能洗血。</p>
+    <div className="plan-hint-row"><p className="plan-hint">依等級順序照做；點一列展開該段的動作，連續做法相同的等級會合成一行。Extra MP 是目前 MP 超出洗血下限的量，負數表示還不能洗血。</p><label className="checkbox-field show-all"><input type="checkbox" checked={showAll} onChange={(event) => setShowAll(event.target.checked)} />顯示全部等級</label></div>
     <div className="plan-sections">
       <div className="plan-axis" aria-hidden="true"><span>Lv 1</span><span>Lv 200</span></div>
       {bands.map((band) => <details className="plan-step" id={band.id} key={band.id}><summary>
@@ -514,7 +523,7 @@ function PlanKey({ title, rows, file, language, summary }: { title: string; rows
         <span className="plan-step-text">{band.title}{band.resets.length > 0 && <span className="plan-step-events">Lv {band.resets.join("、")} 時把 INT 洗回 4</span>}</span>
         <span className="key-track" aria-hidden="true"><span className="key-band" style={{ left: `${((band.from - 1) / (MAX_LEVEL - 1)) * 100}%`, width: `${(Math.max(band.to - band.from, 0.6) / (MAX_LEVEL - 1)) * 100}%` }} />{band.resets.map((level) => <span key={level} className="key-band is-point" style={{ left: `${((level - 1) / (MAX_LEVEL - 1)) * 100}%` }} />)}</span>
         <span className="plan-step-apr">{band.apr.toLocaleString()} APR</span>
-      </summary><PlanTable language={language} rows={band.rows} /></details>)}
+      </summary><PlanTable language={language} rows={band.rows} compact={!showAll} /></details>)}
     </div>
   </section>, language);
 }
@@ -560,7 +569,7 @@ function OptimizationResult({ result, language, stale, onSimulate }: { result: O
   const toSimulate = (candidate: { policy: PolicyName; target_base_int: number; mp_wash_end: number }) => onSimulate({ policy: candidate.policy, targetInt: candidate.target_base_int, mpWashEnd: candidate.mp_wash_end });
   const extras: Array<[string, string]> = [[policyTitle(recommended.policy), recommendedIsFewest ? "優勝策略" : "建議照做"]];
   if (recommendedIsFewest && result.continued_to_200_hp !== undefined && result.continued_to_200_hp !== winner.final_display_hp) extras.push([result.continued_to_200_hp.toLocaleString(), "繼續到 200 等最高 HP"]);
-  const fewestNote = recommendedIsFewest ? undefined : <p className="fewest-note">理論最少是 {policyTitle(winner.policy)}：{fewestApr.toLocaleString()} APR，只少 {(recommendedApr - fewestApr).toLocaleString()} APR，但要逐 AP 操作。<button type="button" className="link-button" onClick={() => showPolicy(fewestLetter)}>查看理論最少的計畫</button></p>;
+  const fewestNote = recommendedIsFewest ? undefined : <p className="fewest-note">理論最少是 {policyTitle(winner.policy)}：{fewestApr.toLocaleString()} APR，只少 {(recommendedApr - fewestApr).toLocaleString()} APR，但要逐 AP 操作。</p>;
   return translateTree(<section className="result-panel"><h3 className="visually-hidden">最佳化結果</h3>
     <div className="result-lead">
       <Specimen language={language} code={codeFor(recommended)} headline={headlineFor(recommended)} reached={recommended.reached_target} hpReached={hpReached} mpReached={mpReached} stale={stale} targetHp={recommended.target_hp} finalHp={recommended.final_display_hp} targetMp={recommended.target_mp} finalMp={recommended.final_base_mp}
@@ -578,12 +587,12 @@ function OptimizationResult({ result, language, stale, onSimulate }: { result: O
           {tag && <span className={itemLetter === recommendedLetter ? "winner-tag" : "winner-tag is-fewest"}>{tag}</span>}
           <button type="button" className="card-select" aria-pressed={isShown} onClick={() => showPolicy(itemLetter)}>
             <span className="policy-name">{policyTitle(candidate.policy)}</span>
-            <b>{apr.toLocaleString()} APR {itemLetter !== fewestLetter && <span className="apr-delta">{delta >= 0 ? `+${delta.toLocaleString()}` : delta.toLocaleString()}</span>}</b>
+            <b>{apr.toLocaleString()} APR {itemLetter !== fewestLetter && <span className="apr-delta">{delta >= 0 ? `+${delta.toLocaleString()}` : delta.toLocaleString()} APR</span>}</b>
             <span className={candidate.reached_target ? "status-success" : "status-failure"}><Mark reached={candidate.reached_target} /> {candidate.reached_target ? "已達標" : "未達標"}</span>
             <small>INT {candidate.target_base_int}{" · MP wash 到 Lv "}{candidate.mp_wash_end}{" · HP "}{candidate.final_display_hp.toLocaleString()}{candidate.target_mp === undefined ? "" : ` · MP ${candidate.final_base_mp.toLocaleString()} / ${candidate.target_mp.toLocaleString()}`}</small>
             {isShown && <span className="card-cue">正在上方顯示</span>}
           </button>
-          <button type="button" className="link-button" onClick={() => toSimulate(candidate)}>在模擬中開啟</button>
+          <button type="button" className="quiet small-action" onClick={() => toSimulate(candidate)}>在模擬中開啟</button>
         </article>;
       })}</div></section>
     </div></section>, language);
@@ -598,4 +607,36 @@ function actionName(action: PlanRow["action"]): string {
   const names: Record<string, string> = { NONE: "—", BUILD: "配點", HARDCORE_GREEDY: "逐 AP 洗", M2: "Method 2", RESET_INT: "洗回 INT", RESUME: "接續起點" };
   return names[action] ?? action;
 }
-function PlanTable({ rows, language = "zh" }: { rows: SimulateResult["plan"]; language?: Language }) { return translateTree(<div className="plan"><table><thead><tr><th scope="col">Lv</th><th scope="col">動作</th><th scope="col" className="col-detail">base INT</th><th scope="col" className="col-detail">base HP</th><th scope="col" className="col-detail">base MP</th><th scope="col" className="col-detail">Extra MP</th><th scope="col" className="col-detail">AP</th><th scope="col">APR</th><th scope="col">備註</th></tr></thead><tbody>{rows.map((row, index) => <tr key={`${row.level}-${row.action}-${index}`}><td>{row.level}</td><td title={row.action}>{actionName(row.action)}</td><td className="col-detail">{row.base_int}</td><td className="col-detail">{row.base_hp}</td><td className="col-detail">{row.base_mp}{row.base_mp > 30000 && <span className="mp-warning" title="超過 30,000；建議提早做 Method 2"><span aria-hidden="true">{" ⚠"}</span><span className="visually-hidden">超過 30,000；建議提早做 Method 2</span></span>}</td><td className="col-detail">{row.extra_mp}</td><td className="col-detail">INT {row.fresh_ap_int} · HP {row.fresh_ap_hp} · MP {row.fresh_ap_mp}</td><td>{row.apr_spent}</td><td>{/[：:]\s*$/.test(row.notes) ? `${row.notes}—` : row.notes}</td></tr>)}</tbody></table></div>, language); }
+/** Consecutive levels that do the same thing (same move, same AP split, same APR) read as one line. */
+function compressRows(rows: PlanRow[]): PlanRow[][] {
+  const groups: PlanRow[][] = [];
+  for (const row of rows) {
+    const last = groups.at(-1)?.at(-1);
+    const same = last && last.level + 1 === row.level && last.action === row.action && last.apr_spent === row.apr_spent
+      && last.fresh_ap_int === row.fresh_ap_int && last.fresh_ap_hp === row.fresh_ap_hp && last.fresh_ap_mp === row.fresh_ap_mp && row.action !== "RESET_INT";
+    if (same) groups.at(-1)!.push(row); else groups.push([row]);
+  }
+  return groups;
+}
+const span = (from: number, to: number) => from === to ? String(from) : `${from}→${to}`;
+const noteText = (notes: string) => /[：:]\s*$/.test(notes) ? `${notes}—` : notes;
+function PlanTable({ rows, language = "zh", compact = false }: { rows: SimulateResult["plan"]; language?: Language; compact?: boolean }) {
+  const groups = compact ? compressRows(rows) : rows.map((row) => [row]);
+  return translateTree(<div className="plan"><table><thead><tr><th scope="col">Lv</th><th scope="col">動作</th><th scope="col" className="col-detail">base INT</th><th scope="col" className="col-detail">base HP</th><th scope="col" className="col-detail">base MP</th><th scope="col" className="col-detail">Extra MP</th><th scope="col" className="col-detail">AP</th><th scope="col">APR</th><th scope="col">備註</th></tr></thead><tbody>{groups.map((group) => {
+    const first = group[0];
+    const last = group.at(-1)!;
+    const many = group.length > 1;
+    const overMp = group.some((row) => row.base_mp > 30000);
+    return <tr key={`${first.level}-${first.action}`} className={`${first.action === "RESET_INT" ? "is-reset" : ""}${many ? " is-merged" : ""}`}>
+      <td>{many ? `${first.level}–${last.level}` : first.level}</td>
+      <td title={first.action}>{actionName(first.action)}</td>
+      <td className="col-detail">{span(first.base_int, last.base_int)}</td>
+      <td className="col-detail">{span(first.base_hp, last.base_hp)}</td>
+      <td className="col-detail">{span(first.base_mp, last.base_mp)}{overMp && <span className="mp-warning" title="超過 30,000；建議提早做 Method 2"><span aria-hidden="true">{" ⚠"}</span><span className="visually-hidden">超過 30,000；建議提早做 Method 2</span></span>}</td>
+      <td className="col-detail">{span(first.extra_mp, last.extra_mp)}</td>
+      <td className="col-detail">INT {first.fresh_ap_int} · HP {first.fresh_ap_hp} · MP {first.fresh_ap_mp}</td>
+      <td>{many ? `${first.apr_spent} ×${group.length}` : first.apr_spent}</td>
+      <td>{noteText(first.notes)}{many && <span className="merged-note">（每級相同，共 {group.length} 級）</span>}</td>
+    </tr>;
+  })}</tbody></table></div>, language);
+}
