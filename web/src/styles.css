@@ -233,7 +233,7 @@ td:last-child { min-width: 180px; white-space: normal; }
 /* Plan filed under the key's steps */
 .plan-sections { display: grid; border-top: 1px solid var(--ink); }
 .plan-step { border-bottom: 1px solid var(--rule); background: var(--label); }
-.plan-step > summary { display: grid; grid-template-columns: 3rem minmax(0, 1fr) auto auto; align-items: baseline; gap: .4rem 1rem; padding: .7rem 1rem; cursor: pointer; list-style: none; font-variant-numeric: tabular-nums; }
+.plan-step > summary { display: grid; grid-template-columns: 7.5rem minmax(0, 1fr) auto auto; align-items: baseline; gap: .4rem 1rem; padding: .7rem 1rem; cursor: pointer; list-style: none; font-variant-numeric: tabular-nums; }
 .plan-step > summary::-webkit-details-marker { display: none; }
 .plan-step > summary::after { content: ""; grid-column: 5; width: .5rem; height: .5rem; border-right: 2px solid var(--ink-3); border-bottom: 2px solid var(--ink-3); transform: rotate(-45deg); transition: transform .15s ease-out; }
 .plan-step[open] > summary::after { transform: rotate(45deg); }
@@ -256,6 +256,43 @@ td:last-child { min-width: 180px; white-space: normal; }
 .run-actions { display: flex; gap: .5rem; }
 .run-actions .run-button { flex: 1; }
 .elapsed { display: inline-block; margin-top: .4rem; font-variant-numeric: tabular-nums; }
+
+/* Simulate handoff, simpler alternative, level track, gear summary */
+.link-button { min-height: 0; padding: 0; border: 0; color: var(--crimson-text); background: none; font-weight: 700; text-decoration: underline; text-underline-offset: .2em; justify-self: start; }
+.link-button:hover:not(:disabled) { color: var(--crimson-text); background: none; text-decoration-thickness: 2px; }
+.specimen-actions { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem 1rem; }
+.simpler-note { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: .2rem 1rem; padding: .8rem 1rem; border: 1px solid var(--ochre); background: var(--ochre-tint); color: var(--ochre-ink); }
+.simpler-note b { grid-column: 1; } .simpler-note span { grid-column: 1; }
+.simpler-note button { grid-column: 2; grid-row: 1 / span 2; }
+.key-within { margin-left: .3rem; color: var(--ink-3); font-size: .82rem; }
+.key-track-head { position: relative; width: 26%; }
+.key-track-head span[aria-hidden] { color: var(--ink-3); font-size: .72rem; font-weight: 600; }
+.key-track-head span[aria-hidden]:last-child { float: right; }
+.plan-key td.key-track { position: relative; width: 26%; padding-block: 0; }
+.key-track::before { content: ""; position: absolute; left: .35rem; right: .35rem; top: 50%; border-top: 1px dotted var(--rule-strong); }
+.key-band { position: absolute; top: calc(50% - .3rem); height: .6rem; min-width: 3px; background: var(--crimson); margin-left: .35rem; max-width: calc(100% - .7rem); }
+.key-band.is-point { width: .6rem; margin-left: calc(.35rem - .3rem); border-radius: 50%; background: var(--ochre); }
+.gear-summary { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: .3rem 1rem; font-variant-numeric: tabular-nums; }
+.plan-step-other { background: var(--sheet); }
+.comparison-grid .link-button { margin-top: .3rem; font-size: .84rem; }
+
+/* Continuous level bands, inline policy view, gear chips */
+.plan-step-range-lead { font-weight: 800; font-variant-numeric: tabular-nums; }
+.plan-step-text .key-code { margin-right: .3rem; }
+.plan-step-events { display: block; margin-top: .15rem; color: var(--ochre-ink); font-size: .8rem; font-weight: 600; }
+.plan-summary { margin: .3rem 0 0; color: var(--ink-2); font-size: .88rem; font-variant-numeric: tabular-nums; }
+.plan-view { scroll-margin-top: 1rem; }
+.comparison-grid article { gap: .35rem; }
+.card-select { display: grid; gap: .2rem; min-height: 0; padding: 0; border: 0; color: inherit; background: none; font-weight: inherit; text-align: left; }
+.card-select:hover:not(:disabled) { background: none; }
+.card-select:hover .card-cue { text-decoration: underline; }
+.card-cue { color: var(--crimson-text); font-size: .82rem; font-weight: 700; }
+.comparison-grid article.is-shown { background: var(--well); }
+.comparison-grid article.is-shown .card-cue { color: var(--ink-2); }
+.gear-chips { display: flex; flex-wrap: wrap; align-items: baseline; gap: .3rem .4rem; }
+.gear-label { margin-right: .2rem; font-weight: 700; color: var(--ink-2); }
+.gear-chip { padding: .05rem .4rem; border: 1px solid var(--rule); background: var(--sheet); font-size: .8rem; white-space: nowrap; }
+.gear-chip b { font-weight: 800; color: var(--ink); }
 @media (max-width: 1100px) {
   .calc-layout { grid-template-columns: 1fr; }
   .calc-results > .results-empty, .result-lead { grid-column: 1; grid-row: auto; }
@@ -266,12 +303,17 @@ td:last-child { min-width: 180px; white-space: normal; }
   .tabbar { flex-wrap: wrap; overflow: visible; }
   .tab { flex: 1 0 auto; padding-inline: .7rem; }
   .col-detail { display: none; }
+  .key-track-head, .plan-key td.key-track { display: none; }
+  .simpler-note { grid-template-columns: 1fr; }
+  .simpler-note button { grid-column: 1; grid-row: auto; justify-self: start; }
   .plan-key { padding: .8rem .6rem; }
   .plan-key table { font-size: .84rem; }
   .plan-key th, .plan-key td { padding-inline: .35rem; }
   .key-code { width: 1.8rem; }
-  .plan-step > summary { grid-template-columns: 2.4rem minmax(0, 1fr) auto; }
-  .plan-step-range { grid-column: 2; }
+  .plan-step > summary { grid-template-columns: minmax(0, 1fr) auto; }
+  .plan-step-range-lead { grid-column: 1; }
+  .plan-step-text { grid-column: 1 / -1; }
+  .plan-step-range { grid-column: 1; }
   .plan-step > summary::after { grid-column: 3; grid-row: 1; }
   .app-bar-row { flex-direction: column; align-items: flex-start; padding-block: .7rem .2rem; }
   .switches { justify-content: flex-start; }

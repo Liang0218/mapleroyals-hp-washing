@@ -125,6 +125,14 @@ const translations: Array<[string, string]> = [
   ["優勝", "Winner"], ["未設 MP 目標", "No MP goal"], ["Method 1 洗血 ×", "Method 1 HP wash ×"], ["配點", "Allocate AP"], ["逐 AP 洗", "Per-AP wash"],
   ["洗回 INT", "Reset INT"], ["接續起點", "Resume point"],
   ["最佳化", "Optimize"], ["模擬", "Simulate"], ["裝備", "Equipment"], ["職業數值", "Job reference"], ["策略說明", "Strategy guide"], ["聯絡作者", "Contact"],
+  ["點選卡片在下方查看該策略的計畫", "Select a card to see that policy's plan below"], ["查看這個計畫", "View this plan"], ["查看計畫", "View plan"], ["正在下方顯示", "Shown below"],
+  ["優勝計畫 · ", "Winning plan · "], [" 計畫", " plan"], ["總 APR ", "Total APR "], [" · 最終 HP ", " · Final HP "], ["含 ", "includes "], [" 交替", " alternating"],
+  ["依 Extra MP 交替）", "alternating by Extra MP)"], ["（與 ", " (with "], ["未設 MP 目標 · ", "No MP goal · "],
+  ["最佳化計算中，完成後才能執行模擬。", "The optimizer is running; simulate when it finishes."], ["模擬計算中，完成後才能執行最佳化。", "A simulation is running; optimize when it finishes."],
+  ["在模擬中開啟", "Open in Simulate"], ["帶入策略、base INT 與 MP wash 結束等級，再微調。", "Carries over the policy, base INT and MP wash end level so you can fine-tune."],
+  ["較簡單的替代方案：", "Simpler alternative: "], ["只多 ", "Only "], [" APR（共 ", " more APR ("], ["），在遊戲中操作簡單得多。", " total), and much simpler to do in game."],
+  ["（第 ", " (during step "], [" 步進行中）", ")"], ["等級時間軸", "Level timeline"], ["策略", "Policy"],
+  ["裝備 INT：", "Gear INT: "], ["尚未設定", "Not set"], ["編輯裝備", "Edit gear"], ["語言", "Language"], ["計算器分頁", "Calculator sections"],
   ["配點與其他動作", "AP allocation and other moves"], [" 列", " rows"], ["取消", "Cancel"], ["計算中… ", "Calculating… "], [" 秒", " s"], ["已經過 ", "Elapsed "], ["點 INT", "Add INT"], ["點 LUK", "Add LUK"], ["點 STR", "Add STR"], ["點 DEX", "Add DEX"],
 ];
 
