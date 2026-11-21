@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatUserError } from "../user-errors";
+import { describeUserError, formatUserError } from "../user-errors";
 
 describe("user-facing error messages", () => {
   it("translates validation errors into Traditional Chinese with field names", () => {
@@ -11,6 +11,13 @@ describe("user-facing error messages", () => {
   it("turns dynamic job and equipment errors into actionable messages", () => {
     expect(formatUserError(new Error("unknown job: magician"))).toContain("職業");
     expect(formatUserError(new Error("int must be >= 0 for Red Hat"))).toContain("Red Hat");
+  });
+
+  it("gives specific English messages and points at the offending field", () => {
+    expect(describeUserError(new Error("target_hp must be positive"), "en")).toEqual({ message: "Target HP must be greater than 0.", field: "targetHp" });
+    expect(describeUserError(new Error("unknown job: magician"), "en").message).toContain("magician");
+    expect(describeUserError(new Error("resume missing base_mp")).field).toBe("resume.baseMp");
+    expect(formatUserError(new Error("unexpected_internal_state"), "en")).toBe("Something went wrong. Check the inputs and try again.");
   });
 
   it("does not expose raw internal exception text", () => {

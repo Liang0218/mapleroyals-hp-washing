@@ -96,6 +96,23 @@ const translations: Array<[string, string]> = [
   ["每 APR 增加 HP", "HP gained per APR"], ["MP wash 每點 AP 增加 MP", "MP gained per MP wash AP"], ["升級 HP（1–10 等）", "Level-up HP (levels 1–10)"],
   ["升級 HP（11 等起）", "Level-up HP (level 11+)"], ["升級 MP（11 等起）", "Level-up MP (level 11+)"], ["技能加成", "Skill bonus"], ["平均", "average"],
   ["HP 目標 ", "HP goal "], ["MP 目標 ", "MP goal "], ["，實際 ", ", actual "], ["（", " ("], ["）", ")"], ["。", "."],
+  // Layout, form grouping, undo and status copy.
+  ["五個步驟算出低 APR 的洗血計畫。", "Five steps to a low APR HP washing plan."], ["開始最佳化", "Start optimizing"], ["設定裝備", "Set up equipment"],
+  ["結果僅供參考", "Estimates only"], ["目標與職業", "Goal and job"], ["進階設定", "Advanced settings"],
+  ["裝備 INT、HP 計算方式與 Maple Warrior", "Gear INT, HP calculation, and Maple Warrior"], ["從已經在練的角色接著算", "Continue from a character you are already leveling"],
+  ["Maple Warrior 比例", "Maple Warrior ratio"], ["填 0.1 代表 10%", "Enter 0.1 for 10%"],
+  ["Extra MP 不足時先 MP wash，足夠時用 Method 1 洗血。", "MP wash first when Extra MP runs short; use Method 1 when it is enough."],
+  ["Extra MP 不足時把 AP 點入 INT，該等不花洗血 APR。", "When Extra MP runs short, put AP into INT and spend no HP washing APR that level."],
+  ["逐 AP 嘗試洗血與洗 MP，最省 APR 但操作最繁瑣。", "Tries HP and MP washing on every AP: fewest APR, most steps."],
+  ["先把 INT 點滿，再 MP wash、洗血並洗回 INT。", "Build INT first, then MP wash, HP wash, and reset INT."],
+  ["完成後可在結果區下載逐級計畫 CSV。", "When it finishes, download the level-by-level plan as CSV from the results."],
+  ["正在搜尋 base INT 與 MP wash 組合，請稍候。", "Searching base INT and MP wash combinations…"], ["正在逐級模擬，請稍候。", "Simulating level by level…"], ["計算中…", "Calculating…"],
+  ["已還原預設裝備。", "Default equipment restored."], ["已載入裝備設定。", "Equipment file loaded."], ["已移除一件裝備。", "Removed one item."],
+  ["已移除「", "Removed “"], ["」。", "”."], ["復原", "Undo"], ["前往裝備頁", "Go to Equipment"],
+  ["裝備名稱", "Equipment name"], ["類型", "Type"], ["穿戴等級", "Equip level"], ["INT 裝備預覽", "INT gear preview"],
+  ["請檢查裝備名稱、INT 與裝備等級。", "Check equipment names, INT, and equip levels."], ["INT 達標等級", "Level INT goal reached"],
+  ["請放寬目標 HP／MP，或調整洗回 INT 等級後再試一次。", "Loosen the HP / MP goal or change the INT reset level, then try again."],
+  ["僅供參考，操作前請在遊戲中確認。", "Estimates only. Verify in game before acting."],
 ];
 
 export function translateText(value: string, language: Language): string {
