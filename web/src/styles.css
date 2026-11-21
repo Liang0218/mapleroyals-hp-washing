@@ -160,10 +160,6 @@ input[aria-invalid="true"], select[aria-invalid="true"] { border: 2px solid var(
 .stamp-reached { color: var(--moss); } .stamp-missed { color: var(--crimson-text); }
 .stale-note { margin: .7rem 0 0; color: var(--ochre-ink); font-weight: 700; }
 .is-stale .specimen-head h3, .is-stale .figures dd { text-decoration: line-through; text-decoration-thickness: 2px; text-decoration-color: var(--ochre); }
-.ruler { position: relative; height: 1rem; margin-top: 1rem; border: 1px solid var(--ink); background: var(--well); }
-.ruler-fill { height: 100%; background: var(--crimson); }
-.ruler-tick { position: absolute; bottom: 0; width: 1px; height: 45%; background: var(--ink); opacity: .55; }
-.ruler-target { position: absolute; top: -.45rem; bottom: -.45rem; width: 2px; margin-left: -1px; background: var(--ink); }
 .mark { display: inline-block; width: .62em; height: .62em; border: 2px solid currentColor; border-radius: 50%; vertical-align: .05em; }
 .mark-filled { background: currentColor; }
 .section-plate { margin: .6rem 0 .2rem; padding-top: .7rem; border-top: 1px solid var(--ink); font-size: 1.25rem; }
@@ -467,10 +463,6 @@ tr.is-reset td { background: var(--ochre-tint) !important; font-weight: 700; }
 .gear-prompt { display: grid; gap: .6rem; padding: .8rem .9rem; border: 1px solid var(--ochre); background: var(--ochre-tint); }
 .gear-prompt p { margin: 0; color: var(--ochre-ink); font-size: .9rem; font-weight: 600; }
 .gear-prompt .run-actions button { flex: 1; }
-/* HP ruler key: the fill is the final HP, the notch is the goal; both are named under the ruler. */
-.ruler-key { display: inline-block; width: .8rem; height: .55rem; margin: 0 .35rem 0 .1rem; vertical-align: baseline; }
-.ruler-key-fill { background: var(--crimson); }
-.ruler-key-target { width: 0; height: .8rem; margin-left: .8rem; border-left: 2px solid var(--ink); vertical-align: -.1rem; }
 /* "Back to settings" only matters where results sit below the form. */
 .back-to-form { color: var(--crimson-text); font-weight: 700; text-underline-offset: .2em; }
 .specimen-actions .back-to-form { margin-left: auto; }
@@ -479,3 +471,9 @@ tr.is-reset td { background: var(--ochre-tint) !important; font-weight: 700; }
 .tuner-fields .link-button { align-self: center; }
 .tuner-fields { grid-template-columns: repeat(2, minmax(0, 11rem)) auto auto; }
 @media (max-width: 720px) { .tuner-fields { grid-template-columns: 1fr 1fr; } .tuner-fields .link-button { grid-column: 1 / -1; justify-self: start; } }
+
+/* HP against its goal, in words: the stamp already says reached or not, so this line gives the numbers and the margin. */
+.hp-versus { margin: .9rem 0 0; color: var(--ink); font-size: 1rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.hp-margin { color: var(--ink-2); font-weight: 600; }
+.hp-margin.is-short { color: var(--danger); font-weight: 800; }
+.hp-versus + .capacity-caption { margin-top: .2rem; }

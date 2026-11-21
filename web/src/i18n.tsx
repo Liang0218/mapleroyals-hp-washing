@@ -7,7 +7,7 @@ export type Language = "zh" | "en";
 const translations: Array<[string, string]> = [
   ["使用指南 Guide", "Guide"], ["職業數值 Job reference", "Job reference"], ["裝備 Equipment", "Equipment"],
   ["最佳化 Optimize", "Optimize"], ["模擬 Simulate", "Simulate"], ["策略說明 Actions", "Strategy guide"], ["聯絡作者 Contact Author", "Contact"],
-  ["洗血涉及多項職業公式、能力值與遊戲機制，計算過程較為複雜。程式提供的最佳化結果可能有誤，請將結果作為參考，並在遊戲中操作前自行確認。", "HP washing uses job formulas, stats, and game mechanics. Treat optimizer results as estimates and verify them in game before acting."],
+  ["洗血涉及多項職業公式、能力值與遊戲機制，計算過程較為複雜，程式算出的結果不保證完全正確，可能有誤差。有疑問歡迎聯絡作者：Discord fuhuo。", "HP washing involves job formulas, stats, and game mechanics, so the calculated results are not guaranteed to be exact and may contain errors. If you have questions, contact the author: Discord fuhuo."],
   ["使用指南", "Getting started"], ["先設定裝備 →", "Set up equipment →"], ["選擇職業", "Choose a job"], ["Thief 可比較 A／B／C／D 策略；其他職業使用 Policy D。", "Thieves can compare policies A, B, C, and D. Other jobs use Policy D."],
   ["設定 INT 裝備", "Set INT gear"], ["到「裝備 Equipment」頁編輯各等級可穿戴裝備，檢查 INT 區間預覽。", "Edit gear by equip level on the Equipment page, then review the INT preview."],
   ["輸入 HP／MP 目標與洗回 INT 條件，搜尋低 APR 計畫。", "Enter HP and MP goals and the INT reset level to find a low APR plan."],
@@ -98,7 +98,7 @@ const translations: Array<[string, string]> = [
   ["HP 目標 ", "HP goal "], ["MP 目標 ", "MP goal "], ["，實際 ", ", actual "], ["（", " ("], ["）", ")"], ["。", "."],
   // Layout, form grouping, undo and status copy.
   ["五個步驟算出低 APR 的洗血計畫。", "Five steps to a low APR HP washing plan."], ["開始最佳化", "Start optimizing"], ["設定裝備", "Set up equipment"],
-  ["結果僅供參考", "Estimates only"], ["目標與職業", "Goal and job"], ["進階設定", "Advanced settings"],
+  ["結果不保證完全正確", "Results are not guaranteed"], ["目標與職業", "Goal and job"], ["進階設定", "Advanced settings"],
   ["裝備 INT、HP 計算方式與 Maple Warrior", "Gear INT, HP calculation, and Maple Warrior"], ["從已經在練的角色接著算", "Continue from a character you are already leveling"],
   ["Maple Warrior 比例", "Maple Warrior ratio"], ["填 0.1 代表 10%", "Enter 0.1 for 10%"],
   ["Extra MP 不足時先 MP wash，足夠時用 Method 1 洗血。", "MP wash first when Extra MP runs short; use Method 1 when it is enough."],
@@ -112,7 +112,7 @@ const translations: Array<[string, string]> = [
   ["裝備名稱", "Equipment name"], ["類型", "Type"], ["穿戴等級", "Equip level"], ["INT 裝備預覽", "INT gear preview"],
   ["請檢查裝備名稱、INT 與裝備等級。", "Check equipment names, INT, and equip levels."], ["INT 達標等級", "Level INT goal reached"],
   ["請放寬目標 HP／MP，或調整洗回 INT 等級後再試一次。", "Loosen the HP / MP goal or change the INT reset level, then try again."],
-  ["僅供參考，操作前請在遊戲中確認。", "Estimates only. Verify in game before acting."],
+  ["結果不保證完全正確，可能有誤差；有疑問請聯絡作者。", "Results are not guaranteed to be exact and may contain errors; contact the author with any questions."],
   // Appearance switch, specimen label and key.
   ["外觀", "Appearance"], ["淺色", "Light"], ["深色", "Dark"], ["自動", "Auto"],
   ["設定已變更，這是舊的結果；請重新執行。", "Settings changed. This result is out of date; run it again."],
@@ -158,6 +158,7 @@ const translations: Array<[string, string]> = [
   ["前往裝備頁設定", "Set up gear"], ["仍以 0 計算", "Calculate with 0"], ["回到設定", "Back to settings"], ["回到原值", "Reset to original"],
   ["下表列出和原計畫相比 APR 有變動的等級段，可以從這裡看出差在哪一段；按「回到原值」可重新調整。", " The table below lists the level ranges whose APR changed, so you can see where it differs; Reset to original to start over."],
   ["編號：策略 · base INT · MP wash 結束等級", "Code: policy · base INT · MP wash end level"], ["目標 HP ", "Target HP "], ["目標", "Target"],
+  ["／目標 ", " / target "], ["（多 ", " (+"], ["（HP 差 ", " (short by "], ["）", ")"],
   ["比較 Policy C、", "Policy C comparison, "], ["設定裝備後重算", "Set gear, then rerun"], ["HP 差 ", "HP short by "], ["MP 差 ", "MP short by "],
   ["這個組合不能照做。總 APR ", "This combination does not reach the goal. Total APR "], ["只供參考。", "is for reference only."],
   ["比原計畫 ", "vs original: "], ["微調計畫 · ", "Tuned plan · "], [" · 最終 base MP ", " · Final base MP "],

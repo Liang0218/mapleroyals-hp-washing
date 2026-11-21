@@ -328,7 +328,7 @@ export function App() {
     guide: () => <section className="page-card">
       <div className="section-heading"><div><h2>使用指南</h2><p className="subheading">五個步驟算出低 APR 的洗血計畫。</p></div><div className="button-row"><button type="button" onClick={() => changeTab("optimize")}>開始最佳化</button><button type="button" className="quiet" onClick={() => changeTab("equipment")}>設定裝備</button></div></div>
       <ol className="guide-steps"><li><b>選擇職業</b><span>Thief 可比較 A／B／C／D 策略；其他職業使用 Policy D。</span></li><li><b>設定 INT 裝備</b><span>到「裝備 Equipment」頁編輯各等級可穿戴裝備，檢查 INT 區間預覽。</span></li><li><b>執行最佳化</b><span>輸入 HP／MP 目標與洗回 INT 條件，搜尋低 APR 計畫。</span></li><li><b>執行模擬</b><span>指定 base INT 與 MP wash 結束等級，檢查單一計畫的逐級行動。</span></li><li><b>保留操作</b><span>此瀏覽器會自動記住上次的裝備及各分頁設定。</span></li></ol>
-      <div className="notice-row"><div className="notice notice-tip"><b>計算提示</b><p>最佳化與模擬會依目前裝備清單及各自設定的洗回 INT 等級，即時更新 INT 裝備區間。</p></div><div className="notice notice-caution"><b>結果僅供參考</b><p>洗血涉及多項職業公式、能力值與遊戲機制，計算過程較為複雜。程式提供的最佳化結果可能有誤，請將結果作為參考，並在遊戲中操作前自行確認。</p></div></div>
+      <div className="notice-row"><div className="notice notice-tip"><b>計算提示</b><p>最佳化與模擬會依目前裝備清單及各自設定的洗回 INT 等級，即時更新 INT 裝備區間。</p></div><div className="notice notice-caution"><b>結果不保證完全正確</b><p>洗血涉及多項職業公式、能力值與遊戲機制，計算過程較為複雜，程式算出的結果不保證完全正確，可能有誤差。有疑問歡迎聯絡作者：Discord fuhuo。</p></div></div>
     </section>,
 
     equipment: () => <section className="page-card equipment-page">
@@ -433,7 +433,7 @@ export function App() {
       {tab !== "optimize" && tab !== "simulate" && tab !== "equipment" && errorBox}
       {panels[tab]()}
     </div>
-    <footer className="app-footer"><span className="footer-disclaimer">僅供參考，操作前請在遊戲中確認。</span><span>聯絡作者：Discord <b>fuhuo</b> · <a href="https://github.com/Liang0218/mapleroyals-hp-washing" target="_blank" rel="noreferrer">GitHub</a></span><span>v{__APP_VERSION__}</span></footer>
+    <footer className="app-footer"><span className="footer-disclaimer">結果不保證完全正確，可能有誤差；有疑問請聯絡作者。</span><span>聯絡作者：Discord <b>fuhuo</b> · <a href="https://github.com/Liang0218/mapleroyals-hp-washing" target="_blank" rel="noreferrer">GitHub</a></span><span>v{__APP_VERSION__}</span></footer>
     </main>
   </>, language)}</>;
 }
@@ -457,9 +457,8 @@ function Mark({ reached }: { reached: boolean }) { return <span className={`mark
 function Specimen({ code, headline, reached, hpReached, mpReached, stale, targetHp, finalHp, targetMp, finalMp, figures, extras, note, language, onEditGear }: SpecimenProps) {
   const outcome = reached ? "已達成目標" : hpReached && !mpReached ? "無法同時達標 — HP 已達標，MP 未達標" : "無法達成 — 最接近結果";
   const mpDetail = targetMp === undefined ? "未設定 MP 目標" : `MP 目標 ${targetMp.toLocaleString()}，實際 ${finalMp.toLocaleString()}${mpReached ? "（達標）" : "（未達標）"}`;
-  // Scale the ruler to whichever is larger so both overshoot and shortfall stay visible.
-  const scale = Math.max(targetHp, finalHp, 1) * 1.08;
-  const ticks = [0.25, 0.5, 0.75];
+  // HP against its goal as plain numbers: most plans reach it, so a bar would sit near full and say nothing.
+  const hpMargin = finalHp - targetHp;
   return translateTree(<div className={`specimen ${stale ? "is-stale" : ""}`}>
     <span className="specimen-tag" title="編號：策略 · base INT · MP wash 結束等級">No. {code}</span>
     <div className="specimen-head">
@@ -468,12 +467,8 @@ function Specimen({ code, headline, reached, hpReached, mpReached, stale, target
     </div>
     {stale && <p className="stale-note">設定已變更，這是舊的結果；請重新執行。</p>}
     {note}
-    <div className="ruler" role="img" aria-label={`HP ${finalHp.toLocaleString()} / ${targetHp.toLocaleString()} · ${hpReached ? "已達標" : "未達標"}`}>
-      <div className="ruler-fill" style={{ width: `${(finalHp / scale) * 100}%` }} />
-      {ticks.map((tick) => <span key={tick} className="ruler-tick" style={{ left: `${tick * 100}%` }} />)}
-      <span className="ruler-target" style={{ left: `${(targetHp / scale) * 100}%` }} />
-    </div>
-    <p className="capacity-caption"><span className="ruler-key ruler-key-fill" aria-hidden="true" />最終 HP {finalHp.toLocaleString()}<span className="ruler-key ruler-key-target" aria-hidden="true" />目標 HP {targetHp.toLocaleString()}（{hpReached ? "達標" : "未達標"}）；{mpDetail}</p>
+    <p className="hp-versus">最終 HP {finalHp.toLocaleString()}／目標 {targetHp.toLocaleString()}<span className={hpMargin >= 0 ? "hp-margin" : "hp-margin is-short"}>{hpMargin >= 0 ? `（多 ${hpMargin.toLocaleString()}）` : `（HP 差 ${(-hpMargin).toLocaleString()}）`}</span></p>
+    <p className="capacity-caption">{mpDetail}</p>
     <dl className="figures">{figures.map(([value, label]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>
     {(extras.length > 0 || onEditGear) && <dl className="extras">{extras.map(([value, label]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}
       {onEditGear && <div className="extra-caution"><dt>裝備 INT</dt><dd>未設定（以 0 計算）</dd><button type="button" className="link-button" onClick={onEditGear}>設定裝備後重算</button></div>}</dl>}

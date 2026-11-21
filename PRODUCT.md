@@ -37,7 +37,7 @@ Used on a desktop computer alongside the running game client, often switching wi
 
 - Bilingual Traditional Chinese / English, with a language switch.
 - Light and dark appearance, with a switch.
-- The disclaimer that results are estimates to verify in game stays visible.
+- The disclaimer stays visible: results are not guaranteed to be exact and may contain errors, and players with questions should contact the author. (Players cannot easily verify a plan in game themselves, so the disclaimer does not ask them to.)
 - The name "MapleRoyals HP Washing APR Optimizer".
 
 ## Evidence on Hand

@@ -138,12 +138,10 @@ test("a fine-tune can be reset to the original values", async ({ page }) => {
   await expect(tuner.locator(".tuner-result")).toHaveCount(0);
 });
 
-test("the HP ruler names its fill and its goal notch", async ({ page }) => {
+test("final HP is stated against its goal in words, with no bar", async ({ page }) => {
   await runOptimizeToResult(page);
-  await expect(page.locator(".capacity-caption .ruler-key-fill")).toHaveCount(1);
-  await expect(page.locator(".capacity-caption .ruler-key-target")).toHaveCount(1);
-  await expect(page.locator(".capacity-caption")).toContainText("最終 HP");
-  await expect(page.locator(".capacity-caption")).toContainText("目標 HP");
+  await expect(page.locator(".ruler")).toHaveCount(0);
+  await expect(page.locator(".hp-versus")).toHaveText(/^最終 HP [\d,]+／目標 [\d,]+（(多|HP 差) [\d,]+）$/);
 });
 
 test("an unchanged fine-tune says so and adds no second plan", async ({ page }) => {
