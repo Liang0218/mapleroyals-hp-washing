@@ -1,0 +1,360 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-21T12:00:00Z",
+  "title": "Design System: MapleRoyals HP Washing APR Optimizer",
+  "extensions": {
+    "colorMeta": {
+      "crimson": {
+        "role": "primary",
+        "displayName": "Maple Crimson",
+        "canonical": "#c2381f",
+        "night": "#e0573a",
+        "tonalRamp": [
+          "#3a0f07",
+          "#5e180c",
+          "#862313",
+          "#a92e17",
+          "#c2381f",
+          "#e0573a",
+          "#f4a28e",
+          "#fbe3dc"
+        ]
+      },
+      "crimson-text": {
+        "role": "primary",
+        "displayName": "Crimson Mark",
+        "canonical": "#b8341c",
+        "night": "#f4866c"
+      },
+      "ochre": {
+        "role": "secondary",
+        "displayName": "Specimen Ochre",
+        "canonical": "#d98a1c",
+        "night": "#e2a14a",
+        "tonalRamp": [
+          "#2e1d05",
+          "#4d3108",
+          "#6b4508",
+          "#9a6512",
+          "#d98a1c",
+          "#e8ab55",
+          "#f4d49d",
+          "#fbf0d9"
+        ]
+      },
+      "moss": {
+        "role": "tertiary",
+        "displayName": "Reached Moss",
+        "canonical": "#3f7a3a",
+        "night": "#85c27a",
+        "tonalRamp": [
+          "#122210",
+          "#1f3a1c",
+          "#2c5329",
+          "#3f7a3a",
+          "#5a9a53",
+          "#85c27a",
+          "#b9dcb1",
+          "#e4efdf"
+        ]
+      },
+      "maple": {
+        "role": "neutral",
+        "displayName": "Maple Orange (name only)",
+        "canonical": "#f08a5d",
+        "night": "#f2a074"
+      },
+      "mount": {
+        "role": "neutral",
+        "displayName": "Mount Board",
+        "canonical": "#e9ede4",
+        "night": "#121815",
+        "tonalRamp": [
+          "#121815",
+          "#182019",
+          "#263128",
+          "#455548",
+          "#8e9d87",
+          "#b9c4b2",
+          "#dfe5d8",
+          "#e9ede4"
+        ]
+      },
+      "sheet": {
+        "role": "neutral",
+        "displayName": "Sheet (mount tone in light)",
+        "canonical": "#e9ede4",
+        "night": "#182019"
+      },
+      "label": {
+        "role": "neutral",
+        "displayName": "Label White",
+        "canonical": "#ffffff",
+        "night": "#1d261f"
+      },
+      "well": {
+        "role": "neutral",
+        "displayName": "Well",
+        "canonical": "#dfe5d8",
+        "night": "#263128"
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "Ink Green",
+        "canonical": "#1f2a22",
+        "night": "#e6e9dc",
+        "tonalRamp": [
+          "#0b100d",
+          "#1f2a22",
+          "#324034",
+          "#455548",
+          "#5b6b5e",
+          "#8e9d87",
+          "#b9c4b2",
+          "#e6e9dc"
+        ]
+      },
+      "rule": {
+        "role": "neutral",
+        "displayName": "Rule",
+        "canonical": "#b9c4b2",
+        "night": "#324034"
+      },
+      "rule-strong": {
+        "role": "neutral",
+        "displayName": "Rule Strong",
+        "canonical": "#8e9d87",
+        "night": "#4a5b4c"
+      },
+      "bar": {
+        "role": "neutral",
+        "displayName": "Ink-Green Bar",
+        "canonical": "#1f2a22",
+        "night": "#0b100d"
+      },
+      "danger": {
+        "role": "neutral",
+        "displayName": "Danger",
+        "canonical": "#a8281a",
+        "night": "#ff9d8c"
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Specimen Figure",
+        "purpose": "The four key figures on the specimen label."
+      },
+      "headline": {
+        "displayName": "Specimen Headline",
+        "purpose": "The result's headline line."
+      },
+      "title": {
+        "displayName": "Page Title",
+        "purpose": "Page and section headings."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Prose, notices, subheadings (max 70ch)."
+      },
+      "label": {
+        "displayName": "Field Label",
+        "purpose": "Form labels and switches."
+      },
+      "table": {
+        "displayName": "Table",
+        "purpose": "Plan, key and reference tables, tabular figures."
+      },
+      "caption": {
+        "displayName": "Caption",
+        "purpose": "Figure terms, notes, footer, specimen tag, winner tag."
+      },
+      "plate": {
+        "displayName": "Section Plate",
+        "purpose": "Result section headings under a 1px ink rule (1.1rem inside the key)."
+      }
+    },
+    "shadows": [],
+    "motion": [
+      {
+        "name": "state-change",
+        "value": ".15s ease-out",
+        "purpose": "Background, colour and border changes on buttons and fields."
+      },
+      {
+        "name": "result-in",
+        "value": ".3s cubic-bezier(.16, 1, .3, 1)",
+        "purpose": "Result panel rises 4px from 0.3 opacity on each new result."
+      },
+      {
+        "name": "run-pulse",
+        "value": "1.2s ease-in-out infinite alternate",
+        "purpose": "Run button opacity pulse to 0.6 while busy."
+      },
+      {
+        "name": "reduced-motion",
+        "value": "none",
+        "purpose": "All animation and transition removed under prefers-reduced-motion."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "single-column",
+        "value": "1100px"
+      },
+      {
+        "name": "compact",
+        "value": "720px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The one action: crimson, square, heavy.",
+      "html": "<button class=\"ds-btn-primary\">匯出 CSV</button>",
+      "css": ".ds-btn-primary { min-height: 2.5rem; padding: .5rem 1rem; border: 1px solid var(--crimson, #c2381f); border-radius: 0; color: var(--on-crimson, #fff); background: var(--crimson, #c2381f); font-family: var(--font, Archivo, sans-serif); font-weight: 800; cursor: pointer; transition: background-color .15s ease-out; } .ds-btn-primary:hover { background: var(--crimson-hover, #a92e17); border-color: var(--crimson-hover, #a92e17); } .ds-btn-primary:focus-visible { outline: 2px solid var(--ochre, #d98a1c); outline-offset: 2px; }"
+    },
+    {
+      "name": "Run Button",
+      "kind": "button",
+      "refersTo": "button-run",
+      "description": "Full-width run button in the sticky bar under the form.",
+      "html": "<button class=\"ds-btn-run\">執行最佳化</button>",
+      "css": ".ds-btn-run { width: 100%; min-height: 3.1rem; padding: .5rem 1rem; border: 1px solid var(--crimson, #c2381f); border-radius: 0; color: var(--on-crimson, #fff); background: var(--crimson, #c2381f); font-family: var(--font, Archivo, sans-serif); font-size: 1.1rem; letter-spacing: .01em; font-weight: 800; cursor: pointer; transition: background-color .15s ease-out; } .ds-btn-run:hover { background: var(--crimson-hover, #a92e17); border-color: var(--crimson-hover, #a92e17); } .ds-btn-run:focus-visible { outline: 2px solid var(--ochre, #d98a1c); outline-offset: 2px; }"
+    },
+    {
+      "name": "Quiet Button",
+      "kind": "button",
+      "refersTo": "button-quiet",
+      "description": "Secondary action on label paper with a strong rule.",
+      "html": "<button class=\"ds-btn-quiet\">重設</button>",
+      "css": ".ds-btn-quiet { min-height: 2.5rem; padding: .5rem 1rem; border: 1px solid var(--rule-strong, #8e9d87); border-radius: 0; color: var(--ink, #1f2a22); background: var(--label, #fff); font-family: var(--font, Archivo, sans-serif); font-weight: 800; cursor: pointer; transition: background-color .15s ease-out; } .ds-btn-quiet:hover { background: var(--well, #dfe5d8); border-color: var(--ink-3, #5b6b5e); } .ds-btn-quiet:focus-visible { outline: 2px solid var(--ochre, #d98a1c); outline-offset: 2px; }"
+    },
+    {
+      "name": "Field",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Stacked label, square input with tabular figures, ochre focus.",
+      "html": "<label class=\"ds-field\">目標 HP<input class=\"ds-input\" value=\"30000\"><span class=\"ds-hint\">裝備加成前的數值</span></label>",
+      "css": ".ds-field { display: grid; gap: .3rem; color: var(--ink-2, #455548); font-family: var(--font, Archivo, sans-serif); font-size: .86rem; font-weight: 600; } .ds-input { min-height: 2.5rem; padding: .45rem .6rem; border: 1px solid var(--rule-strong, #8e9d87); border-radius: 0; color: var(--ink, #1f2a22); background: var(--label, #fff); font: inherit; font-size: 1rem; font-weight: 400; font-variant-numeric: tabular-nums; transition: border-color .15s ease-out; } .ds-input:hover { border-color: var(--ink-3, #5b6b5e); } .ds-input:focus-visible { outline: 2px solid var(--ochre, #d98a1c); outline-offset: 0; border-color: var(--ink, #1f2a22); } .ds-hint { color: var(--ink-3, #5b6b5e); font-size: .8rem; font-weight: 500; }"
+    },
+    {
+      "name": "App Bar Tabs",
+      "kind": "nav",
+      "refersTo": "tab",
+      "description": "Tabs hang from the ink-green bar; the active one is cut into the mount board.",
+      "html": "<nav class=\"ds-bar\"><div class=\"ds-tabs\"><button class=\"ds-tab\">指南</button><button class=\"ds-tab ds-tab-active\">最佳化</button><button class=\"ds-tab\">模擬</button></div></nav>",
+      "css": ".ds-bar { padding: 0 1rem; background: var(--bar, #1f2a22); } .ds-tabs { display: flex; gap: 2px; } .ds-tab { min-height: 2.6rem; padding: .55rem 1.05rem; border: 0; border-radius: 0; color: var(--bar-ink-2, #b8c4b4); background: transparent; font-family: var(--font, Archivo, sans-serif); font-weight: 600; cursor: pointer; } .ds-tab:hover:not(.ds-tab-active) { color: var(--bar-ink, #e9ede4); background: var(--bar-rule, #3a4a3e); } .ds-tab:focus-visible { outline: 2px solid var(--ochre, #d98a1c); outline-offset: 2px; } .ds-tab-active { color: var(--ink, #1f2a22); background: var(--mount, #e9ede4); font-weight: 800; }"
+    },
+    {
+      "name": "Segmented Switch",
+      "kind": "chip",
+      "refersTo": "segmented-active",
+      "description": "Language and appearance switches on the app bar; pressed option in ochre.",
+      "html": "<div class=\"ds-bar-bg\"><div class=\"ds-seg\"><button aria-pressed=\"true\">中文</button><button aria-pressed=\"false\">EN</button></div></div>",
+      "css": ".ds-bar-bg { padding: .75rem; background: var(--bar, #1f2a22); } .ds-seg { display: inline-flex; border: 1px solid var(--bar-rule, #3a4a3e); } .ds-seg button { min-height: 2.1rem; padding: .25rem .7rem; border: 0; border-radius: 0; color: var(--bar-ink-2, #b8c4b4); background: transparent; font-family: var(--font, Archivo, sans-serif); font-size: .86rem; font-weight: 600; cursor: pointer; } .ds-seg button:hover:not([aria-pressed=\"true\"]) { color: var(--bar-ink, #e9ede4); background: var(--bar-rule, #3a4a3e); } .ds-seg button:focus-visible { outline: 2px solid var(--ochre, #d98a1c); outline-offset: 2px; } .ds-seg button[aria-pressed=\"true\"] { color: var(--on-ochre, #1f2a22); background: var(--ochre, #d98a1c); }"
+    },
+    {
+      "name": "Specimen Label",
+      "kind": "card",
+      "refersTo": "specimen",
+      "description": "The result: ink-bordered label with plan-code tag, stamp with drawn mark, graduated ruler and ruled four-figure strip.",
+      "html": "<section class=\"ds-specimen\"><span class=\"ds-tag\">No. C·360·108</span><div class=\"ds-head\"><h3>Policy C · base INT 360 · MP wash 到 Lv 108</h3><span class=\"ds-stamp\"><span class=\"ds-mark ds-mark-filled\"></span> 已達成目標</span></div><div class=\"ds-ruler\"><div class=\"ds-ruler-fill\" style=\"width:88%\"></div><span class=\"ds-tick\" style=\"left:25%\"></span><span class=\"ds-tick\" style=\"left:50%\"></span><span class=\"ds-tick\" style=\"left:75%\"></span><span class=\"ds-target\" style=\"left:86%\"></span></div><p class=\"ds-cap-caption\">HP 目標 30,000（達標）；未設定 MP 目標</p><dl class=\"ds-figs\"><div><dt>總 APR</dt><dd>1,284</dd></div><div><dt>最終 HP</dt><dd>30,112</dd></div><div><dt>最終 base MP</dt><dd>2,410</dd></div><div><dt>目標等級</dt><dd>200</dd></div></dl></section>",
+      "css": ".ds-specimen { position: relative; margin-top: 1rem; padding: 1.6rem 1.5rem 0; border: 2px solid var(--ink, #1f2a22); background: var(--label, #fff); color: var(--ink, #1f2a22); font-family: var(--font, Archivo, sans-serif); } .ds-tag { position: absolute; top: -.8rem; left: 1.1rem; padding: .1rem .6rem; color: var(--on-ochre, #1f2a22); background: var(--ochre, #d98a1c); font-size: .82rem; font-weight: 800; } .ds-head { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: .6rem 1rem; } .ds-head h3 { flex: 1 1 16rem; margin: 0; font-size: clamp(1.3rem, 2.4vw, 1.75rem); font-weight: 800; line-height: 1.2; letter-spacing: -.01em; font-variant-numeric: tabular-nums; } .ds-stamp { display: inline-flex; align-items: center; gap: .4rem; padding: .3rem .75rem; border: 2px solid currentColor; color: var(--moss, #3f7a3a); font-weight: 800; transform: rotate(-2deg); } .ds-mark { display: inline-block; width: .62em; height: .62em; border: 2px solid currentColor; border-radius: 50%; } .ds-mark-filled { background: currentColor; } .ds-ruler { position: relative; height: 1rem; margin-top: 1rem; border: 1px solid var(--ink, #1f2a22); background: var(--well, #dfe5d8); } .ds-ruler-fill { height: 100%; background: var(--crimson, #c2381f); } .ds-tick { position: absolute; bottom: 0; width: 1px; height: 45%; background: var(--ink, #1f2a22); opacity: .55; } .ds-target { position: absolute; top: -.45rem; bottom: -.45rem; width: 2px; margin-left: -1px; background: var(--ink, #1f2a22); } .ds-cap-caption { margin: .4rem 0 0; color: var(--ink-2, #455548); font-size: .86rem; font-variant-numeric: tabular-nums; } .ds-figs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); margin: 1rem -1.5rem 0; border-top: 1px solid var(--ink, #1f2a22); } .ds-figs div { display: flex; flex-direction: column-reverse; padding: .8rem 1rem .9rem 1.5rem; border-right: 1px dashed var(--rule-strong, #8e9d87); } .ds-figs div:last-child { border-right: 0; } .ds-figs dt { color: var(--ink-3, #5b6b5e); font-size: .82rem; } .ds-figs dd { margin: 0; font-size: 1.75rem; font-weight: 800; line-height: 1.15; font-variant-numeric: tabular-nums; }"
+    },
+    {
+      "name": "Dichotomous Key",
+      "kind": "custom",
+      "refersTo": "table-header",
+      "description": "The plan's steps as a field-guide key in level order: numbered, a/b for overlapping alternatives, crimson codes, dotted rows, APR right.",
+      "html": "<section class=\"ds-key\"><h4>檢索表：這份計畫每一級怎麼點</h4><table><tbody><tr><td class=\"ds-code\">1</td><td>Extra MP 不足 → 先 MP wash</td><td>Lv 10–108</td><td>0</td></tr><tr><td class=\"ds-code\">2a</td><td>Extra MP 足夠 → Method 1 洗血</td><td>Lv 109–160</td><td>620</td></tr><tr><td class=\"ds-code\">2b</td><td>Method 2 用 APR 換 HP</td><td>Lv 120–200</td><td>664</td></tr></tbody></table></section>",
+      "css": ".ds-key { padding: 1rem 1.2rem; border: 1px solid var(--rule, #b9c4b2); background: var(--label, #fff); color: var(--ink, #1f2a22); font-family: var(--font, Archivo, sans-serif); } .ds-key h4 { margin: 0 0 .6rem; font-size: 1.1rem; font-weight: 800; letter-spacing: -.01em; } .ds-key table { width: 100%; border-collapse: collapse; font-size: .9rem; font-variant-numeric: tabular-nums; } .ds-key td { padding: .5rem .65rem; text-align: left; border-bottom: 1px dotted var(--rule-strong, #8e9d87); } .ds-key td:last-child { text-align: right; } .ds-key tr:hover td { background: var(--row-hover, #fdf3e2); } .ds-code { width: 3rem; color: var(--crimson-text, #b8341c); font-weight: 800; }"
+    },
+    {
+      "name": "Section Plate",
+      "kind": "custom",
+      "refersTo": "section-plate",
+      "description": "Result section heading set under a 1px ink rule, with an optional action at its right.",
+      "html": "<div class=\"ds-plate-row\"><h4 class=\"ds-plate\">優勝計畫（93 列）</h4><button class=\"ds-plate-btn\">下載 CSV</button></div>",
+      "css": ".ds-plate-row { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding-top: .7rem; border-top: 1px solid var(--ink, #1f2a22); font-family: var(--font, Archivo, sans-serif); color: var(--ink, #1f2a22); } .ds-plate { margin: 0; font-size: 1.25rem; font-weight: 800; letter-spacing: -.01em; } .ds-plate-btn { min-height: 2.5rem; padding: .5rem 1rem; border: 1px solid var(--rule-strong, #8e9d87); border-radius: 0; color: var(--ink, #1f2a22); background: var(--label, #fff); font: inherit; font-weight: 800; cursor: pointer; } .ds-plate-btn:hover { background: var(--well, #dfe5d8); border-color: var(--ink-3, #5b6b5e); } .ds-plate-btn:focus-visible { outline: 2px solid var(--ochre, #d98a1c); outline-offset: 2px; }"
+    },
+    {
+      "name": "Policy Comparison",
+      "kind": "card",
+      "refersTo": "comparison-winner",
+      "description": "Ruled strip of policy cells; the winner takes a 2px ink inset outline and an ochre 優勝 tag.",
+      "html": "<div class=\"ds-compare\"><article class=\"ds-win\"><span class=\"ds-win-tag\">優勝</span><span>Policy C · <b class=\"ds-ok\"><span class=\"ds-m ds-m-f\"></span> 已達標</b></span><b class=\"ds-apr\">1,284 APR</b><small>INT 360 · MP wash 到 Lv 108</small></article><article><span>Policy D · <b class=\"ds-no\"><span class=\"ds-m\"></span> 未達標</b></span><b class=\"ds-apr\">1,410 APR</b><small>INT 340 · MP wash 到 Lv 120</small></article></div>",
+      "css": ".ds-compare { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); border: 1px solid var(--rule, #b9c4b2); background: var(--label, #fff); color: var(--ink, #1f2a22); font-family: var(--font, Archivo, sans-serif); } .ds-compare article { display: grid; gap: .2rem; padding: .8rem 1rem; border-right: 1px solid var(--rule, #b9c4b2); } .ds-compare article:last-child { border-right: 0; } .ds-compare span, .ds-compare small { color: var(--ink-2, #455548); } .ds-win { outline: 2px solid var(--ink, #1f2a22); outline-offset: -2px; } .ds-win-tag { justify-self: start; padding: 0 .45rem; color: var(--on-ochre, #1f2a22) !important; background: var(--ochre, #d98a1c); font-size: .78rem; font-weight: 800; } .ds-apr { font-size: 1.2rem; font-weight: 800; font-variant-numeric: tabular-nums; } .ds-ok { color: var(--moss, #3f7a3a); } .ds-no { color: var(--crimson-text, #b8341c); } .ds-m { display: inline-block; width: .62em; height: .62em; border: 2px solid currentColor; border-radius: 50%; } .ds-m-f { background: currentColor; } .ds-compare article:hover { background: var(--row-hover, #fdf3e2); }"
+    },
+    {
+      "name": "Notices",
+      "kind": "card",
+      "refersTo": "",
+      "description": "Borderless tinted blocks: moss tip, ochre caution (the estimates disclaimer).",
+      "html": "<div class=\"ds-notices\"><div class=\"ds-notice ds-tip\"><b>計算提示</b><p>INT 裝備區間會即時更新。</p></div><div class=\"ds-notice ds-caution\"><b>結果僅供參考</b><p>請在遊戲中操作前自行確認。</p></div></div>",
+      "css": ".ds-notices { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; font-family: var(--font, Archivo, sans-serif); } .ds-notice { padding: .9rem 1rem; } .ds-notice b { display: block; margin-bottom: .3rem; font-weight: 800; } .ds-notice p { margin: 0; color: var(--ink-2, #455548); } .ds-tip { background: var(--moss-tint, #e4efdf); } .ds-tip b { color: var(--moss, #3f7a3a); } .ds-caution { background: var(--ochre-tint, #fbf0d9); } .ds-caution b, .ds-caution p { color: var(--ochre-ink, #6b4508); }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Field-Guide Specimen Sheet",
+    "overview": "A washing plan is treated as a collected specimen. The page is a herbarium mount board in sage grey-green, structured by ink-green rules; the result is a specimen label pinned to it, read at a glance: a plan code on its tag, the headline line, a printed stamp for reached or missed, a measuring ruler against the HP target, and a ruled strip of four key figures. Policy behaviour is set as a field guide's dichotomous key numbered in level order, the four policies sit in a ruled comparison strip with the winner outlined, and the level-by-level plan is a plain ruled table under its own section plate. The dark appearance is the same cabinet at night: moss-black ground, bone text, the same crimson and ochre, lifted for contrast.\n\nDensity is that of a working reference sheet: compact tables, tabular figures everywhere numbers live, labels small and semibold, headings heavy. Everything is square and flat; depth comes from ground layers and 1px rules, never from shadow. Archivo sets every Latin glyph and figure; CJK deliberately uses the system Traditional Chinese face rather than a shipped CJK font. The world rejects both the generic dark gaming dashboard and the parchment-and-serif game skin.",
+    "keyCharacteristics": [
+      "Paper grounds stacked by tone and outlined by 1px rules: in light the page card shares the mount's tone, so label white is the one raised paper.",
+      "Square corners on every surface; the drawn state mark is the one round form.",
+      "Crimson is the one action; ochre marks the specimen tag, the winner tag, selection, focus and caution; moss marks reached.",
+      "States are drawn printed marks: filled circle reached, hollow circle missed, ochre strike-through when stale.",
+      "Tabular figures on every number."
+    ],
+    "rules": [
+      {
+        "name": "The One Action Rule",
+        "body": "Crimson fills only things you press to act (and the ruler fill that reports the action's outcome). Never use it as a decorative accent or a heading colour beyond `crimson-text` marks.",
+        "section": "colors"
+      },
+      {
+        "name": "The Three Inks Rule",
+        "body": "Saturated colour comes only from crimson, ochre and moss, each with a fixed meaning (act, mark/caution, reached). Add a new hue only with a new meaning.",
+        "section": "colors"
+      },
+      {
+        "name": "The Tabular Rule",
+        "body": "Every number is set with tabular figures (inputs, tables, figures, captions) so columns align across rows and reruns.",
+        "section": "typography"
+      },
+      {
+        "name": "The Two-Weight Rule",
+        "body": "800 for headings, figures, table headers, buttons and active tabs; 600 and below for the rest. No intermediate display weights.",
+        "section": "typography"
+      },
+      {
+        "name": "The Paper Stack Rule",
+        "body": "Raise an element by moving it up the ground stack (mount, sheet, label) and giving it a rule, never with a shadow.",
+        "section": "elevation"
+      },
+      {
+        "name": "The Chosen Line Rule",
+        "body": "2px ink is reserved for the answer: the specimen label and the winning comparison cell. Everything else takes 1px.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do keep every surface corner square (0) and every container flat, separated by 1px rules.",
+      "Do reserve crimson for the action and its outcome; mark everything else with ochre, moss or ink.",
+      "Do set every number in tabular figures.",
+      "Do show state as a drawn mark (a CSS circle, never a text glyph): filled for reached, hollow for missed, ochre strike-through for stale.",
+      "Do head each result section with a plate: 1.25rem/800 under a 1px ink rule.",
+      "Do report a measure against a target as a graduated ruler with quarter ticks and a target notch.",
+      "Do define every colour as a role token and give it a night value under both the media query and `[data-theme=\"dark\"]`.",
+      "Do use the 2px ochre outline for focus everywhere."
+    ],
+    "donts": [
+      "Don't add box-shadows or rounded corners to surfaces; depth is the paper stack, and the state mark is the only round form.",
+      "Don't ship a CJK webfont; Chinese text uses the system Traditional Chinese face.",
+      "Don't introduce a second typeface for display; Archivo at 800 is the display voice.",
+      "Don't reskin toward a dark gaming dashboard or a parchment-and-serif game look.",
+      "Don't use maple orange anywhere but the product name."
+    ]
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "design-system-font",
+        "value": "consolas",
+        "createdAt": "2026-11-21T12:54:10.908Z",
+        "reason": "agent decision: fallback in the code element's monospace stack (ui-monospace, Consolas), not a display face"
+      }
+    ]
+  }
+}

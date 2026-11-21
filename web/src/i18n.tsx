@@ -113,6 +113,17 @@ const translations: Array<[string, string]> = [
   ["請檢查裝備名稱、INT 與裝備等級。", "Check equipment names, INT, and equip levels."], ["INT 達標等級", "Level INT goal reached"],
   ["請放寬目標 HP／MP，或調整洗回 INT 等級後再試一次。", "Loosen the HP / MP goal or change the INT reset level, then try again."],
   ["僅供參考，操作前請在遊戲中確認。", "Estimates only. Verify in game before acting."],
+  // Appearance switch, specimen label and key.
+  ["外觀", "Appearance"], ["淺色", "Light"], ["深色", "Dark"], ["自動", "Auto"],
+  ["設定已變更，這是舊的結果；請重新執行。", "Settings changed. This result is out of date; run it again."],
+  ["填好左邊的目標後按「執行最佳化」，結果會顯示在這裡。", "Fill in your goal on the left and press Run optimizer. The result appears here."],
+  ["填好左邊的設定後按「執行模擬」，結果會顯示在這裡。", "Fill in the settings on the left and press Run simulation. The result appears here."],
+  ["檢索表：這份計畫每一級怎麼點", "Key: what this plan does at each level"], ["代號", "Code"], ["動作", "Move"],
+  ["Extra MP 足夠 → Method 1 洗血", "Extra MP is enough → Method 1 HP wash"], ["Extra MP 不足 → 先 MP wash", "Extra MP runs short → MP wash first"],
+  ["逐 AP 嘗試洗血與洗 MP", "Try HP and MP washing on every AP"], ["Method 2 用 APR 換 HP", "Method 2: trade APR for HP"], ["把 INT 洗回 4", "Reset INT to 4"],
+  [" · MP wash 到 Lv ", " · MP wash to Lv "],
+  ["優勝", "Winner"], ["未設 MP 目標", "No MP goal"], ["Method 1 洗血 ×", "Method 1 HP wash ×"], ["配點", "Allocate AP"], ["逐 AP 洗", "Per-AP wash"],
+  ["洗回 INT", "Reset INT"], ["接續起點", "Resume point"], ["點 INT", "Add INT"], ["點 LUK", "Add LUK"], ["點 STR", "Add STR"], ["點 DEX", "Add DEX"],
 ];
 
 export function translateText(value: string, language: Language): string {

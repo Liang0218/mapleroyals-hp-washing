@@ -8,7 +8,7 @@ import { simulate } from "./core/simulator";
 import { downloadText, readJsonFile } from "./file/browser";
 import { planCsv } from "./file/plan-csv";
 import { describeUserError, type ErrorField } from "./user-errors";
-import { translateText, translateTree, type Language } from "./i18n";
+import { translateTree, type Language } from "./i18n";
 
 type Tab = "guide" | "job-reference" | "equipment" | "optimize" | "simulate" | "actions" | "disclaimer";
 type ResumeFields = { level: string; baseHp: string; baseMp: string; baseInt: string; baseLuk: string; baseDex: string; baseStr: string; freshAp: string; unwashedAp: string; intResetDone: boolean };
@@ -80,6 +80,11 @@ function readCache(): AppCache {
     };
   } catch { return fallback; }
 }
+type Theme = "system" | "light" | "dark";
+function readTheme(): Theme {
+  try { const value = localStorage.getItem("mapleroyals-hp-wash-theme"); return value === "light" || value === "dark" ? value : "system"; }
+  catch { return "system"; }
+}
 function readLanguage(): Language {
   try { return localStorage.getItem("mapleroyals-hp-wash-language") === "en" ? "en" : "zh"; }
   catch { return "zh"; }
@@ -101,6 +106,8 @@ function Field({ name, label, value, onChange, invalid, min, max, step, hint }: 
 export function App() {
   const [cache, setCache] = useState<AppCache>(readCache);
   const [language, setLanguage] = useState<Language>(readLanguage);
+  const [theme, setTheme] = useState<Theme>(readTheme);
+  const [ranWith, setRanWith] = useState<string>();
   const [result, setResult] = useState<SimulateResult>();
   const [optimized, setOptimized] = useState<OptimizeResult>();
   const [failure, setFailure] = useState<Failure>();
@@ -130,6 +137,17 @@ export function App() {
     catch { /* Browser storage may be unavailable. */ }
     document.documentElement.lang = language === "en" ? "en" : "zh-Hant";
   }, [language]);
+
+  useEffect(() => {
+    try { localStorage.setItem("mapleroyals-hp-wash-theme", theme); }
+    catch { /* Browser storage may be unavailable. */ }
+    if (theme === "system") delete document.documentElement.dataset.theme;
+    else document.documentElement.dataset.theme = theme;
+  }, [theme]);
+
+  // A result is stale once the inputs it was computed from change.
+  const inputSignature = JSON.stringify([tab, config, equipment]);
+  const stale = ranWith !== undefined && ranWith !== inputSignature;
 
   // Move focus to the field an error points at, opening its group first.
   useEffect(() => {
@@ -196,7 +214,8 @@ export function App() {
     if (busy) return;
     setBusy(true);
     const job = tab === "optimize" ? runOptimize : runSimulate;
-    window.setTimeout(() => { try { job(); } finally { setBusy(false); } }, 30);
+    const signature = inputSignature;
+    window.setTimeout(() => { try { job(); setRanWith(signature); } finally { setBusy(false); } }, 30);
   }
   async function importEquipment(file?: File) {
     if (!file) return;
@@ -257,6 +276,7 @@ export function App() {
     const isOptimize = tab === "optimize";
     return <form className="calculator-page" noValidate onSubmit={(event) => { event.preventDefault(); run(); }}>
       <div className="page-title"><div><h2>{isOptimize ? "最佳化計畫" : "單一計畫模擬"}</h2><p className="subheading">{isOptimize ? "搜尋最佳 base INT 與 MP wash 結束等級，並比較適用策略。" : "固定 base INT 與 MP wash 結束等級，模擬每一級的 AP／APR 行動。"}</p></div></div>
+      <div className="calc-layout"><div className="calc-form">
 
       <fieldset className="form-section"><legend>目標與職業</legend><div className="fields">
         <label>職業<select id={fieldId("job")} value={config.job} aria-invalid={invalid === "job" || undefined} onChange={(event) => updateConfig({ job: event.target.value })}>{jobs.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
@@ -298,42 +318,133 @@ export function App() {
         <button type="submit" className="run-button" disabled={busy} aria-busy={busy}>{busy ? "計算中…" : isOptimize ? "執行最佳化" : "執行模擬"}</button>
       </div>
       {errorBox}
-      <div aria-live="polite">{tab === "simulate" && result && !busy && <SimulationResult result={result} language={language} />}{isOptimize && optimized && !busy && <OptimizationResult result={optimized} language={language} />}</div>
+      </div>
+      <div className="calc-results" aria-live="polite">
+        {busy ? <p className="results-empty">{isOptimize ? "正在搜尋 base INT 與 MP wash 組合，請稍候。" : "正在逐級模擬，請稍候。"}</p>
+          : tab === "simulate" && result ? <SimulationResult result={result} language={language} stale={stale} />
+          : isOptimize && optimized ? <OptimizationResult result={optimized} language={language} stale={stale} />
+          : <p className="results-empty">{isOptimize ? "填好左邊的目標後按「執行最佳化」，結果會顯示在這裡。" : "填好左邊的設定後按「執行模擬」，結果會顯示在這裡。"}</p>}
+      </div></div>
     </form>;
   }
 
-  return <main className="app-shell">
-    <header className="app-header"><h1><span className="brand">MapleRoyals</span> HP Washing APR Optimizer</h1><div className="language-switch" role="group" aria-label="Language"><button type="button" aria-pressed={language === "zh"} className={language === "zh" ? "language-active" : ""} onClick={() => setLanguage("zh")}>中文</button><button type="button" aria-pressed={language === "en"} className={language === "en" ? "language-active" : ""} onClick={() => setLanguage("en")}>EN</button></div></header>
-    {translateTree(<>
-    <div className="tabbar" role="tablist" aria-label="Calculator sections" onKeyDown={onTabKey}>{tabs.map((item) => <button key={item.id} id={`tab-${item.id}`} type="button" role="tab" aria-selected={tab === item.id} aria-controls="tab-panel" tabIndex={tab === item.id ? 0 : -1} className={tab === item.id ? "tab active" : "tab"} onClick={() => changeTab(item.id)}>{item.label}</button>)}</div>
+  const themes: Array<[Theme, string]> = [["light", "淺色"], ["dark", "深色"], ["system", "自動"]];
+  return <>{translateTree(<>
+    <header className="app-bar"><div className="app-bar-inner">
+      <div className="app-bar-row"><h1><span className="brand">MapleRoyals</span> HP Washing APR Optimizer</h1>
+        <div className="switches"><div className="segmented" role="group" aria-label="Language"><button type="button" aria-pressed={language === "zh"} onClick={() => setLanguage("zh")}>中文</button><button type="button" aria-pressed={language === "en"} onClick={() => setLanguage("en")}>EN</button></div>
+          <div className="segmented" role="group" aria-label="外觀">{themes.map(([value, label]) => <button key={value} type="button" aria-pressed={theme === value} onClick={() => setTheme(value)}>{label}</button>)}</div></div></div>
+      <div className="tabbar" role="tablist" aria-label="Calculator sections" onKeyDown={onTabKey}>{tabs.map((item) => <button key={item.id} id={`tab-${item.id}`} type="button" role="tab" aria-selected={tab === item.id} aria-controls="tab-panel" tabIndex={tab === item.id ? 0 : -1} className={tab === item.id ? "tab active" : "tab"} onClick={() => changeTab(item.id)}>{item.label}</button>)}</div>
+    </div></header>
+    <main className="app-shell">
     <div id="tab-panel" role="tabpanel" aria-labelledby={`tab-${tab}`}>
       {tab !== "optimize" && tab !== "simulate" && tab !== "equipment" && errorBox}
       {panels[tab]()}
     </div>
     <footer className="app-footer"><span>v{__APP_VERSION__}</span><span>僅供參考，操作前請在遊戲中確認。</span></footer>
-    </>, language)}
-  </main>;
+    </main>
+  </>, language)}</>;
 }
 
-function Outcome({ reached, hpReached, mpReached, targetHp, finalHp, targetMp, finalMp, apr }: { reached: boolean; hpReached: boolean; mpReached: boolean; targetHp: number; finalHp: number; targetMp?: number; finalMp: number; apr: number }) {
+type PlanRow = SimulateResult["plan"][number];
+type SpecimenProps = {
+  code: string; headline: string; reached: boolean; hpReached: boolean; mpReached: boolean; stale: boolean;
+  targetHp: number; finalHp: number; targetMp?: number; finalMp: number;
+  figures: Array<[string, string]>; extras: Array<[string, string]>;
+};
+
+/** Drawn state mark: filled = reached, hollow = not reached. */
+function Mark({ reached }: { reached: boolean }) { return <span className={`mark ${reached ? "mark-filled" : "mark-hollow"}`} aria-hidden="true" />; }
+
+/** The result as a specimen label: the answer first, its proof underneath. */
+function Specimen({ code, headline, reached, hpReached, mpReached, stale, targetHp, finalHp, targetMp, finalMp, figures, extras }: SpecimenProps) {
   const outcome = reached ? "已達成目標" : hpReached && !mpReached ? "無法同時達標 — HP 已達標，MP 未達標" : "無法達成 — 最接近結果";
-  const mpDetail = targetMp === undefined ? "未設定 MP 目標" : `MP 目標 ${targetMp}，實際 ${finalMp}${mpReached ? "（達標）" : "（未達標）"}`;
-  return <div className={`goal-outcome ${reached ? "success" : "failure"}`} role="status"><strong>{outcome}</strong><span>HP 目標 {targetHp}，實際 {finalHp}（{hpReached ? "達標" : "未達標"}）；{mpDetail}；APR {apr}。</span></div>;
+  const mpDetail = targetMp === undefined ? "未設定 MP 目標" : `MP 目標 ${targetMp.toLocaleString()}，實際 ${finalMp.toLocaleString()}${mpReached ? "（達標）" : "（未達標）"}`;
+  // Scale the ruler to whichever is larger so both overshoot and shortfall stay visible.
+  const scale = Math.max(targetHp, finalHp, 1) * 1.08;
+  const ticks = [0.25, 0.5, 0.75];
+  return <div className={`specimen ${stale ? "is-stale" : ""}`}>
+    <span className="specimen-tag">No. {code}</span>
+    <div className="specimen-head">
+      <h3>{headline}</h3>
+      <span className={`stamp ${reached ? "stamp-reached" : "stamp-missed"}`} role="status"><Mark reached={reached} /> {outcome}</span>
+    </div>
+    {stale && <p className="stale-note">設定已變更，這是舊的結果；請重新執行。</p>}
+    <div className="ruler" role="img" aria-label={`HP ${finalHp.toLocaleString()} / ${targetHp.toLocaleString()}`}>
+      <div className="ruler-fill" style={{ width: `${(finalHp / scale) * 100}%` }} />
+      {ticks.map((tick) => <span key={tick} className="ruler-tick" style={{ left: `${tick * 100}%` }} />)}
+      <span className="ruler-target" style={{ left: `${(targetHp / scale) * 100}%` }} />
+    </div>
+    <p className="capacity-caption">HP 目標 {targetHp.toLocaleString()}（{hpReached ? "達標" : "未達標"}）；{mpDetail}</p>
+    <dl className="figures">{figures.map(([value, label]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>
+    {extras.length > 0 && <dl className="extras">{extras.map(([value, label]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>}
+  </div>;
 }
 
-function SimulationResult({ result, language }: { result: SimulateResult; language: Language }) {
+const keySteps: Array<[(row: PlanRow) => boolean, string]> = [
+  [(row) => /^HP[1-5]$/.test(row.action), "Extra MP 足夠 → Method 1 洗血"],
+  [(row) => /^MP[1-5]$/.test(row.action), "Extra MP 不足 → 先 MP wash"],
+  [(row) => row.action === "HARDCORE_GREEDY", "逐 AP 嘗試洗血與洗 MP"],
+  [(row) => row.action === "M2", "Method 2 用 APR 換 HP"],
+  [(row) => row.action === "RESET_INT", "把 INT 洗回 4"],
+];
+
+/** Field-guide key in level order: steps get numbers; overlapping either/or moves share a number as a/b. */
+function PlanKey({ rows }: { rows: PlanRow[] }) {
+  const found = keySteps.map(([match, text]) => {
+    const hits = rows.filter(match);
+    if (!hits.length) return undefined;
+    const levels = hits.map((row) => row.level);
+    return { text, from: Math.min(...levels), to: Math.max(...levels), apr: hits.reduce((sum, row) => sum + row.apr_spent, 0) };
+  }).filter((step) => step !== undefined).sort((a, b) => a.from - b.from || a.to - b.to);
+  if (!found.length) return null;
+  const groups: Array<typeof found> = [];
+  for (const step of found) {
+    const last = groups.at(-1);
+    if (last && step.from <= Math.max(...last.map((item) => item.to)) && step.to > step.from) last.push(step);
+    else groups.push([step]);
+  }
+  const steps = groups.flatMap((group, index) => group.map((step, sub) => ({ ...step, code: group.length > 1 ? `${index + 1}${"abcdef"[sub]}` : String(index + 1) })));
+  return <section className="plan-key"><h4 className="section-plate">檢索表：這份計畫每一級怎麼點</h4><table><thead><tr><th scope="col"><span className="visually-hidden">代號</span></th><th scope="col">動作</th><th scope="col">等級</th><th scope="col">APR</th></tr></thead><tbody>{steps.map((step) => <tr key={step.code}><td className="key-code">{step.code}</td><td>{step.text}</td><td>Lv {step.from === step.to ? step.from : `${step.from}–${step.to}`}</td><td>{step.apr.toLocaleString()}</td></tr>)}</tbody></table></section>;
+}
+
+const policyLetter = (policy: PolicyName) => policyLabels[policy].split(" ")[0];
+
+function SimulationResult({ result, language, stale }: { result: SimulateResult; language: Language; stale: boolean }) {
   const hpReached = result.final_display_hp >= result.target_hp;
   const mpReached = result.target_mp === undefined || result.final_base_mp >= result.target_mp;
-  return translateTree(<section className="result-panel"><div className="result-heading"><h3>模擬結果</h3></div><Outcome reached={result.reached_target} hpReached={hpReached} mpReached={mpReached} targetHp={result.target_hp} finalHp={result.final_display_hp} targetMp={result.target_mp} finalMp={result.final_base_mp} apr={totalApr(result.apr)} /><Metrics language={language} items={[[result.final_display_hp.toLocaleString(), "最終 HP"], [result.final_base_mp.toLocaleString(), "最終 base MP"], [totalApr(result.apr).toLocaleString(), "總 APR"], [String(result.int_reached_level || "—"), "INT 達標等級"]]} /><div className="result-heading"><h4>逐級計畫（{result.plan.length} 列）</h4><button type="button" className="quiet" onClick={() => downloadText("plan.csv", planCsv(result.plan), "text/csv;charset=utf-8")}>下載 CSV</button></div><PlanTable language={language} rows={result.plan} /></section>, language);
+  return translateTree(<section className="result-panel"><h3 className="visually-hidden">模擬結果</h3>
+    <div className="result-lead"><Specimen code={`${policyLetter(result.policy)}·${result.target_base_int}·${result.mp_wash_end}`} headline={`Policy ${policyLetter(result.policy)} · base INT ${result.target_base_int} · MP wash 到 Lv ${result.mp_wash_end}`} reached={result.reached_target} hpReached={hpReached} mpReached={mpReached} stale={stale} targetHp={result.target_hp} finalHp={result.final_display_hp} targetMp={result.target_mp} finalMp={result.final_base_mp}
+      figures={[[totalApr(result.apr).toLocaleString(), "總 APR"], [result.final_display_hp.toLocaleString(), "最終 HP"], [result.final_base_mp.toLocaleString(), "最終 base MP"], [String(result.int_reached_level || "—"), "INT 達標等級"]]} extras={[]} />
+    <PlanKey rows={result.plan} /></div>
+    <div className="result-heading"><h4 className="section-plate">逐級計畫（{result.plan.length} 列）</h4><button type="button" className="quiet" onClick={() => downloadText("plan.csv", planCsv(result.plan), "text/csv;charset=utf-8")}>下載 CSV</button></div><PlanTable language={language} rows={result.plan} /></section>, language);
 }
-function OptimizationResult({ result, language }: { result: OptimizeResult; language: Language }) {
+function OptimizationResult({ result, language, stale }: { result: OptimizeResult; language: Language; stale: boolean }) {
   const winner = result.winner;
   if (!winner) return translateTree(<section className="result-panel"><h3>沒有可用候選計畫</h3><p className="subheading">請放寬目標 HP／MP，或調整洗回 INT 等級後再試一次。</p></section>, language);
   const policies: Array<[string, OptimizeResult["comparison"]["policy_a"]]> = [["A", result.comparison.policy_a], ["B", result.comparison.policy_b], ["C", result.comparison.policy_c], ["D", result.comparison.policy_d]];
   const hpReached = winner.final_display_hp >= winner.target_hp;
   const mpReached = winner.target_mp === undefined || winner.final_base_mp >= winner.target_mp;
   const fullPlan = result.continued_to_200_plan ? [...winner.plan, ...result.continued_to_200_plan] : winner.plan;
-  return translateTree(<section className="result-panel"><div className="result-heading"><h3>最佳化結果</h3></div><Outcome reached={winner.reached_target} hpReached={hpReached} mpReached={mpReached} targetHp={winner.target_hp} finalHp={winner.final_display_hp} targetMp={winner.target_mp} finalMp={winner.final_base_mp} apr={totalApr(winner.apr)} /><Metrics language={language} items={[[policyLabels[winner.policy], "優勝策略"], [totalApr(winner.apr).toLocaleString(), "總 APR"], [String(winner.target_base_int), "最佳 base INT"], [String(winner.mp_wash_end), "MP wash 結束等級"], [winner.final_display_hp.toLocaleString(), "最終 HP"], [winner.final_base_mp.toLocaleString(), "最終 base MP"], [String(winner.plan.at(-1)?.level ?? ""), "目標等級"], [(result.continued_to_200_hp ?? winner.final_display_hp).toLocaleString(), "繼續到 200 等最高 HP"]]} /><h4>策略比較</h4><div className="comparison-grid">{policies.filter((item): item is [string, NonNullable<typeof item[1]>] => item[1] !== undefined).map(([letter, candidate]) => <article className={candidate.reached_target ? "reachable" : "unreachable"} key={letter}><span>Policy {letter}{" · "}<b className={candidate.reached_target ? "status-success" : "status-failure"}>{candidate.reached_target ? "已達標" : "未達標"}</b></span><b>{totalApr(candidate.apr).toLocaleString()} APR</b><small>INT {candidate.target_base_int}{" · MP "}結束 {candidate.mp_wash_end}{" · HP "}{candidate.final_display_hp.toLocaleString()} / {candidate.target_hp?.toLocaleString() ?? "?"}{" · MP "}{candidate.final_base_mp.toLocaleString()} / {candidate.target_mp?.toLocaleString() ?? "?"}</small></article>)}</div><div className="result-heading"><h4>優勝計畫（{fullPlan.length} 列）</h4><button type="button" className="quiet" onClick={() => downloadText("optimized-plan.csv", planCsv(fullPlan), "text/csv;charset=utf-8")}>下載 CSV</button></div><PlanTable language={language} rows={fullPlan} /></section>, language);
+  const letter = policyLetter(winner.policy);
+  const extras: Array<[string, string]> = [[policyLabels[winner.policy], "優勝策略"]];
+  if (result.continued_to_200_hp !== undefined && result.continued_to_200_hp !== winner.final_display_hp) extras.push([result.continued_to_200_hp.toLocaleString(), "繼續到 200 等最高 HP"]);
+  return translateTree(<section className="result-panel"><h3 className="visually-hidden">最佳化結果</h3>
+    <div className="result-lead"><Specimen code={`${letter}·${winner.target_base_int}·${winner.mp_wash_end}`} headline={`Policy ${letter} · base INT ${winner.target_base_int} · MP wash 到 Lv ${winner.mp_wash_end}`} reached={winner.reached_target} hpReached={hpReached} mpReached={mpReached} stale={stale} targetHp={winner.target_hp} finalHp={winner.final_display_hp} targetMp={winner.target_mp} finalMp={winner.final_base_mp}
+      figures={[[totalApr(winner.apr).toLocaleString(), "總 APR"], [winner.final_display_hp.toLocaleString(), "最終 HP"], [winner.final_base_mp.toLocaleString(), "最終 base MP"], [String(winner.plan.at(-1)?.level ?? ""), "目標等級"]]}
+      extras={extras} />
+    <PlanKey rows={winner.plan} /></div>
+    <h4 className="section-plate">策略比較</h4><div className="comparison-grid">{policies.filter((item): item is [string, NonNullable<typeof item[1]>] => item[1] !== undefined).map(([itemLetter, candidate]) => <article className={`${candidate.reached_target ? "reachable" : "unreachable"}${itemLetter === letter ? " is-winner" : ""}`} key={itemLetter}>{itemLetter === letter && <span className="winner-tag">優勝</span>}<span>Policy {itemLetter}{" · "}<b className={candidate.reached_target ? "status-success" : "status-failure"}><Mark reached={candidate.reached_target} /> {candidate.reached_target ? "已達標" : "未達標"}</b></span><b>{totalApr(candidate.apr).toLocaleString()} APR</b><small>INT {candidate.target_base_int}{" · MP wash 到 Lv "}{candidate.mp_wash_end}{" · HP "}{candidate.final_display_hp.toLocaleString()} / {candidate.target_hp?.toLocaleString() ?? "—"}{" · "}{candidate.target_mp === undefined ? "未設 MP 目標" : `MP ${candidate.final_base_mp.toLocaleString()} / ${candidate.target_mp.toLocaleString()}`}</small></article>)}</div>
+    <div className="result-heading"><h4 className="section-plate">優勝計畫（{fullPlan.length} 列）</h4><button type="button" className="quiet" onClick={() => downloadText("optimized-plan.csv", planCsv(fullPlan), "text/csv;charset=utf-8")}>下載 CSV</button></div><PlanTable language={language} rows={fullPlan} /></section>, language);
 }
-function Metrics({ items, language = "zh" }: { items: Array<[string, string]>; language?: Language }) { return <div className="metrics">{items.map(([value, label]) => <span key={label}><b>{value}</b>{translateText(label, language)}</span>)}</div>; }
-function PlanTable({ rows, language = "zh" }: { rows: SimulateResult["plan"]; language?: Language }) { return translateTree(<div className="plan"><table><thead><tr><th scope="col">Lv</th><th scope="col">Action</th><th scope="col">base INT</th><th scope="col">base HP</th><th scope="col">base MP</th><th scope="col">Extra MP</th><th scope="col">AP</th><th scope="col">APR</th><th scope="col">備註</th></tr></thead><tbody>{rows.map((row, index) => <tr key={`${row.level}-${row.action}-${index}`}><td>{row.level}</td><td>{row.action}</td><td>{row.base_int}</td><td>{row.base_hp}</td><td>{row.base_mp}{row.base_mp > 30000 && <span className="mp-warning" title="超過 30,000；建議提早做 Method 2" aria-label="超過 30,000；建議提早做 Method 2">{" ⚠"}</span>}</td><td>{row.extra_mp}</td><td>INT {row.fresh_ap_int} · HP {row.fresh_ap_hp} · MP {row.fresh_ap_mp}</td><td>{row.apr_spent}</td><td>{row.notes}</td></tr>)}</tbody></table></div>, language); }
+
+/** Plan action codes in the player's words; the code itself stays in the tooltip. */
+function actionName(action: PlanRow["action"]): string {
+  const wash = /^(HP|MP)([1-5])$/.exec(action);
+  if (wash) return `${wash[1] === "HP" ? "Method 1 洗血" : "MP wash"} ×${wash[2]}`;
+  const stat = /^(INT|LUK|STR|DEX)5$/.exec(action);
+  if (stat) return `點 ${stat[1]}`;
+  const names: Record<string, string> = { NONE: "—", BUILD: "配點", HARDCORE_GREEDY: "逐 AP 洗", M2: "Method 2", RESET_INT: "洗回 INT", RESUME: "接續起點" };
+  return names[action] ?? action;
+}
+function PlanTable({ rows, language = "zh" }: { rows: SimulateResult["plan"]; language?: Language }) { return translateTree(<div className="plan"><table><thead><tr><th scope="col">Lv</th><th scope="col">動作</th><th scope="col">base INT</th><th scope="col">base HP</th><th scope="col">base MP</th><th scope="col">Extra MP</th><th scope="col">AP</th><th scope="col">APR</th><th scope="col">備註</th></tr></thead><tbody>{rows.map((row, index) => <tr key={`${row.level}-${row.action}-${index}`}><td>{row.level}</td><td title={row.action}>{actionName(row.action)}</td><td>{row.base_int}</td><td>{row.base_hp}</td><td>{row.base_mp}{row.base_mp > 30000 && <span className="mp-warning" title="超過 30,000；建議提早做 Method 2"><span aria-hidden="true">{" ⚠"}</span><span className="visually-hidden">超過 30,000；建議提早做 Method 2</span></span>}</td><td>{row.extra_mp}</td><td>INT {row.fresh_ap_int} · HP {row.fresh_ap_hp} · MP {row.fresh_ap_mp}</td><td>{row.apr_spent}</td><td>{/[：:]\s*$/.test(row.notes) ? `${row.notes}—` : row.notes}</td></tr>)}</tbody></table></div>, language); }
