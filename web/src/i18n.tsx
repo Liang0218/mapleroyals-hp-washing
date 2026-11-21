@@ -123,7 +123,9 @@ const translations: Array<[string, string]> = [
   ["逐 AP 嘗試洗血與洗 MP", "Try HP and MP washing on every AP"], ["Method 2 用 APR 換 HP", "Method 2: trade APR for HP"], ["把 INT 洗回 4", "Reset INT to 4"],
   [" · MP wash 到 Lv ", " · MP wash to Lv "],
   ["優勝", "Winner"], ["未設 MP 目標", "No MP goal"], ["Method 1 洗血 ×", "Method 1 HP wash ×"], ["配點", "Allocate AP"], ["逐 AP 洗", "Per-AP wash"],
-  ["洗回 INT", "Reset INT"], ["接續起點", "Resume point"], ["點 INT", "Add INT"], ["點 LUK", "Add LUK"], ["點 STR", "Add STR"], ["點 DEX", "Add DEX"],
+  ["洗回 INT", "Reset INT"], ["接續起點", "Resume point"],
+  ["最佳化", "Optimize"], ["模擬", "Simulate"], ["裝備", "Equipment"], ["職業數值", "Job reference"], ["策略說明", "Strategy guide"], ["聯絡作者", "Contact"],
+  ["配點與其他動作", "AP allocation and other moves"], [" 列", " rows"], ["取消", "Cancel"], ["計算中… ", "Calculating… "], [" 秒", " s"], ["已經過 ", "Elapsed "], ["點 INT", "Add INT"], ["點 LUK", "Add LUK"], ["點 STR", "Add STR"], ["點 DEX", "Add DEX"],
 ];
 
 export function translateText(value: string, language: Language): string {

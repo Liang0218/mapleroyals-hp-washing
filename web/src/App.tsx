@@ -3,8 +3,7 @@ import { computeIntGearSegments, parseEquipment } from "./core/equipment";
 import { EQUIPMENT_TYPES, totalApr, type EquipmentItem, type HpMode, type OptimizeResult, type PolicyName, type ResumeFrom, type SimulateResult } from "./core/models";
 import { getJobProfile } from "./core/jobs";
 import { JobReference } from "./JobReference";
-import { optimize } from "./core/optimizer";
-import { simulate } from "./core/simulator";
+import type { CalcRequest, CalcResponse } from "./calc.worker";
 import { downloadText, readJsonFile } from "./file/browser";
 import { planCsv } from "./file/plan-csv";
 import { describeUserError, type ErrorField } from "./user-errors";
@@ -26,9 +25,9 @@ type Undo = { message: string; equipment: EquipmentItem[] };
 const CACHE_KEY = "mapleroyals-hp-wash-web-cache-v1";
 // Ordered by task: the two calculators come straight after the guide.
 const tabs: Array<{ id: Tab; label: string }> = [
-  { id: "guide", label: "使用指南 Guide" }, { id: "optimize", label: "最佳化 Optimize" }, { id: "simulate", label: "模擬 Simulate" },
-  { id: "equipment", label: "裝備 Equipment" }, { id: "job-reference", label: "職業數值 Job reference" },
-  { id: "actions", label: "策略說明 Actions" }, { id: "disclaimer", label: "聯絡作者 Contact Author" },
+  { id: "guide", label: "使用指南" }, { id: "optimize", label: "最佳化" }, { id: "simulate", label: "模擬" },
+  { id: "equipment", label: "裝備" }, { id: "job-reference", label: "職業數值" },
+  { id: "actions", label: "策略說明" }, { id: "disclaimer", label: "聯絡作者" },
 ];
 const jobs = [
   ["fighter", "英雄 Hero"], ["page", "聖騎士 Paladin"], ["spearman", "黑騎士 Dark Knight"],
@@ -112,6 +111,9 @@ export function App() {
   const [optimized, setOptimized] = useState<OptimizeResult>();
   const [failure, setFailure] = useState<Failure>();
   const [busy, setBusy] = useState(false);
+  const [elapsed, setElapsed] = useState(0);
+  const cancelRun = useRef<(() => void) | undefined>(undefined);
+  useEffect(() => () => cancelRun.current?.(), []);
   const [undo, setUndo] = useState<Undo>();
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [resumeOpen, setResumeOpen] = useState(false);
@@ -190,32 +192,44 @@ export function App() {
     const intGear = computeIntGearSegments(equipment, Math.max(1, current.resetLevel - 1));
     return { target_hp: current.targetHp, target_mp: optionalNumber(current.targetMp), max_level: targetLevel, int_reset_level: current.resetLevel, int_gear: intGear, job: current.job, int_gear_after_reset: current.gearAfterReset, quest_equip_hp: current.questHp, hp_mode: current.hpMode, mw_percent: current.mwPercent, mw_from_level: current.mwFromLevel, resume_from: buildResume(current) };
   }
-  function runSimulate() {
-    try {
-      const activeProfile = getJobProfile(simulateConfig.job);
-      const policy = activeProfile.policies.includes(simulateConfig.policy) ? simulateConfig.policy : activeProfile.policies[0];
-      setFailure(undefined); setOptimized(undefined);
-      setResult(simulate({ ...sharedConfig(simulateConfig), policy, target_base_int: simulateConfig.targetInt, mp_wash_end: simulateConfig.mpWashEnd, auto_method2: simulateConfig.autoMethod2 }));
-    } catch (caught) { setResult(undefined); setFailure({ error: caught, tab: "simulate" }); }
+  function simulateParams() {
+    const activeProfile = getJobProfile(simulateConfig.job);
+    const policy = activeProfile.policies.includes(simulateConfig.policy) ? simulateConfig.policy : activeProfile.policies[0];
+    return { ...sharedConfig(simulateConfig), policy, target_base_int: simulateConfig.targetInt, mp_wash_end: simulateConfig.mpWashEnd, auto_method2: simulateConfig.autoMethod2 };
   }
-  function runOptimize() {
-    try {
-      const activeProfile = getJobProfile(optimizeConfig.job);
-      setFailure(undefined); setResult(undefined);
-      setOptimized(optimize({
-        ...sharedConfig(optimizeConfig), policies: activeProfile.policies.filter((policy) => optimizeConfig.job !== "thief" || optimizeConfig.compareThiefPolicyC || policy !== "mp_wash_hardcore"),
-        target_base_int_min: 4, target_base_int_max: 999, target_base_int_step: 10,
-        mp_wash_end_min: 31, top_n: 5,
-      }));
-    } catch (caught) { setOptimized(undefined); setFailure({ error: caught, tab: "optimize" }); }
+  function optimizeParams() {
+    const activeProfile = getJobProfile(optimizeConfig.job);
+    return {
+      ...sharedConfig(optimizeConfig), policies: activeProfile.policies.filter((policy) => optimizeConfig.job !== "thief" || optimizeConfig.compareThiefPolicyC || policy !== "mp_wash_hardcore"),
+      target_base_int_min: 4, target_base_int_max: 999, target_base_int_step: 10,
+      mp_wash_end_min: 31, top_n: 5,
+    };
   }
-  // The search is synchronous; yield one frame so the busy state paints first.
+  // Validate on the main thread, then search in a worker so the page stays responsive and cancellable.
   function run() {
     if (busy) return;
-    setBusy(true);
-    const job = tab === "optimize" ? runOptimize : runSimulate;
+    const kind = tab === "optimize" ? "optimize" : "simulate";
+    let request: CalcRequest;
+    try { request = kind === "optimize" ? { kind, params: optimizeParams() } : { kind, params: simulateParams() }; }
+    catch (caught) { if (kind === "optimize") setOptimized(undefined); else setResult(undefined); setFailure({ error: caught, tab: kind }); return; }
+    setFailure(undefined);
     const signature = inputSignature;
-    window.setTimeout(() => { try { job(); setRanWith(signature); } finally { setBusy(false); } }, 30);
+    const started = performance.now();
+    setElapsed(0); setBusy(true);
+    const timer = window.setInterval(() => setElapsed(Math.floor((performance.now() - started) / 1000)), 250);
+    const worker = new Worker(new URL("./calc.worker.ts", import.meta.url), { type: "module" });
+    const finish = () => { window.clearInterval(timer); worker.terminate(); cancelRun.current = undefined; setBusy(false); };
+    cancelRun.current = finish;
+    worker.onmessage = (event: MessageEvent<CalcResponse>) => {
+      finish();
+      const data = event.data;
+      if (!data.ok) { if (kind === "optimize") setOptimized(undefined); else setResult(undefined); setFailure({ error: new Error(data.message), tab: kind }); return; }
+      if (kind === "optimize") { setResult(undefined); setOptimized(data.result as OptimizeResult); }
+      else { setOptimized(undefined); setResult(data.result as SimulateResult); }
+      setRanWith(signature);
+    };
+    worker.onerror = (event) => { event.preventDefault(); finish(); setFailure({ error: new Error(event.message), tab: kind }); };
+    worker.postMessage(request);
   }
   async function importEquipment(file?: File) {
     if (!file) return;
@@ -315,12 +329,15 @@ export function App() {
 
       <div className="runbar">
         <p className="runbar-note">{busy ? (isOptimize ? "正在搜尋 base INT 與 MP wash 組合，請稍候。" : "正在逐級模擬，請稍候。") : "完成後可在結果區下載逐級計畫 CSV。"}</p>
-        <button type="submit" className="run-button" disabled={busy} aria-busy={busy}>{busy ? "計算中…" : isOptimize ? "執行最佳化" : "執行模擬"}</button>
+        <div className="run-actions">
+          <button type="submit" className="run-button" disabled={busy} aria-busy={busy}>{busy ? `計算中… ${elapsed} 秒` : isOptimize ? "執行最佳化" : "執行模擬"}</button>
+          {busy && <button type="button" className="quiet" onClick={() => cancelRun.current?.()}>取消</button>}
+        </div>
       </div>
       {errorBox}
       </div>
       <div className="calc-results" aria-live="polite">
-        {busy ? <p className="results-empty">{isOptimize ? "正在搜尋 base INT 與 MP wash 組合，請稍候。" : "正在逐級模擬，請稍候。"}</p>
+        {busy ? <p className="results-empty">{isOptimize ? "正在搜尋 base INT 與 MP wash 組合，請稍候。" : "正在逐級模擬，請稍候。"}<br /><span className="elapsed" aria-live="off">已經過 {elapsed} 秒</span></p>
           : tab === "simulate" && result ? <SimulationResult result={result} language={language} stale={stale} />
           : isOptimize && optimized ? <OptimizationResult result={optimized} language={language} stale={stale} />
           : <p className="results-empty">{isOptimize ? "填好左邊的目標後按「執行最佳化」，結果會顯示在這裡。" : "填好左邊的設定後按「執行模擬」，結果會顯示在這裡。"}</p>}
@@ -388,16 +405,18 @@ const keySteps: Array<[(row: PlanRow) => boolean, string]> = [
   [(row) => row.action === "M2", "Method 2 用 APR 換 HP"],
   [(row) => row.action === "RESET_INT", "把 INT 洗回 4"],
 ];
+type PlanStep = { code: string; text: string; from: number; to: number; apr: number; rows: PlanRow[] };
 
-/** Field-guide key in level order: steps get numbers; overlapping either/or moves share a number as a/b. */
-function PlanKey({ rows }: { rows: PlanRow[] }) {
+/** Splits a plan into the key's steps, in level order; overlapping either/or moves share a number as a/b. */
+function planSteps(rows: PlanRow[]): { steps: PlanStep[]; other: PlanRow[] } {
+  const matched = new Set<PlanRow>();
   const found = keySteps.map(([match, text]) => {
     const hits = rows.filter(match);
+    hits.forEach((row) => matched.add(row));
     if (!hits.length) return undefined;
     const levels = hits.map((row) => row.level);
-    return { text, from: Math.min(...levels), to: Math.max(...levels), apr: hits.reduce((sum, row) => sum + row.apr_spent, 0) };
+    return { text, from: Math.min(...levels), to: Math.max(...levels), apr: hits.reduce((sum, row) => sum + row.apr_spent, 0), rows: hits };
   }).filter((step) => step !== undefined).sort((a, b) => a.from - b.from || a.to - b.to);
-  if (!found.length) return null;
   const groups: Array<typeof found> = [];
   for (const step of found) {
     const last = groups.at(-1);
@@ -405,7 +424,26 @@ function PlanKey({ rows }: { rows: PlanRow[] }) {
     else groups.push([step]);
   }
   const steps = groups.flatMap((group, index) => group.map((step, sub) => ({ ...step, code: group.length > 1 ? `${index + 1}${"abcdef"[sub]}` : String(index + 1) })));
-  return <section className="plan-key"><h4 className="section-plate">檢索表：這份計畫每一級怎麼點</h4><table><thead><tr><th scope="col"><span className="visually-hidden">代號</span></th><th scope="col">動作</th><th scope="col">等級</th><th scope="col">APR</th></tr></thead><tbody>{steps.map((step) => <tr key={step.code}><td className="key-code">{step.code}</td><td>{step.text}</td><td>Lv {step.from === step.to ? step.from : `${step.from}–${step.to}`}</td><td>{step.apr.toLocaleString()}</td></tr>)}</tbody></table></section>;
+  return { steps, other: rows.filter((row) => !matched.has(row)) };
+}
+const levelRange = (from: number, to: number) => `Lv ${from === to ? from : `${from}–${to}`}`;
+
+/** Field-guide key: which move the plan makes, over which levels, at what APR cost. */
+function PlanKey({ steps }: { steps: PlanStep[] }) {
+  if (!steps.length) return null;
+  return <section className="plan-key"><h4 className="section-plate">檢索表：這份計畫每一級怎麼點</h4><table><thead><tr><th scope="col"><span className="visually-hidden">代號</span></th><th scope="col">動作</th><th scope="col">等級</th><th scope="col">APR</th></tr></thead><tbody>{steps.map((step) => <tr key={step.code}><td className="key-code"><a href={`#step-${step.code}`}>{step.code}</a></td><td>{step.text}</td><td>{levelRange(step.from, step.to)}</td><td>{step.apr.toLocaleString()}</td></tr>)}</tbody></table></section>;
+}
+
+/** The level-by-level plan, filed under the key's steps; each step opens on demand. */
+function PlanSections({ title, rows, file, language }: { title: string; rows: PlanRow[]; file: string; language: Language }) {
+  const { steps, other } = planSteps(rows);
+  return <>
+    <div className="result-heading"><h4 className="section-plate">{title}（{rows.length} 列）</h4><button type="button" className="quiet" onClick={() => downloadText(file, planCsv(rows), "text/csv;charset=utf-8")}>下載 CSV</button></div>
+    <div className="plan-sections">
+      {other.length > 0 && <details className="plan-step"><summary><span className="key-code">—</span><span className="plan-step-text">配點與其他動作</span><span className="plan-step-range">{other.length} 列</span><span className="plan-step-apr">{other.reduce((sum, row) => sum + row.apr_spent, 0).toLocaleString()} APR</span></summary><PlanTable language={language} rows={other} /></details>}
+      {steps.map((step) => <details className="plan-step" id={`step-${step.code}`} key={step.code}><summary><span className="key-code">{step.code}</span><span className="plan-step-text">{step.text}</span><span className="plan-step-range">{levelRange(step.from, step.to)} · {step.rows.length} 列</span><span className="plan-step-apr">{step.apr.toLocaleString()} APR</span></summary><PlanTable language={language} rows={step.rows} /></details>)}
+    </div>
+  </>;
 }
 
 const policyLetter = (policy: PolicyName) => policyLabels[policy].split(" ")[0];
@@ -416,26 +454,40 @@ function SimulationResult({ result, language, stale }: { result: SimulateResult;
   return translateTree(<section className="result-panel"><h3 className="visually-hidden">模擬結果</h3>
     <div className="result-lead"><Specimen code={`${policyLetter(result.policy)}·${result.target_base_int}·${result.mp_wash_end}`} headline={`Policy ${policyLetter(result.policy)} · base INT ${result.target_base_int} · MP wash 到 Lv ${result.mp_wash_end}`} reached={result.reached_target} hpReached={hpReached} mpReached={mpReached} stale={stale} targetHp={result.target_hp} finalHp={result.final_display_hp} targetMp={result.target_mp} finalMp={result.final_base_mp}
       figures={[[totalApr(result.apr).toLocaleString(), "總 APR"], [result.final_display_hp.toLocaleString(), "最終 HP"], [result.final_base_mp.toLocaleString(), "最終 base MP"], [String(result.int_reached_level || "—"), "INT 達標等級"]]} extras={[]} />
-    <PlanKey rows={result.plan} /></div>
-    <div className="result-heading"><h4 className="section-plate">逐級計畫（{result.plan.length} 列）</h4><button type="button" className="quiet" onClick={() => downloadText("plan.csv", planCsv(result.plan), "text/csv;charset=utf-8")}>下載 CSV</button></div><PlanTable language={language} rows={result.plan} /></section>, language);
+    <PlanKey steps={planSteps(result.plan).steps} /></div>
+    <PlanSections title="逐級計畫" rows={result.plan} file="plan.csv" language={language} /></section>, language);
 }
 function OptimizationResult({ result, language, stale }: { result: OptimizeResult; language: Language; stale: boolean }) {
   const winner = result.winner;
   if (!winner) return translateTree(<section className="result-panel"><h3>沒有可用候選計畫</h3><p className="subheading">請放寬目標 HP／MP，或調整洗回 INT 等級後再試一次。</p></section>, language);
-  const policies: Array<[string, OptimizeResult["comparison"]["policy_a"]]> = [["A", result.comparison.policy_a], ["B", result.comparison.policy_b], ["C", result.comparison.policy_c], ["D", result.comparison.policy_d]];
+  const policies = ([["A", result.comparison.policy_a], ["B", result.comparison.policy_b], ["C", result.comparison.policy_c], ["D", result.comparison.policy_d]] as Array<[string, OptimizeResult["comparison"]["policy_a"]]>)
+    .filter((item): item is [string, NonNullable<typeof item[1]>] => item[1] !== undefined);
   const hpReached = winner.final_display_hp >= winner.target_hp;
   const mpReached = winner.target_mp === undefined || winner.final_base_mp >= winner.target_mp;
   const fullPlan = result.continued_to_200_plan ? [...winner.plan, ...result.continued_to_200_plan] : winner.plan;
   const letter = policyLetter(winner.policy);
+  const winnerApr = totalApr(winner.apr);
   const extras: Array<[string, string]> = [[policyLabels[winner.policy], "優勝策略"]];
   if (result.continued_to_200_hp !== undefined && result.continued_to_200_hp !== winner.final_display_hp) extras.push([result.continued_to_200_hp.toLocaleString(), "繼續到 200 等最高 HP"]);
   return translateTree(<section className="result-panel"><h3 className="visually-hidden">最佳化結果</h3>
     <div className="result-lead"><Specimen code={`${letter}·${winner.target_base_int}·${winner.mp_wash_end}`} headline={`Policy ${letter} · base INT ${winner.target_base_int} · MP wash 到 Lv ${winner.mp_wash_end}`} reached={winner.reached_target} hpReached={hpReached} mpReached={mpReached} stale={stale} targetHp={winner.target_hp} finalHp={winner.final_display_hp} targetMp={winner.target_mp} finalMp={winner.final_base_mp}
-      figures={[[totalApr(winner.apr).toLocaleString(), "總 APR"], [winner.final_display_hp.toLocaleString(), "最終 HP"], [winner.final_base_mp.toLocaleString(), "最終 base MP"], [String(winner.plan.at(-1)?.level ?? ""), "目標等級"]]}
+      figures={[[winnerApr.toLocaleString(), "總 APR"], [winner.final_display_hp.toLocaleString(), "最終 HP"], [winner.final_base_mp.toLocaleString(), "最終 base MP"], [String(winner.plan.at(-1)?.level ?? ""), "目標等級"]]}
       extras={extras} />
-    <PlanKey rows={winner.plan} /></div>
-    <h4 className="section-plate">策略比較</h4><div className="comparison-grid">{policies.filter((item): item is [string, NonNullable<typeof item[1]>] => item[1] !== undefined).map(([itemLetter, candidate]) => <article className={`${candidate.reached_target ? "reachable" : "unreachable"}${itemLetter === letter ? " is-winner" : ""}`} key={itemLetter}>{itemLetter === letter && <span className="winner-tag">優勝</span>}<span>Policy {itemLetter}{" · "}<b className={candidate.reached_target ? "status-success" : "status-failure"}><Mark reached={candidate.reached_target} /> {candidate.reached_target ? "已達標" : "未達標"}</b></span><b>{totalApr(candidate.apr).toLocaleString()} APR</b><small>INT {candidate.target_base_int}{" · MP wash 到 Lv "}{candidate.mp_wash_end}{" · HP "}{candidate.final_display_hp.toLocaleString()} / {candidate.target_hp?.toLocaleString() ?? "—"}{" · "}{candidate.target_mp === undefined ? "未設 MP 目標" : `MP ${candidate.final_base_mp.toLocaleString()} / ${candidate.target_mp.toLocaleString()}`}</small></article>)}</div>
-    <div className="result-heading"><h4 className="section-plate">優勝計畫（{fullPlan.length} 列）</h4><button type="button" className="quiet" onClick={() => downloadText("optimized-plan.csv", planCsv(fullPlan), "text/csv;charset=utf-8")}>下載 CSV</button></div><PlanTable language={language} rows={fullPlan} /></section>, language);
+    <PlanKey steps={planSteps(winner.plan).steps} />
+    <section className="comparison"><div className="result-heading"><h4 className="section-plate">策略比較</h4>{winner.target_mp === undefined && <span className="plate-note">未設 MP 目標</span>}</div>
+    <div className="comparison-grid">{policies.map(([itemLetter, candidate]) => {
+      const apr = totalApr(candidate.apr);
+      const delta = apr - winnerApr;
+      const policyName = policyLabels[candidate.policy].split("— ")[1] ?? "";
+      return <article className={`${candidate.reached_target ? "reachable" : "unreachable"}${itemLetter === letter ? " is-winner" : ""}`} key={itemLetter}>
+        {itemLetter === letter && <span className="winner-tag">優勝</span>}
+        <span>Policy {itemLetter} <span className="policy-name">{policyName}</span></span>
+        <b>{apr.toLocaleString()} APR {itemLetter !== letter && <span className="apr-delta">{delta >= 0 ? `+${delta.toLocaleString()}` : delta.toLocaleString()}</span>}</b>
+        <span className={candidate.reached_target ? "status-success" : "status-failure"}><Mark reached={candidate.reached_target} /> {candidate.reached_target ? "已達標" : "未達標"}</span>
+        <small>INT {candidate.target_base_int}{" · MP wash 到 Lv "}{candidate.mp_wash_end}{" · HP "}{candidate.final_display_hp.toLocaleString()}{candidate.target_mp === undefined ? "" : ` · MP ${candidate.final_base_mp.toLocaleString()} / ${candidate.target_mp.toLocaleString()}`}</small>
+      </article>;
+    })}</div></section></div>
+    <PlanSections title="優勝計畫" rows={fullPlan} file="optimized-plan.csv" language={language} /></section>, language);
 }
 
 /** Plan action codes in the player's words; the code itself stays in the tooltip. */
@@ -447,4 +499,4 @@ function actionName(action: PlanRow["action"]): string {
   const names: Record<string, string> = { NONE: "—", BUILD: "配點", HARDCORE_GREEDY: "逐 AP 洗", M2: "Method 2", RESET_INT: "洗回 INT", RESUME: "接續起點" };
   return names[action] ?? action;
 }
-function PlanTable({ rows, language = "zh" }: { rows: SimulateResult["plan"]; language?: Language }) { return translateTree(<div className="plan"><table><thead><tr><th scope="col">Lv</th><th scope="col">動作</th><th scope="col">base INT</th><th scope="col">base HP</th><th scope="col">base MP</th><th scope="col">Extra MP</th><th scope="col">AP</th><th scope="col">APR</th><th scope="col">備註</th></tr></thead><tbody>{rows.map((row, index) => <tr key={`${row.level}-${row.action}-${index}`}><td>{row.level}</td><td title={row.action}>{actionName(row.action)}</td><td>{row.base_int}</td><td>{row.base_hp}</td><td>{row.base_mp}{row.base_mp > 30000 && <span className="mp-warning" title="超過 30,000；建議提早做 Method 2"><span aria-hidden="true">{" ⚠"}</span><span className="visually-hidden">超過 30,000；建議提早做 Method 2</span></span>}</td><td>{row.extra_mp}</td><td>INT {row.fresh_ap_int} · HP {row.fresh_ap_hp} · MP {row.fresh_ap_mp}</td><td>{row.apr_spent}</td><td>{/[：:]\s*$/.test(row.notes) ? `${row.notes}—` : row.notes}</td></tr>)}</tbody></table></div>, language); }
+function PlanTable({ rows, language = "zh" }: { rows: SimulateResult["plan"]; language?: Language }) { return translateTree(<div className="plan"><table><thead><tr><th scope="col">Lv</th><th scope="col">動作</th><th scope="col" className="col-detail">base INT</th><th scope="col" className="col-detail">base HP</th><th scope="col" className="col-detail">base MP</th><th scope="col" className="col-detail">Extra MP</th><th scope="col" className="col-detail">AP</th><th scope="col">APR</th><th scope="col">備註</th></tr></thead><tbody>{rows.map((row, index) => <tr key={`${row.level}-${row.action}-${index}`}><td>{row.level}</td><td title={row.action}>{actionName(row.action)}</td><td className="col-detail">{row.base_int}</td><td className="col-detail">{row.base_hp}</td><td className="col-detail">{row.base_mp}{row.base_mp > 30000 && <span className="mp-warning" title="超過 30,000；建議提早做 Method 2"><span aria-hidden="true">{" ⚠"}</span><span className="visually-hidden">超過 30,000；建議提早做 Method 2</span></span>}</td><td className="col-detail">{row.extra_mp}</td><td className="col-detail">INT {row.fresh_ap_int} · HP {row.fresh_ap_hp} · MP {row.fresh_ap_mp}</td><td>{row.apr_spent}</td><td>{/[：:]\s*$/.test(row.notes) ? `${row.notes}—` : row.notes}</td></tr>)}</tbody></table></div>, language); }
