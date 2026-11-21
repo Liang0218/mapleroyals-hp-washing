@@ -247,7 +247,8 @@ describe("Python calculation-core parity: simulator and optimizer", () => {
       mp_wash_end: 170, early_mp_wash_level: 55, early_mp_wash_points: 3,
     });
     expect(hybrid.plan.some((row) => row.level === 55 && row.fresh_ap_mp > 0 && row.fresh_ap_hp > 0)).toBe(true);
-  });
+    // This full optimizer search takes about 4s alone and can pass the default 5s limit when the whole suite runs.
+  }, 15_000);
 
   it("finds a feasible C greedy plan when protecting the 29000 MP target", () => {
     const result = optimize({

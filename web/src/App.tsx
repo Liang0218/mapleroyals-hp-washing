@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNod
 import { computeIntGearSegments, parseEquipment } from "./core/equipment";
 import { EQUIPMENT_TYPES, totalApr, type EquipmentItem, type HpMode, type OptimizeResult, type PolicyName, type ResumeFrom, type SimulateResult } from "./core/models";
 import { getJobProfile } from "./core/jobs";
+import { simulate } from "./core/simulator";
 import { JobReference } from "./JobReference";
 import type { CalcRequest, CalcResponse } from "./calc.worker";
 import { downloadText, readJsonFile } from "./file/browser";
@@ -9,7 +10,7 @@ import { planCsv } from "./file/plan-csv";
 import { describeUserError, type ErrorField } from "./user-errors";
 import { translateTree, type Language } from "./i18n";
 
-type Tab = "guide" | "job-reference" | "equipment" | "optimize" | "simulate" | "actions" | "disclaimer";
+type Tab = "guide" | "job-reference" | "equipment" | "optimize" | "simulate" | "actions";
 type ResumeFields = { level: string; baseHp: string; baseMp: string; baseInt: string; baseLuk: string; baseDex: string; baseStr: string; freshAp: string; unwashedAp: string; intResetDone: boolean };
 type CalculatorConfig = {
   job: string; policy: PolicyName; targetHp: number; targetMp: string; targetLevel: string; targetInt: number;
@@ -23,11 +24,12 @@ type Failure = { error: unknown; tab: Tab };
 type Undo = { message: string; equipment: EquipmentItem[] };
 
 const CACHE_KEY = "mapleroyals-hp-wash-web-cache-v1";
-// Ordered by task: the two calculators come straight after the guide.
-const tabs: Array<{ id: Tab; label: string }> = [
+const GEAR_ACK_KEY = "mapleroyals-hp-wash-zero-gear-ok";
+// Ordered by task: the calculators and their gear come first; reference pages sit apart at the end.
+const tabs: Array<{ id: Tab; label: string; reference?: boolean }> = [
   { id: "guide", label: "使用指南" }, { id: "optimize", label: "最佳化" }, { id: "simulate", label: "模擬" },
-  { id: "equipment", label: "裝備" }, { id: "job-reference", label: "職業數值" },
-  { id: "actions", label: "策略說明" }, { id: "disclaimer", label: "聯絡作者" },
+  { id: "equipment", label: "裝備" }, { id: "job-reference", label: "職業數值", reference: true },
+  { id: "actions", label: "策略說明", reference: true },
 ];
 const jobs = [
   ["fighter", "英雄 Hero"], ["page", "聖騎士 Paladin"], ["spearman", "黑騎士 Dark Knight"],
@@ -59,7 +61,8 @@ const initialEquipment: EquipmentItem[] = [
 const emptyResume: ResumeFields = { level: "", baseHp: "", baseMp: "", baseInt: "", baseLuk: "4", baseDex: "25", baseStr: "4", freshAp: "5", unwashedAp: "0", intResetDone: false };
 const advancedFields: ErrorField[] = ["gearAfterReset"];
 function defaultConfig(): CalculatorConfig {
-  return { job: "thief", policy: "mp_wash_shortfall", targetHp: 27000, targetMp: "", targetLevel: "200", targetInt: 350, resetLevel: 155, mpWashEnd: 100, questHp: 0, hpMode: "avg", mwPercent: 0.1, mwFromLevel: 10, gearAfterReset: 50, autoMethod2: true, compareThiefPolicyC: true, resumeEnabled: false, resume: { ...emptyResume } };
+  // The simulate defaults match the plan the optimizer finds for the default goal, so a first simulation reaches its target.
+  return { job: "thief", policy: "mp_wash_shortfall", targetHp: 27000, targetMp: "", targetLevel: "200", targetInt: 350, resetLevel: 155, mpWashEnd: 108, questHp: 0, hpMode: "avg", mwPercent: 0.1, mwFromLevel: 10, gearAfterReset: 50, autoMethod2: true, compareThiefPolicyC: true, resumeEnabled: false, resume: { ...emptyResume } };
 }
 function cachedResume(value?: Partial<ResumeFields> & { unwashedHpAp?: string; unwashedMpAp?: string }): ResumeFields {
   const legacyCount = Number(value?.unwashedHpAp ?? 0) + Number(value?.unwashedMpAp ?? 0);
@@ -120,6 +123,9 @@ export function App() {
   const [failure, setFailure] = useState<Failure>();
   const [running, setRunning] = useState<"optimize" | "simulate">();
   const [elapsed, setElapsed] = useState(0);
+  const [revealTick, setRevealTick] = useState(0);
+  const [gearAck, setGearAck] = useState(() => { try { return sessionStorage.getItem(GEAR_ACK_KEY) === "1"; } catch { return false; } });
+  const [gearPrompt, setGearPrompt] = useState(false);
   const [lastDuration, setLastDuration] = useState<Partial<Record<"optimize" | "simulate", number>>>({});
   const cancelRun = useRef<(() => void) | undefined>(undefined);
   useEffect(() => () => cancelRun.current?.(), []);
@@ -145,6 +151,7 @@ export function App() {
     catch { return []; }
   }, [equipment, config.resetLevel]);
   const gearUnset = formGear.every((segment) => segment.int_gear === 0);
+  const gearItemsWithInt = equipment.filter((item) => item.int > 0).length;
 
   useEffect(() => {
     try { localStorage.setItem(CACHE_KEY, JSON.stringify(cache)); }
@@ -193,7 +200,12 @@ export function App() {
     setFailure(undefined); setResult(undefined);
     window.scrollTo({ top: 0 });
   }
-  function changeTab(next: Tab) { setCache((previous) => ({ ...previous, tab: next })); setFailure(undefined); }
+  // Re-runs one plan of the optimizer's result with a different base INT / MP wash end, using the Optimize settings.
+  // A single simulation is fast enough for the main thread, and it never touches the Simulate tab's own settings.
+  function tunePlan(request: SimulateRequest): SimulateResult {
+    return simulate({ ...sharedConfig(optimizeConfig), policy: request.policy, target_base_int: request.targetInt, mp_wash_end: request.mpWashEnd, auto_method2: true });
+  }
+  function changeTab(next: Tab) { setCache((previous) => ({ ...previous, tab: next })); setFailure(undefined); setGearPrompt(false); }
   function onTabKey(event: KeyboardEvent<HTMLDivElement>) {
     const index = tabs.findIndex((item) => item.id === tab);
     const moves: Record<string, number> = { ArrowRight: index + 1, ArrowLeft: index - 1, Home: 0, End: tabs.length - 1 };
@@ -234,6 +246,16 @@ export function App() {
   // Validate on the main thread, then search in a worker so the page stays responsive and cancellable.
   function run() {
     if (running) return;
+    if (gearUnset && !gearAck) { setGearPrompt(true); return; }
+    calculate();
+  }
+  // Chosen once per browser session: after "compute with 0" the prompt stays away until the tab is reopened.
+  function acceptZeroGear() {
+    setGearAck(true); setGearPrompt(false);
+    try { sessionStorage.setItem(GEAR_ACK_KEY, "1"); } catch { /* Session storage may be unavailable. */ }
+    calculate();
+  }
+  function calculate() {
     const kind = tab === "optimize" ? "optimize" : "simulate";
     let request: CalcRequest;
     try { request = kind === "optimize" ? { kind, params: optimizeParams() } : { kind, params: simulateParams() }; }
@@ -255,10 +277,23 @@ export function App() {
       if (kind === "optimize") setOptimized(data.result as OptimizeResult);
       else setResult(data.result as SimulateResult);
       setRanWith((previous) => ({ ...previous, [kind]: signature }));
+      setRevealTick((tick) => tick + 1);
     };
     worker.onerror = (event) => { event.preventDefault(); finish(); setFailure({ error: new Error(event.message), tab: kind }); };
     worker.postMessage(request);
   }
+  // Once a new result has rendered: if it landed out of view (a stacked layout on narrow screens), bring it in, then move focus to its heading.
+  useEffect(() => {
+    if (!revealTick) return;
+    // Scroll the whole specimen (its scroll-margin keeps the No. tag in view); focus only its heading.
+    const specimen = document.querySelector<HTMLElement>(".calc-results .specimen");
+    const heading = specimen?.querySelector<HTMLElement>(".specimen-head h3");
+    if (!specimen || !heading) return;
+    const top = specimen.getBoundingClientRect().top;
+    const inView = top >= 16 && top < window.innerHeight * 0.7;
+    if (!inView) specimen.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" });
+    heading.focus({ preventScroll: true });
+  }, [revealTick]);
   async function importEquipment(file?: File) {
     if (!file) return;
     try { const items = parseEquipment(await readJsonFile(file)); setUndo({ message: "已載入裝備設定。", equipment }); setCache((previous) => ({ ...previous, equipment: items })); setFailure(undefined); }
@@ -299,9 +334,9 @@ export function App() {
     equipment: () => <section className="page-card equipment-page">
       <div className="section-heading"><div><h2>裝備設定</h2><p className="subheading">每種裝備槽取最高 INT；Ring 最多計入四件。下表會即時預覽各等級可用的總 INT。</p></div><div className="button-row"><input ref={equipmentInput} className="visually-hidden" type="file" accept="application/json,.json" tabIndex={-1} aria-hidden="true" onChange={(event) => { void importEquipment(event.target.files?.[0]); event.target.value = ""; }} /><button className="link-button" type="button" onClick={restoreDefaults}>還原預設</button><button className="quiet" type="button" onClick={() => equipmentInput.current?.click()}>載入智力裝備設定</button><button className="quiet" type="button" onClick={() => downloadText("int-equipment-settings.json", `${JSON.stringify(equipment, null, 2)}\n`, "application/json;charset=utf-8")}>儲存智力裝備設定</button></div></div>
       {errorBox}
-      <div className="equipment-toolbar"><button type="button" onClick={addEquipment}>新增裝備</button><span className="equipment-auto-note">編輯裝備清單後，最佳化與模擬會依各自設定的洗回 INT 等級自動套用。</span></div>
+      <div className="equipment-toolbar"><button type="button" className="quiet" onClick={addEquipment}>新增裝備</button><span className="equipment-auto-note">編輯裝備清單後，最佳化與模擬會依各自設定的洗回 INT 等級自動套用。</span></div>
       {undo && <div className="undo-bar" role="status"><span>{undo.message}</span><button type="button" className="quiet" onClick={revertEquipment}>復原</button></div>}
-      <div className="equipment-layout"><div className="equipment-table-wrap"><table className="equipment-table"><thead><tr><th scope="col">裝備名稱</th><th scope="col">類型</th><th scope="col">INT</th><th scope="col">穿戴等級</th><th scope="col"><span className="visually-hidden">移除</span></th></tr></thead><tbody>{equipment.map((item, index) => <tr key={index}><td><input aria-label={`Equipment ${index + 1} name`} value={item.name} onChange={(event) => updateEquipment(index, { name: event.target.value })} /></td><td><select aria-label={`Equipment ${index + 1} type`} value={item.type} onChange={(event) => updateEquipment(index, { type: event.target.value as EquipmentItem["type"] })}>{EQUIPMENT_TYPES.map((type) => <option key={type}>{type}</option>)}</select></td><td><input aria-label={`Equipment ${index + 1} INT`} type="number" min="0" value={item.int} onChange={(event) => updateEquipment(index, { int: Number(event.target.value) })} /></td><td><input aria-label={`Equipment ${index + 1} level`} type="number" min="1" max="200" value={item.equip_level} onChange={(event) => updateEquipment(index, { equip_level: Number(event.target.value) })} /></td><td><button className="remove" type="button" aria-label={`Remove equipment ${index + 1}${item.name ? ` (${item.name})` : ""}`} onClick={() => removeEquipment(index)}>移除</button></td></tr>)}</tbody></table></div>
+      <div className="equipment-layout"><div className="equipment-table-wrap"><table className="equipment-table"><thead><tr><th scope="col">裝備名稱</th><th scope="col">類型</th><th scope="col">INT</th><th scope="col">穿戴等級</th><th scope="col"><span className="visually-hidden">移除</span></th></tr></thead><tbody>{equipment.map((item, index) => <tr key={index}><td><input aria-label={`裝備 ${index + 1} 名稱`} value={item.name} onChange={(event) => updateEquipment(index, { name: event.target.value })} /></td><td><select aria-label={`裝備 ${index + 1} 類型`} value={item.type} onChange={(event) => updateEquipment(index, { type: event.target.value as EquipmentItem["type"] })}>{EQUIPMENT_TYPES.map((type) => <option key={type}>{type}</option>)}</select></td><td><input aria-label={`裝備 ${index + 1} INT`} type="number" min="0" value={item.int} onChange={(event) => updateEquipment(index, { int: Number(event.target.value) })} /></td><td><input aria-label={`裝備 ${index + 1} 穿戴等級`} type="number" min="1" max="200" value={item.equip_level} onChange={(event) => updateEquipment(index, { equip_level: Number(event.target.value) })} /></td><td><button className="remove" type="button" aria-label={`移除裝備 ${index + 1}${item.name ? ` (${item.name})` : ""}`} onClick={() => removeEquipment(index)}>移除</button></td></tr>)}</tbody></table></div>
         <aside className="gear-preview"><h3>INT 裝備預覽</h3><p>洗回 INT 前：依左邊裝備表，各等級如下。</p><p>洗回 INT 後：{optimizeConfig.gearAfterReset}（在最佳化的「進階設定」修改）</p>{gearPreview.length ? <table><thead><tr><th scope="col">等級</th><th scope="col">裝備 INT</th></tr></thead><tbody>{gearPreview.map((segment) => <tr key={segment.from_level}><td>{segment.from_level}–{segment.to_level}</td><td>{segment.int_gear}</td></tr>)}</tbody></table> : <p className="error">請檢查裝備名稱、INT 與裝備等級。</p>}</aside></div>
     </section>,
 
@@ -310,15 +345,14 @@ export function App() {
     simulate: () => calculator(),
 
     actions: () => <section className="page-card"><h2>策略、洗法與計畫動作說明</h2><div className="action-grid"><article><h3>Policy A — MP wash shortfall</h3><p>31 等級起進入 INT 目標階段。Extra MP 達 threshold 時用 Method 1 洗 HP；不足時先 MP wash。</p></article><article><h3>Policy B — INT dump shortfall</h3><p>Extra MP 足夠時用 Method 1；不足時把本等 AP 點入 INT，該列不增加洗血 APR。</p></article><article><h3>Policy C — Hardcore greedy</h3><p>10 等起逐 AP 檢查：Extra MP 足夠就 HP1；30 等起可嘗試 MP1；剩餘 AP 投入 INT／主屬性。</p></article><article><h3>Policy D — Plain INT</h3><p>先集中 INT，達標後進行 MP wash、Method 1／Method 2 與 INT reset。非 Thief 職業使用此策略。</p></article><article><h3>Method 1</h3><p>使用當等級新鮮 AP 加 HP，再以 APR 扣除職業對應 MP；新鮮 AP 回到 INT 或主屬性。</p></article><article><h3>Method 2</h3><p>使用 APR 扣 Extra MP 換取 HP，沒有新鮮 AP 限制；計算會遵守設定的目標 base MP 下限。</p></article><article><h3>計畫動作</h3><p><code>BUILD</code> 建立初始能力值；<code>HP1–HP5</code>／<code>MP1–MP5</code> 表示本等洗血／洗 MP；<code>M2</code> 為 Method 2；<code>RESET_INT</code> 為 INT 洗回；<code>RESUME</code> 標示接續起點。</p></article></div></section>,
-
-    disclaimer: () => <section className="page-card"><h2>聯絡作者 Contact Author</h2><p>若發現問題或有任何疑問，歡迎聯絡作者：</p><ul><li>Discord：<b>fuhuo</b></li><li>GitHub：<a href="https://github.com/Liang0218/mapleroyals-hp-washing" target="_blank" rel="noreferrer">MapleRoyals HP Washing APR Optimizer</a></li></ul></section>,
   };
 
   function calculator() {
     const isOptimize = tab === "optimize";
+    const suggestion = optimized ? recommendedPlan(optimized)?.[1] : undefined;
     return <form className="calculator-page" noValidate onSubmit={(event) => { event.preventDefault(); run(); }}>
       <div className="page-title"><div><h2>{isOptimize ? "最佳化計畫" : "單一計畫模擬"}</h2><p className="subheading">{isOptimize ? "搜尋最佳 base INT 與 MP wash 結束等級，並比較適用策略。" : "固定 base INT 與 MP wash 結束等級，模擬每一級的 AP／APR 行動。"}</p></div></div>
-      <div className="calc-layout"><div className="calc-form">
+      <div className="calc-layout"><div className="calc-form" id="calc-form">
 
       <fieldset className="form-section"><legend>目標與職業</legend><div className="fields">
         <label>職業<select id={fieldId("job")} value={config.job} aria-invalid={invalid === "job" || undefined} onChange={(event) => updateConfig({ job: event.target.value })}>{jobs.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>{invalid === "job" && <small className="field-error">{userError?.message}</small>}</label>
@@ -326,18 +360,23 @@ export function App() {
         <label>目標 MP（留空則洗到最低）<input id={fieldId("targetMp")} type="number" inputMode="numeric" min={0} step={1} value={config.targetMp} aria-invalid={invalid === "targetMp" || undefined} onChange={(event) => updateConfig({ targetMp: event.target.value })} />{invalid === "targetMp" && <small className="field-error">{userError?.message}</small>}</label>
         <label>目標等級（留空＝200）<input id={fieldId("targetLevel")} type="number" inputMode="numeric" min={31} max={200} step={1} value={config.targetLevel} aria-invalid={invalid === "targetLevel" || undefined} onChange={(event) => updateConfig({ targetLevel: event.target.value })} />{invalid === "targetLevel" && <small className="field-error">{userError?.message}</small>}</label>
         <Field name="resetLevel" invalid={invalid} message={userError?.message} min={2} max={200} step={1} label="洗回 INT 等級" value={config.resetLevel} onChange={(value) => updateConfig({ resetLevel: Number(value) })} />
-      </div><p className="field-note gear-summary"><span className="gear-chips"><span className="gear-label">裝備 INT</span>{formGear.length ? formGear.map((segment) => <span className="gear-chip" key={segment.from_level}>Lv {segment.from_level}–{segment.to_level} INT <b>+{segment.int_gear}</b></span>) : <span>尚未設定</span>}</span><button type="button" className="link-button" onClick={() => changeTab("equipment")}>編輯裝備</button></p>{gearUnset && <p className="gear-warning">尚未設定裝備 INT，計算會當作沒有任何 INT 裝備，需要的 APR 可能偏高。</p>}</fieldset>
+      </div><p className="field-note gear-summary"><span className="gear-chips"><span className="gear-label">裝備 INT</span>{formGear.length ? formGear.map((segment) => <span className="gear-chip" key={segment.from_level}>Lv {segment.from_level}–{segment.to_level} INT <b>+{segment.int_gear}</b></span>) : <span>尚未設定</span>}</span><button type="button" className="link-button" onClick={() => changeTab("equipment")}>編輯裝備</button></p></fieldset>
 
       {isOptimize
-        ? optimizeConfig.job === "thief" && <fieldset className="form-section"><legend>最佳化比較策略</legend><label className="checkbox-field"><input type="checkbox" checked={optimizeConfig.compareThiefPolicyC} onChange={(event) => updateConfig({ compareThiefPolicyC: event.target.checked })} />比較 Policy C（Hardcore greedy）</label><p className="field-note">Policy C 會逐 AP 嘗試洗血與洗 MP，策略較繁瑣，搜尋也較耗時。關閉後只比較 A／B／D，可縮短最佳化時間。</p></fieldset>
-        : <fieldset className="form-section"><legend>模擬參數</legend><div className="fields">
-          <label>Policy<select id={fieldId("policy")} value={effectivePolicy} aria-describedby="policy-hint" aria-invalid={invalid === "policy" || undefined} onChange={(event) => updateConfig({ policy: event.target.value as PolicyName })}>{profile.policies.map((value) => <option key={value} value={value}>{policyLabels[value]}</option>)}</select><small id="policy-hint" className="field-hint">{policyHints[effectivePolicy]}</small>{invalid === "policy" && <small className="field-error">{userError?.message}</small>}</label>
+        ? null
+        : <fieldset className="form-section"><legend>模擬參數</legend>
+          <fieldset className="policy-choice" aria-invalid={invalid === "policy" || undefined}><legend>Policy</legend>
+            {profile.policies.map((value) => <label key={value} className="policy-option"><input type="radio" name="simulate-policy" id={value === effectivePolicy ? fieldId("policy") : undefined} value={value} checked={value === effectivePolicy} onChange={() => updateConfig({ policy: value })} /><span className="policy-option-name"><b>{policyLetter(value)}</b>{policyLabels[value].split("— ")[1]}</span><small className="policy-option-hint">{policyHints[value]}</small></label>)}
+            {invalid === "policy" && <small className="field-error">{userError?.message}</small>}
+          </fieldset><div className="fields">
           <Field name="targetInt" invalid={invalid} message={userError?.message} min={4} step={1} label="目標 base INT" value={config.targetInt} onChange={(value) => updateConfig({ targetInt: Number(value) })} />
           <Field name="mpWashEnd" invalid={invalid} message={userError?.message} min={31} max={200} step={1} label="MP wash 結束等級" value={config.mpWashEnd} onChange={(value) => updateConfig({ mpWashEnd: Number(value) })} />
           <label className="checkbox-field"><input type="checkbox" checked={config.autoMethod2} onChange={(event) => updateConfig({ autoMethod2: event.target.checked })} />自動以 Method 2 補足目標 HP</label>
         </div></fieldset>}
 
-      <details className="disclosure" open={advancedOpen} onToggle={(event) => setAdvancedOpen(event.currentTarget.open)}><summary>進階設定<span>裝備 INT、HP 計算方式與 Maple Warrior</span></summary><div className="fields disclosure-body">
+      <details className="disclosure" open={advancedOpen} onToggle={(event) => setAdvancedOpen(event.currentTarget.open)}><summary>進階設定<span>{isOptimize && optimizeConfig.job === "thief" ? "比較 Policy C、" : ""}裝備 INT、HP 計算方式與 Maple Warrior</span></summary>
+        {isOptimize && optimizeConfig.job === "thief" && <div className="disclosure-body advanced-compare"><label className="checkbox-field"><input type="checkbox" checked={optimizeConfig.compareThiefPolicyC} onChange={(event) => updateConfig({ compareThiefPolicyC: event.target.checked })} />比較 Policy C（Hardcore greedy）</label><p className="field-note">Policy C 會逐 AP 嘗試洗血與洗 MP，策略較繁瑣，搜尋也較耗時。關閉後只比較 A／B／D，可縮短最佳化時間。</p></div>}
+        <div className="fields disclosure-body">
         <Field name="gearAfterReset" invalid={invalid} message={userError?.message} min={0} step={1} label="洗回後升等裝備 INT" value={config.gearAfterReset} onChange={(value) => updateConfig({ gearAfterReset: Number(value) })} />
         <Field name="questHp" min={0} step={1} label="任務／裝備 HP" value={config.questHp} onChange={(value) => updateConfig({ questHp: Number(value) })} />
         <label>HP 模式<select value={config.hpMode} onChange={(event) => updateConfig({ hpMode: event.target.value as HpMode })}><option value="avg">平均 avg</option><option value="min">最低 min</option><option value="max">最高 max</option></select></label>
@@ -356,20 +395,27 @@ export function App() {
       </div>}</div></details>
 
       <div className="runbar">
-        {!busy && <p className="runbar-note">{otherRunning ? (running === "optimize" ? "最佳化計算中，完成後才能執行模擬。" : "模擬計算中，完成後才能執行最佳化。") : "完成後可在結果區下載逐級計畫 CSV。"}</p>}
-        <div className="run-actions">
-          <button type="submit" className="run-button" disabled={busy || otherRunning} aria-busy={busy}>{busy ? `計算中… ${elapsed} 秒` : isOptimize ? "執行最佳化" : "執行模擬"}</button>
-          {busy && <button type="button" className="quiet" onClick={() => cancelRun.current?.()}>取消</button>}
-        </div>
+        {!gearUnset && <p className="gear-check"><span className="mark mark-filled" aria-hidden="true" />裝備 INT 已套用：{gearItemsWithInt} 件有 INT</p>}
+        {!busy && !gearPrompt && <p className="runbar-note">{otherRunning ? (running === "optimize" ? "最佳化計算中，完成後才能執行模擬。" : "模擬計算中，完成後才能執行最佳化。") : "完成後可在結果區下載逐級計畫 CSV。"}</p>}
+        {gearPrompt
+          // First run with no gear INT at all: ask once, in place of the run button, before computing a plan that will overstate APR.
+          ? <div className="gear-prompt" role="group" aria-labelledby="gear-prompt-title">
+            <p id="gear-prompt-title"><b>還沒有設定裝備 INT。</b>現在計算會當作沒有任何 INT 裝備，需要的 APR 會偏高。要先設定裝備嗎？</p>
+            <div className="run-actions"><button type="button" className="quiet" onClick={() => changeTab("equipment")}>前往裝備頁設定</button><button type="button" onClick={acceptZeroGear}>仍以 0 計算</button></div>
+          </div>
+          : <div className="run-actions">
+            <button type="submit" className="run-button" disabled={busy || otherRunning} aria-busy={busy}>{busy ? `計算中… ${elapsed} 秒` : isOptimize ? "執行最佳化" : "執行模擬"}</button>
+            {busy && <button type="button" className="quiet" onClick={() => cancelRun.current?.()}>取消</button>}
+          </div>}
       </div>
       </div>
       <div className="calc-results" aria-live="polite">
         {userError && <div className="error-box" id="form-error" role="alert" tabIndex={-1}><p>{userError.field && userError.field !== "equipment" ? "請修正左邊標紅的欄位後再執行。" : userError.message}</p>{userError.field === "equipment" && <button type="button" className="quiet" onClick={() => changeTab("equipment")}>前往裝備頁</button>}</div>}
-        {!busy && gearUnset && (isOptimize ? optimized : result) && <p className="gear-warning">這份結果是在沒有任何 INT 裝備的情況下算的。<button type="button" className="link-button" onClick={() => changeTab("equipment")}>設定裝備</button></p>}
         {busy ? <div className="results-empty results-busy"><p>{isOptimize ? "正在搜尋 base INT 與 MP wash 組合，請稍候。" : "正在逐級模擬，請稍候。"}</p><p className="elapsed" aria-live="off">已經過 {elapsed} 秒{lastDuration[calcKind] !== undefined && `（上次約 ${lastDuration[calcKind]} 秒）`}</p><button type="button" className="quiet" onClick={() => cancelRun.current?.()}>取消</button></div>
-          : tab === "simulate" && result ? <SimulationResult result={result} language={language} stale={stale} />
-          : isOptimize && optimized ? <OptimizationResult result={optimized} language={language} stale={stale} onSimulate={openInSimulate} />
-          : <p className="results-empty">{isOptimize ? "填好目標後按「執行最佳化」，結果會顯示在這裡。" : "填好設定後按「執行模擬」，結果會顯示在這裡。"}</p>}
+          : tab === "simulate" && result ? <SimulationResult result={result} language={language} stale={stale} onEditGear={gearUnset ? () => changeTab("equipment") : undefined} />
+          : isOptimize && optimized ? <OptimizationResult result={optimized} language={language} stale={stale} onEditGear={gearUnset ? () => changeTab("equipment") : undefined} onSimulate={openInSimulate} onTune={tunePlan} />
+          : <div className="results-empty"><p>{isOptimize ? "填好目標後按「執行最佳化」，結果會顯示在這裡。" : "填好設定後按「執行模擬」，結果會顯示在這裡。"}</p>
+            {!isOptimize && suggestion && <button type="button" className="quiet" onClick={() => openInSimulate({ policy: suggestion.policy, targetInt: suggestion.target_base_int, mpWashEnd: suggestion.mp_wash_end })}>帶入最佳化建議：{codeFor(suggestion)}</button>}</div>}
       </div></div>
     </form>;
   }
@@ -380,14 +426,14 @@ export function App() {
       <div className="app-bar-row"><h1><span className="brand">MapleRoyals</span> HP Washing APR Optimizer</h1>
         <div className="switches"><div className="segmented" role="group" aria-label="語言"><button type="button" aria-pressed={language === "zh"} onClick={() => setLanguage("zh")}>中文</button><button type="button" aria-pressed={language === "en"} onClick={() => setLanguage("en")}>EN</button></div>
           <div className="segmented" role="group" aria-label="外觀">{themes.map(([value, label]) => <button key={value} type="button" aria-pressed={theme === value} onClick={() => setTheme(value)}>{label}</button>)}</div></div></div>
-      <div className="tabbar" role="tablist" aria-label="計算器分頁" onKeyDown={onTabKey}>{tabs.map((item) => <button key={item.id} id={`tab-${item.id}`} type="button" role="tab" aria-selected={tab === item.id} aria-controls="tab-panel" tabIndex={tab === item.id ? 0 : -1} className={tab === item.id ? "tab active" : "tab"} onClick={() => changeTab(item.id)}>{item.label}</button>)}</div>
+      <div className="tabbar" role="tablist" aria-label="計算器分頁" onKeyDown={onTabKey}>{tabs.map((item) => <button key={item.id} id={`tab-${item.id}`} type="button" role="tab" aria-selected={tab === item.id} aria-controls="tab-panel" tabIndex={tab === item.id ? 0 : -1} className={`tab${tab === item.id ? " active" : ""}${item.reference && !tabs[tabs.indexOf(item) - 1]?.reference ? " tab-reference-start" : ""}`} onClick={() => changeTab(item.id)}>{item.label}</button>)}</div>
     </div></header>
     <main className="app-shell">
     <div id="tab-panel" role="tabpanel" aria-labelledby={`tab-${tab}`}>
       {tab !== "optimize" && tab !== "simulate" && tab !== "equipment" && errorBox}
       {panels[tab]()}
     </div>
-    <footer className="app-footer"><span>v{__APP_VERSION__}</span><span>僅供參考，操作前請在遊戲中確認。</span></footer>
+    <footer className="app-footer"><span className="footer-disclaimer">僅供參考，操作前請在遊戲中確認。</span><span>聯絡作者：Discord <b>fuhuo</b> · <a href="https://github.com/Liang0218/mapleroyals-hp-washing" target="_blank" rel="noreferrer">GitHub</a></span><span>v{__APP_VERSION__}</span></footer>
     </main>
   </>, language)}</>;
 }
@@ -397,6 +443,8 @@ type SpecimenProps = {
   code: string; headline: string; reached: boolean; hpReached: boolean; mpReached: boolean; stale: boolean;
   targetHp: number; finalHp: number; targetMp?: number; finalMp: number;
   figures: Array<[string, string]>; extras: Array<[string, string]>; note?: ReactNode; language: Language;
+  /** Set when the plan was computed without any gear INT: the label then says so in the caution ink, with a way to fix it. */
+  onEditGear?: () => void;
 };
 
 /** Drawn state mark: filled = reached, hollow = not reached. */
@@ -406,28 +454,29 @@ function Mark({ reached }: { reached: boolean }) { return <span className={`mark
 // the caller's translateTree only sees the JSX it was handed, never what a component returns.
 
 /** The result as a specimen label: the answer first, its proof underneath. */
-function Specimen({ code, headline, reached, hpReached, mpReached, stale, targetHp, finalHp, targetMp, finalMp, figures, extras, note, language }: SpecimenProps) {
+function Specimen({ code, headline, reached, hpReached, mpReached, stale, targetHp, finalHp, targetMp, finalMp, figures, extras, note, language, onEditGear }: SpecimenProps) {
   const outcome = reached ? "已達成目標" : hpReached && !mpReached ? "無法同時達標 — HP 已達標，MP 未達標" : "無法達成 — 最接近結果";
   const mpDetail = targetMp === undefined ? "未設定 MP 目標" : `MP 目標 ${targetMp.toLocaleString()}，實際 ${finalMp.toLocaleString()}${mpReached ? "（達標）" : "（未達標）"}`;
   // Scale the ruler to whichever is larger so both overshoot and shortfall stay visible.
   const scale = Math.max(targetHp, finalHp, 1) * 1.08;
   const ticks = [0.25, 0.5, 0.75];
   return translateTree(<div className={`specimen ${stale ? "is-stale" : ""}`}>
-    <span className="specimen-tag">No. {code}</span>
+    <span className="specimen-tag" title="編號：策略 · base INT · MP wash 結束等級">No. {code}</span>
     <div className="specimen-head">
-      <h3>{headline}</h3>
+      <h3 tabIndex={-1}>{headline}</h3>
       <span className={`stamp ${reached ? "stamp-reached" : "stamp-missed"}`} role="status"><Mark reached={reached} /> {outcome}</span>
     </div>
     {stale && <p className="stale-note">設定已變更，這是舊的結果；請重新執行。</p>}
     {note}
-    <div className="ruler" role="img" aria-label={`HP ${finalHp.toLocaleString()} / ${targetHp.toLocaleString()}`}>
+    <div className="ruler" role="img" aria-label={`HP ${finalHp.toLocaleString()} / ${targetHp.toLocaleString()} · ${hpReached ? "已達標" : "未達標"}`}>
       <div className="ruler-fill" style={{ width: `${(finalHp / scale) * 100}%` }} />
       {ticks.map((tick) => <span key={tick} className="ruler-tick" style={{ left: `${tick * 100}%` }} />)}
       <span className="ruler-target" style={{ left: `${(targetHp / scale) * 100}%` }} />
     </div>
-    <p className="capacity-caption">HP 目標 {targetHp.toLocaleString()}（{hpReached ? "達標" : "未達標"}）；{mpDetail}</p>
+    <p className="capacity-caption"><span className="ruler-key ruler-key-fill" aria-hidden="true" />最終 HP {finalHp.toLocaleString()}<span className="ruler-key ruler-key-target" aria-hidden="true" />目標 HP {targetHp.toLocaleString()}（{hpReached ? "達標" : "未達標"}）；{mpDetail}</p>
     <dl className="figures">{figures.map(([value, label]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>
-    {extras.length > 0 && <dl className="extras">{extras.map(([value, label]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>}
+    {(extras.length > 0 || onEditGear) && <dl className="extras">{extras.map(([value, label]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}
+      {onEditGear && <div className="extra-caution"><dt>裝備 INT</dt><dd>未設定（以 0 計算）</dd><button type="button" className="link-button" onClick={onEditGear}>設定裝備後重算</button></div>}</dl>}
   </div>, language);
 }
 
@@ -509,19 +558,19 @@ function planBands(rows: PlanRow[]): PlanBand[] {
 }
 
 /** The plan as a field-guide key: one row per continuous level band, drawn on a level track; each row opens to its levels. */
-function PlanKey({ title, rows, file, language, summary }: { title: string; rows: PlanRow[]; file: string; language: Language; summary?: string }) {
+function PlanKey({ title, rows, file, language, summary, idPrefix = "" }: { title: string; rows: PlanRow[]; file: string; language: Language; summary?: string; idPrefix?: string }) {
   const bands = planBands(rows);
   const [showAll, setShowAll] = useState(false);
-  return translateTree(<section className="plan-view" id="plan-view">
+  return translateTree(<section className="plan-view" id={`${idPrefix}plan-view`}>
     <div className="result-heading"><div><h4 className="section-plate">{title}（{rows.length} 列）</h4>{summary && <p className="plan-summary">{summary}</p>}</div><button type="button" className="quiet" onClick={() => downloadText(file, planCsv(rows), "text/csv;charset=utf-8")}>下載 CSV</button></div>
     <div className="plan-hint-row"><p className="plan-hint">依等級順序照做；點一列展開該段的動作，連續做法相同的等級會合成一行。Extra MP 是目前 MP 超出洗血下限的量，負數表示還不能洗血。</p><label className="checkbox-field show-all"><input type="checkbox" checked={showAll} onChange={(event) => setShowAll(event.target.checked)} />顯示全部等級</label></div>
     <div className="plan-sections">
-      <div className="plan-axis" aria-hidden="true"><span>Lv 1</span><span>Lv 200</span></div>
-      {bands.map((band) => <details className="plan-step" id={band.id} key={band.id}><summary>
+      <div className="plan-axis" aria-hidden="true"><span className="plan-axis-scale"><span>Lv 1</span><span style={{ left: `${(99 / (MAX_LEVEL - 1)) * 100}%` }}>Lv 100</span><span>Lv 200</span></span></div>
+      {bands.map((band) => <details className="plan-step" id={`${idPrefix}${band.id}`} key={band.id}><summary>
         <span className="key-code">{band.number}</span>
         <span className="plan-step-range-lead">{levelRange(band.from, band.to)}</span>
         <span className="plan-step-text">{band.title}{band.resets.length > 0 && <span className="plan-step-events">Lv {band.resets.join("、")} 時把 INT 洗回 4</span>}</span>
-        <span className="key-track" aria-hidden="true"><span className="key-band" style={{ left: `${((band.from - 1) / (MAX_LEVEL - 1)) * 100}%`, width: `${(Math.max(band.to - band.from, 0.6) / (MAX_LEVEL - 1)) * 100}%` }} />{band.resets.map((level) => <span key={level} className="key-band is-point" style={{ left: `${((level - 1) / (MAX_LEVEL - 1)) * 100}%` }} />)}</span>
+        <span className="key-track" aria-hidden="true"><span className="key-band" style={{ left: `min(${((band.from - 1) / (MAX_LEVEL - 1)) * 100}%, calc(100% - 3px))`, width: `${(Math.max(band.to - band.from, 0.6) / (MAX_LEVEL - 1)) * 100}%` }} />{band.resets.map((level) => <span key={level} className="key-band is-point" style={{ left: `${((level - 1) / (MAX_LEVEL - 1)) * 100}%` }} />)}</span>
         <span className="plan-step-apr">{band.apr.toLocaleString()} APR</span>
       </summary><PlanTable language={language} rows={band.rows} compact={!showAll} /></details>)}
     </div>
@@ -536,28 +585,98 @@ type SimulateRequest = { policy: PolicyName; targetInt: number; mpWashEnd: numbe
 const headlineFor = (candidate: { policy: PolicyName; target_base_int: number; mp_wash_end: number }) => `Policy ${policyLetter(candidate.policy)} · base INT ${candidate.target_base_int} · MP wash 到 Lv ${candidate.mp_wash_end}`;
 const codeFor = (candidate: { policy: PolicyName; target_base_int: number; mp_wash_end: number }) => `${policyLetter(candidate.policy)}·${candidate.target_base_int}·${candidate.mp_wash_end}`;
 
-function SimulationResult({ result, language, stale }: { result: SimulateResult; language: Language; stale: boolean }) {
+/** Unset gear INT is stated as a plain fact on the label, not as another warning box. */
+function SimulationResult({ result, language, stale, onEditGear }: { result: SimulateResult; language: Language; stale: boolean; onEditGear?: () => void }) {
   const hpReached = result.final_display_hp >= result.target_hp;
   const mpReached = result.target_mp === undefined || result.final_base_mp >= result.target_mp;
   return translateTree(<section className="result-panel"><h3 className="visually-hidden">模擬結果</h3>
     <div className="result-lead"><Specimen language={language} code={codeFor(result)} headline={headlineFor(result)} reached={result.reached_target} hpReached={hpReached} mpReached={mpReached} stale={stale} targetHp={result.target_hp} finalHp={result.final_display_hp} targetMp={result.target_mp} finalMp={result.final_base_mp}
-      figures={[[totalApr(result.apr).toLocaleString(), "總 APR"], [result.final_display_hp.toLocaleString(), "最終 HP"], [result.final_base_mp.toLocaleString(), "最終 base MP"], [String(result.int_reached_level || "—"), "INT 達標等級"]]} extras={[[policyTitle(result.policy), "策略"]]} />
+      figures={[[totalApr(result.apr).toLocaleString(), "總 APR"], [result.final_display_hp.toLocaleString(), "最終 HP"], [result.final_base_mp.toLocaleString(), "最終 base MP"], [String(result.int_reached_level || "—"), "INT 達標等級"]]} extras={[[policyTitle(result.policy), "策略"]]} onEditGear={onEditGear}
+      note={result.reached_target ? undefined : <p className="sim-hint">想達標可以：提高 base INT、延後 MP wash 結束等級，或先到「最佳化」找出可達成的組合。</p>} />
+    <div className="specimen-actions back-only"><a className="back-to-form" href="#calc-form">回到設定</a></div>
     <PlanKey title="逐級計畫" rows={result.plan} file="plan.csv" language={language} /></div></section>, language);
 }
-function OptimizationResult({ result, language, stale, onSimulate }: { result: OptimizeResult; language: Language; stale: boolean; onSimulate: (request: SimulateRequest) => void }) {
+type Candidate = NonNullable<OptimizeResult["comparison"]["policy_a"]>;
+/** How far a plan falls short of its goals, in the units the player checks in game. */
+function shortfall(plan: SimulateResult): string {
+  const parts: string[] = [];
+  if (plan.final_display_hp < plan.target_hp) parts.push(`HP 差 ${(plan.target_hp - plan.final_display_hp).toLocaleString()}`);
+  if (plan.target_mp !== undefined && plan.final_base_mp < plan.target_mp) parts.push(`MP 差 ${(plan.target_mp - plan.final_base_mp).toLocaleString()}`);
+  return parts.length ? parts.join("、") : "未達成目標";
+}
+const comparedPolicies = (result: OptimizeResult) => ([["A", result.comparison.policy_a], ["B", result.comparison.policy_b], ["C", result.comparison.policy_c], ["D", result.comparison.policy_d]] as Array<[string, OptimizeResult["comparison"]["policy_a"]]>)
+  .filter((item): item is [string, Candidate] => item[1] !== undefined);
+/** The plan to follow: a simpler policy that reaches the target within 1% (at least 10 APR) of the fewest-APR plan, else the fewest-APR plan. */
+function recommendedPlan(result: OptimizeResult): [string, Candidate] | undefined {
+  const winner = result.winner;
+  if (!winner) return undefined;
+  const fewestApr = totalApr(winner.apr);
+  const tolerance = Math.max(10, Math.round(fewestApr * 0.01));
+  const simpler = comparedPolicies(result)
+    .filter(([, candidate]) => candidate.reached_target && policyEffort[candidate.policy] < policyEffort[winner.policy] && totalApr(candidate.apr) - fewestApr <= tolerance)
+    .sort(([, a], [, b]) => policyEffort[a.policy] - policyEffort[b.policy] || totalApr(a.apr) - totalApr(b.apr))[0];
+  return simpler ?? [policyLetter(winner.policy), winner as Candidate];
+}
+/** Fine-tune the shown plan in place: change base INT or the MP wash end level and re-simulate, without leaving Optimize. */
+function PlanTuner({ base, letter, stale, language, onTune }: { base: Candidate; letter: string; stale: boolean; language: Language; onTune: (request: SimulateRequest) => SimulateResult }) {
+  const [targetInt, setTargetInt] = useState(String(base.target_base_int));
+  const [mpWashEnd, setMpWashEnd] = useState(String(base.mp_wash_end));
+  const [tuned, setTuned] = useState<SimulateResult>();
+  const [error, setError] = useState<string>();
+  const baseApr = totalApr(base.apr);
+  function recalc() {
+    try { setTuned(onTune({ policy: base.policy, targetInt: Number(targetInt), mpWashEnd: Number(mpWashEnd) })); setError(undefined); }
+    catch (caught) { setTuned(undefined); setError(describeUserError(caught, language).message); }
+  }
+  // The tuner sits inside the Optimize form: Enter re-calculates here instead of re-running the whole search.
+  const onEnter = (event: KeyboardEvent<HTMLInputElement>) => { if (event.key === "Enter") { event.preventDefault(); if (!stale) recalc(); } };
+  const tunedApr = tuned ? totalApr(tuned.apr) : 0;
+  const delta = tunedApr - baseApr;
+  const hpDelta = tuned ? tuned.final_display_hp - base.final_display_hp : 0;
+  const mpDelta = tuned ? tuned.final_base_mp - base.final_base_mp : 0;
+  const unchanged = tuned !== undefined && delta === 0 && hpDelta === 0 && mpDelta === 0 && tuned.reached_target === base.reached_target;
+  const signed = (value: number) => `${value > 0 ? "+" : ""}${value.toLocaleString()}`;
+  // Only the levels whose APR moved; the full tuned plan stays folded so the recommended plan above remains the one to follow.
+  const changedBands = tuned ? planBands(tuned.plan).map((band) => {
+    const before = base.plan.filter((row) => row.level >= band.from && row.level <= band.to).reduce((sum, row) => sum + row.apr_spent, 0);
+    return { ...band, before };
+  }).filter((band) => band.apr !== band.before) : [];
+  return translateTree(<details className="disclosure plan-tuner"><summary>微調這份計畫<span>改 base INT 或 MP wash 結束等級，立即重算 Policy {letter}</span></summary><div className="disclosure-body">
+    {stale && <p className="stale-note">設定已變更，請先重新執行最佳化再微調。</p>}
+    <div className="tuner-fields">
+      <label>base INT<input id="tune-int" type="number" inputMode="numeric" min={4} step={1} value={targetInt} disabled={stale} onKeyDown={onEnter} onChange={(event) => setTargetInt(event.target.value)} /></label>
+      <label>MP wash 結束等級<input id="tune-end" type="number" inputMode="numeric" min={31} max={200} step={1} value={mpWashEnd} disabled={stale} onKeyDown={onEnter} onChange={(event) => setMpWashEnd(event.target.value)} /></label>
+      <button type="button" className="quiet" disabled={stale} onClick={recalc}>重算</button>
+      {(targetInt !== String(base.target_base_int) || mpWashEnd !== String(base.mp_wash_end)) && <button type="button" className="link-button" onClick={() => { setTargetInt(String(base.target_base_int)); setMpWashEnd(String(base.mp_wash_end)); setTuned(undefined); setError(undefined); }}>回到原值</button>}
+    </div>
+    <p className="field-hint">原計畫：base INT {base.target_base_int} · MP wash 到 Lv {base.mp_wash_end} · 總 APR {baseApr.toLocaleString()}。其他設定沿用左邊的最佳化表單。</p>
+    {error && <p className="field-error" role="alert">{error}</p>}
+    {tuned && <div className="tuner-result" role="status">
+      {unchanged ? <p className="tuner-outcome">結果與原計畫相同，照上方的計畫做即可。</p> : <>
+        {tuned.reached_target
+          // Fewer APR only counts as better when the tuned plan still reaches the goal.
+          ? <p className="tuner-outcome"><span className="status-success"><Mark reached /> 已達標</span>
+            <b>總 APR {tunedApr.toLocaleString()}（{signed(delta)}）</b>
+            <span>最終 HP {tuned.final_display_hp.toLocaleString()}（{signed(hpDelta)}）· 最終 base MP {tuned.final_base_mp.toLocaleString()}（{signed(mpDelta)}）</span></p>
+          : <p className="tuner-outcome is-missed"><span className="status-failure"><Mark reached={false} /> <b>未達標</b></span>
+            <b>{shortfall(tuned)}</b>
+            <span className="tuner-secondary">這個組合不能照做。總 APR {tunedApr.toLocaleString()}（{signed(delta)}）只供參考。下表列出和原計畫相比 APR 有變動的等級段，可以從這裡看出差在哪一段；按「回到原值」可重新調整。</span></p>}
+        {changedBands.length > 0 && <table className="tuner-diff"><caption>APR 有變動的等級段</caption><thead><tr><th scope="col">等級</th><th scope="col">做法</th><th scope="col">原計畫</th><th scope="col">微調後</th></tr></thead>
+          <tbody>{changedBands.map((band) => <tr key={band.id}><td>{levelRange(band.from, band.to)}</td><td>{band.title}</td><td>{band.before.toLocaleString()} APR</td><td>{band.apr.toLocaleString()} APR</td></tr>)}</tbody></table>}
+        <details className="tuner-full"><summary>查看完整微調計畫與 CSV</summary>
+          <PlanKey idPrefix="tuned-" title={`微調計畫 · ${headlineFor(tuned)}`} rows={tuned.plan} file={`plan-policy-${letter.toLowerCase()}-tuned.csv`} language={language} /></details>
+      </>}
+    </div>}
+  </div></details>, language);
+}
+function OptimizationResult({ result, language, stale, onEditGear, onSimulate, onTune }: { result: OptimizeResult; language: Language; stale: boolean; onEditGear?: () => void; onSimulate: (request: SimulateRequest) => void; onTune: (request: SimulateRequest) => SimulateResult }) {
   const [selected, setSelected] = useState<string>();
   const winner = result.winner;
   if (!winner) return translateTree(<section className="result-panel"><h3>沒有可用候選計畫</h3><p className="subheading">請放寬目標 HP／MP，或調整洗回 INT 等級後再試一次。</p></section>, language);
-  const policies = ([["A", result.comparison.policy_a], ["B", result.comparison.policy_b], ["C", result.comparison.policy_c], ["D", result.comparison.policy_d]] as Array<[string, OptimizeResult["comparison"]["policy_a"]]>)
-    .filter((item): item is [string, NonNullable<typeof item[1]>] => item[1] !== undefined);
+  const policies = comparedPolicies(result);
   const fewestLetter = policyLetter(winner.policy);
   const fewestApr = totalApr(winner.apr);
-  // A simpler policy that reaches the target within 1% (at least 10 APR) of the fewest-APR plan is the one to recommend.
-  const tolerance = Math.max(10, Math.round(fewestApr * 0.01));
-  const simplerEntry = policies
-    .filter(([, candidate]) => candidate.reached_target && policyEffort[candidate.policy] < policyEffort[winner.policy] && totalApr(candidate.apr) - fewestApr <= tolerance)
-    .sort(([, a], [, b]) => policyEffort[a.policy] - policyEffort[b.policy] || totalApr(a.apr) - totalApr(b.apr))[0];
-  const [recommendedLetter, recommended] = simplerEntry ?? [fewestLetter, winner];
+  const [recommendedLetter, recommended] = recommendedPlan(result) ?? [fewestLetter, winner];
   const recommendedIsFewest = recommendedLetter === fewestLetter;
   const recommendedApr = totalApr(recommended.apr);
   const hpReached = recommended.final_display_hp >= recommended.target_hp;
@@ -569,14 +688,14 @@ function OptimizationResult({ result, language, stale, onSimulate }: { result: O
   const toSimulate = (candidate: { policy: PolicyName; target_base_int: number; mp_wash_end: number }) => onSimulate({ policy: candidate.policy, targetInt: candidate.target_base_int, mpWashEnd: candidate.mp_wash_end });
   const extras: Array<[string, string]> = [[policyTitle(recommended.policy), recommendedIsFewest ? "優勝策略" : "建議照做"]];
   if (recommendedIsFewest && result.continued_to_200_hp !== undefined && result.continued_to_200_hp !== winner.final_display_hp) extras.push([result.continued_to_200_hp.toLocaleString(), "繼續到 200 等最高 HP"]);
-  const fewestNote = recommendedIsFewest ? undefined : <p className="fewest-note">理論最少是 {policyTitle(winner.policy)}：{fewestApr.toLocaleString()} APR，只少 {(recommendedApr - fewestApr).toLocaleString()} APR，但要逐 AP 操作。</p>;
   return translateTree(<section className="result-panel"><h3 className="visually-hidden">最佳化結果</h3>
     <div className="result-lead">
       <Specimen language={language} code={codeFor(recommended)} headline={headlineFor(recommended)} reached={recommended.reached_target} hpReached={hpReached} mpReached={mpReached} stale={stale} targetHp={recommended.target_hp} finalHp={recommended.final_display_hp} targetMp={recommended.target_mp} finalMp={recommended.final_base_mp}
-        figures={[[recommendedApr.toLocaleString(), "總 APR"], [recommended.final_display_hp.toLocaleString(), "最終 HP"], [recommended.final_base_mp.toLocaleString(), "最終 base MP"], [String(recommended.plan.at(-1)?.level ?? ""), "目標等級"]]}
-        extras={extras} note={fewestNote} />
-      <div className="specimen-actions"><button type="button" className="quiet" onClick={() => toSimulate(recommended)}>在模擬中開啟</button><span className="field-hint">帶入策略、base INT 與 MP wash 結束等級，再微調。</span></div>
+        figures={[[recommendedApr.toLocaleString(), "總 APR"], [recommended.final_display_hp.toLocaleString(), "最終 HP"], [recommended.final_base_mp.toLocaleString(), "最終 base MP"], [String(recommended.int_reached_level || "—"), "INT 達標等級"]]}
+        extras={extras} onEditGear={onEditGear} />
+      <div className="specimen-actions"><button type="button" className="quiet" onClick={() => toSimulate(recommended)}>在模擬中開啟</button><span className="field-hint">帶入策略、base INT 與 MP wash 結束等級，再微調。</span><a className="back-to-form" href="#calc-form">回到設定</a></div>
       <PlanKey title={shownLetter === recommendedLetter ? `${recommendedIsFewest ? "優勝計畫" : "建議計畫"} · ${policyTitle(shown.policy)}` : `${policyTitle(shown.policy)} 計畫`} summary={`總 APR ${totalApr(shown.apr).toLocaleString()} · base INT ${shown.target_base_int} · MP wash 到 Lv ${shown.mp_wash_end} · 最終 HP ${shown.final_display_hp.toLocaleString()}`} rows={planFor(shownLetter, shown)} file={`plan-policy-${shownLetter.toLowerCase()}.csv`} language={language} />
+      <PlanTuner key={`${shownLetter}-${shown.target_base_int}-${shown.mp_wash_end}`} base={shown} letter={shownLetter} stale={stale} language={language} onTune={onTune} />
       <section className="comparison"><div className="result-heading"><h4 className="section-plate">策略比較</h4><span className="plate-note">{winner.target_mp === undefined ? "未設 MP 目標 · " : ""}點選卡片在上方查看該策略的計畫</span></div>
       <div className="comparison-grid">{policies.map(([itemLetter, candidate]) => {
         const apr = totalApr(candidate.apr);
@@ -590,10 +709,9 @@ function OptimizationResult({ result, language, stale, onSimulate }: { result: O
             <b>{apr.toLocaleString()} APR {itemLetter !== fewestLetter && <span className="apr-delta">{delta >= 0 ? `+${delta.toLocaleString()}` : delta.toLocaleString()} APR</span>}</b>
             <span className={candidate.reached_target ? "status-success" : "status-failure"}><Mark reached={candidate.reached_target} /> {candidate.reached_target ? "已達標" : "未達標"}</span>
             <small>INT {candidate.target_base_int}{" · MP wash 到 Lv "}{candidate.mp_wash_end}{" · HP "}{candidate.final_display_hp.toLocaleString()}{candidate.target_mp === undefined ? "" : ` · MP ${candidate.final_base_mp.toLocaleString()} / ${candidate.target_mp.toLocaleString()}`}</small>
+            {itemLetter === fewestLetter && !recommendedIsFewest && <span className="card-cue">比建議少 {(recommendedApr - fewestApr).toLocaleString()} APR，但要逐 AP 操作</span>}
             {isShown && <span className="card-cue">正在上方顯示</span>}
-          </button>
-          <button type="button" className="quiet small-action" onClick={() => toSimulate(candidate)}>在模擬中開啟</button>
-        </article>;
+          </button>        </article>;
       })}</div></section>
     </div></section>, language);
 }

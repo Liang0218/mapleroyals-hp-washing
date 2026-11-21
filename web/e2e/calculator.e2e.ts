@@ -13,8 +13,20 @@ async function runOptimizeToResult(page: Page) {
   await expect(page.locator(".specimen-tag")).toContainText("No.", { timeout: 90_000 });
 }
 
-test.beforeEach(async ({ page }) => {
+test.beforeEach(async ({ page }, testInfo) => {
+  // Most tests run on the default (all INT 0) gear, so they start past the one-time "compute with 0?" question.
+  if (!testInfo.title.includes("[gear prompt]")) await page.addInitScript(() => sessionStorage.setItem("mapleroyals-hp-wash-zero-gear-ok", "1"));
   await page.goto("/");
+});
+
+test("simulate lists every policy with its explanation and picks one by click", async ({ page }) => {
+  await openTab(page, "模擬");
+  const options = page.locator(".policy-option");
+  await expect(options).toHaveCount(4);
+  for (const letter of ["A", "B", "C", "D"]) await expect(options.locator("b", { hasText: letter })).toBeVisible();
+  await expect(options.locator(".policy-option-hint")).toHaveCount(4);
+  await options.filter({ hasText: "Plain INT" }).click();
+  await expect(page.locator(".policy-option:has(input:checked) .policy-option-name b")).toHaveText("D");
 });
 
 test("a running optimization stays on its own tab; the other calculator waits", async ({ page }) => {
@@ -86,6 +98,79 @@ test("plan bands are continuous level ranges for every policy", async ({ page })
   }
 });
 
+test("the shown plan can be fine-tuned in place without leaving Optimize", async ({ page }) => {
+  await runOptimizeToResult(page);
+  const tuner = page.locator(".plan-tuner");
+  await tuner.locator("> summary").click();
+  const original = Number(await page.locator("#tune-int").inputValue());
+  await page.locator("#tune-int").fill(String(original + 20));
+  await page.locator("#tune-int").press("Enter");
+  await expect(tuner.locator(".tuner-outcome")).toContainText("總 APR");
+  // Only the difference shows; the full tuned plan stays folded until asked for.
+  await expect(tuner.locator("#tuned-plan-view")).toBeHidden();
+  await tuner.getByText("查看完整微調計畫與 CSV").click();
+  await expect(tuner.locator("#tuned-plan-view")).toContainText(`base INT ${original + 20}`);
+  await expect(page.getByRole("tab", { name: "最佳化", exact: true })).toHaveAttribute("aria-selected", "true");
+  await expect(page.locator(".run-button")).toHaveText("執行最佳化");
+});
+
+test("a fine-tune that misses the goal leads with the shortfall, not the APR saved", async ({ page }) => {
+  await runOptimizeToResult(page);
+  const tuner = page.locator(".plan-tuner");
+  await tuner.locator("> summary").click();
+  await page.locator("#tune-end").fill("60");
+  await tuner.getByRole("button", { name: "重算" }).click();
+  const outcome = tuner.locator(".tuner-outcome");
+  await expect(outcome).toHaveClass(/is-missed/);
+  await expect(outcome.locator("b").first()).toHaveText("未達標");
+  await expect(outcome).toContainText("HP 差");
+});
+
+test("a fine-tune can be reset to the original values", async ({ page }) => {
+  await runOptimizeToResult(page);
+  const tuner = page.locator(".plan-tuner");
+  await tuner.locator("> summary").click();
+  const original = await page.locator("#tune-int").inputValue();
+  await page.locator("#tune-int").fill(String(Number(original) + 30));
+  await tuner.getByRole("button", { name: "重算", exact: true }).click();
+  await tuner.getByRole("button", { name: "回到原值" }).click();
+  await expect(page.locator("#tune-int")).toHaveValue(original);
+  await expect(tuner.locator(".tuner-result")).toHaveCount(0);
+});
+
+test("the HP ruler names its fill and its goal notch", async ({ page }) => {
+  await runOptimizeToResult(page);
+  await expect(page.locator(".capacity-caption .ruler-key-fill")).toHaveCount(1);
+  await expect(page.locator(".capacity-caption .ruler-key-target")).toHaveCount(1);
+  await expect(page.locator(".capacity-caption")).toContainText("最終 HP");
+  await expect(page.locator(".capacity-caption")).toContainText("目標 HP");
+});
+
+test("an unchanged fine-tune says so and adds no second plan", async ({ page }) => {
+  await runOptimizeToResult(page);
+  const tuner = page.locator(".plan-tuner");
+  await tuner.locator("> summary").click();
+  await tuner.getByRole("button", { name: "重算" }).click();
+  await expect(tuner.locator(".tuner-outcome")).toContainText("結果與原計畫相同");
+  await expect(tuner.locator("#tuned-plan-view")).toHaveCount(0);
+});
+
+test("the default simulation reaches its goal", async ({ page }) => {
+  await openTab(page, "模擬");
+  await page.getByRole("button", { name: "執行模擬" }).click();
+  await expect(page.locator(".stamp")).toContainText("已達成目標", { timeout: 30_000 });
+});
+
+test("an empty Simulate tab offers the optimizer's recommendation", async ({ page }) => {
+  await runOptimizeToResult(page);
+  const code = (await page.locator(".specimen-tag").textContent())?.replace("No.", "").trim() ?? "";
+  const [, int, washEnd] = code.split("·");
+  await openTab(page, "模擬");
+  await page.getByRole("button", { name: `帶入最佳化建議：${code}` }).click();
+  await expect(page.locator("#field-targetInt")).toHaveValue(int);
+  await expect(page.locator("#field-mpWashEnd")).toHaveValue(washEnd);
+});
+
 test("open in Simulate carries the policy and numbers over", async ({ page }) => {
   await runOptimizeToResult(page);
   const headline = await page.locator(".specimen-head h3").textContent();
@@ -94,7 +179,7 @@ test("open in Simulate carries the policy and numbers over", async ({ page }) =>
   await expect(page.getByRole("tab", { name: "模擬", exact: true })).toHaveAttribute("aria-selected", "true");
   await expect(page.locator("#field-targetInt")).toHaveValue(int);
   await expect(page.locator("#field-mpWashEnd")).toHaveValue(washEnd);
-  await expect(page.locator("#field-policy option:checked")).toContainText(`${letter} —`);
+  await expect(page.locator(".policy-option:has(input:checked) .policy-option-name b")).toHaveText(letter);
 });
 
 test("in English the whole result panel is English", async ({ page }) => {
@@ -157,12 +242,37 @@ test("an opened plan band shows all its levels without an inner scroll box", asy
   expect(scrolls).toBe(false);
 });
 
-test("unset gear INT is called out on the form and the result", async ({ page }) => {
+test("[gear prompt] unset gear INT is asked about once before the first run", async ({ page }) => {
   await openTab(page, "最佳化");
-  await expect(page.locator(".calc-form .gear-warning")).toContainText("尚未設定裝備 INT");
   await page.getByRole("button", { name: "執行最佳化" }).click();
+  const prompt = page.locator(".gear-prompt");
+  await expect(prompt).toContainText("還沒有設定裝備 INT");
+  await expect(page.locator(".run-button")).toHaveCount(0);
+  await prompt.getByRole("button", { name: "前往裝備頁設定" }).click();
+  await expect(page.getByRole("tab", { name: "裝備", exact: true })).toHaveAttribute("aria-selected", "true");
+  await openTab(page, "最佳化");
+  await page.getByRole("button", { name: "執行最佳化" }).click();
+  await page.locator(".gear-prompt").getByRole("button", { name: "仍以 0 計算" }).click();
   await expect(page.locator(".specimen-tag")).toContainText("No.", { timeout: 90_000 });
-  await expect(page.locator(".calc-results > .gear-warning")).toBeVisible();
+  // Answered once: the next run goes straight through.
+  await openTab(page, "模擬");
+  await page.getByRole("button", { name: "執行模擬" }).click();
+  await expect(page.locator(".gear-prompt")).toHaveCount(0);
+});
+
+test("a result computed without gear INT says so on its label", async ({ page }) => {
+  await runOptimizeToResult(page);
+  await expect(page.locator(".specimen .extra-caution")).toContainText("未設定（以 0 計算）");
+  await expect(page.locator(".calc-results .gear-warning")).toHaveCount(0);
+  await page.locator(".extra-caution").getByRole("button", { name: "設定裝備後重算" }).click();
+  await expect(page.getByRole("tab", { name: "裝備", exact: true })).toHaveAttribute("aria-selected", "true");
+});
+
+test("gear with INT is confirmed by the run button", async ({ page }) => {
+  await openTab(page, "裝備");
+  await page.getByLabel("裝備 3 INT", { exact: true }).fill("25");
+  await openTab(page, "最佳化");
+  await expect(page.locator(".runbar .gear-check")).toContainText("裝備 INT 已套用：1 件有 INT");
 });
 
 test("repeated levels merge into one line until show-all is on", async ({ page }) => {
@@ -199,10 +309,20 @@ test("theme and language switches apply and persist", async ({ page }) => {
 test.describe("phone", () => {
   test.use({ viewport: { width: 390, height: 844 } });
   test("all tabs are reachable without horizontal scrolling", async ({ page }) => {
-    for (const name of ["使用指南", "最佳化", "模擬", "裝備", "職業數值", "策略說明", "聯絡作者"]) {
+    for (const name of ["使用指南", "最佳化", "模擬", "裝備", "職業數值", "策略說明"]) {
       await expect(page.getByRole("tab", { name, exact: true })).toBeInViewport();
     }
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
     expect(overflow).toBeLessThanOrEqual(0);
+  });
+
+  test("a finished simulation brings its result into view and focuses it", async ({ page }) => {
+    await openTab(page, "模擬");
+    await page.getByRole("button", { name: "執行模擬" }).click();
+    const heading = page.locator(".specimen-head h3");
+    await expect(heading).toBeFocused({ timeout: 30_000 });
+    await expect(heading).toBeInViewport();
+    // The No. tag above the specimen's top edge lands in view too, not cut off.
+    await expect.poll(() => page.locator(".specimen-tag").evaluate((element) => element.getBoundingClientRect().top)).toBeGreaterThanOrEqual(0);
   });
 });
